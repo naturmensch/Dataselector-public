@@ -50,8 +50,10 @@ def validate(
     if (outdir / "features.npy").exists():
         features_path = outdir / "features.npy"
 
-    metadata = pd.read_csv(metadata_path)
-    features = np.load(features_path)
+    from src.io import load_or_extract_features, load_metadata
+
+    metadata = pd.read_csv(metadata_path) if metadata_path.exists() else load_metadata("data/new_all_tiles.csv")
+    features = load_or_extract_features(outdir, csv_meta=str(outdir / "metadata.csv") if (outdir / "metadata.csv").exists() else str(metadata_path) if metadata_path.exists() else None, batch_size=16, cache=True)
 
     # Compute embeddings and cluster labels using ClusteringPipeline (consistent with main pipeline)
     from src.clustering import ClusteringPipeline

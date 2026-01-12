@@ -39,15 +39,16 @@ def run_benchmark(subset_size: int = 50, stop_on_success: bool = True):
     meta_cache = OUT / "metadata.csv"
     image_dir = Path("data/images")
 
-    # Prefer cached features if available
-    if features_cache.exists() and meta_cache.exists():
-        print("Using cached features + metadata for quick test")
-        t0 = time.perf_counter()
-        features = np.load(features_cache)
-        metadata = pd.read_csv(meta_cache)
-        n = min(subset_size, len(features))
-        feat_sub = features[:n]
-        meta_sub = metadata.iloc[:n].reset_index(drop=True)
+    # Load features and metadata (cached or extracted on-demand)
+    from src.io import load_or_extract_features, load_metadata
+
+    features = load_or_extract_features(OUT, csv_meta=str(meta_cache) if meta_cache.exists() else None, batch_size=16, cache=True)
+    metadata = pd.read_csv(meta_cache) if meta_cache.exists() else load_metadata(str(meta_path))
+
+    # Use subset
+    n = min(subset_size, len(features))
+    feat_sub = features[:n]
+    meta_sub = metadata.iloc[:n].reset_index(drop=True)
 
         timings = {}
         timings["start"] = 0.0

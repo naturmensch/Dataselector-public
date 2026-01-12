@@ -17,17 +17,11 @@ from src.feature_extractor import FeatureExtractor
 OUT = Path("outputs")
 OUT.mkdir(exist_ok=True, parents=True)
 
-# Load features and metadata
-features_path = OUT / "features.npy"
-metadata_path = OUT / "metadata.csv"
-if not features_path.exists() or not metadata_path.exists():
-    print(
-        "Features or metadata not found. Run the pipeline once to cache features before benchmarking."
-    )
-    raise SystemExit(1)
+# Load features and metadata (cached or on-demand)
+from src.io import load_or_extract_features, load_metadata
 
-features = np.load(features_path)
-metadata = pd.read_csv(metadata_path)
+features = load_or_extract_features(OUT, csv_meta=str(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else None, batch_size=16, cache=True)
+metadata = pd.read_csv(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else load_metadata("data/new_all_tiles.csv")
 
 results = []
 

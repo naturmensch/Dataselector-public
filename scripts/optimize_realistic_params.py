@@ -21,8 +21,10 @@ from src.diversity_selector import DiversitySelector
 from src.spatial_facility_location import haversine_distance
 
 OUT = Path("outputs")
-features = np.load(OUT / "features.npy")
-metadata = pd.read_csv(OUT / "metadata.csv")
+from src.io import load_or_extract_features, load_metadata
+
+features = load_or_extract_features(OUT, csv_meta=str(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else None, batch_size=16, cache=True)
+metadata = pd.read_csv(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else load_metadata("data/new_all_tiles.csv")
 
 print("=" * 80)
 print("REALITÄTS-ANGEPASSTE PARAMETER-OPTIMIERUNG")

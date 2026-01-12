@@ -51,12 +51,19 @@ data/raw/
 # Outputs (ignore generated artifacts; keep .gitkeep)
 outputs/*
 !outputs/.gitkeep
+
+# Whitelist validated & scientific results
+!/outputs/kdr100_selection_selected.csv
+!/outputs/optuna_best_selection.csv
+!/outputs/seed_benchmark_results.csv
+!/outputs/profile_summary.csv
+!/outputs/final_selection/
+!/outputs/validation/
+
+# Ignore large generated arrays and caches
 outputs/*.npy
 outputs/*.pkl
 outputs/cache_backup_*/
-outputs/validation/
-outputs/final_selection/
-outputs/kdr100_selection/
 outputs/tuning_weights/
 
 # Models

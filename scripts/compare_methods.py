@@ -18,10 +18,12 @@ import pandas as pd
 from src.clustering import ClusteringPipeline
 from src.diversity_selector import DiversitySelector
 
-# Load cached features
+# Load features and metadata (cached or on-demand)
 OUT = Path("outputs")
-features = np.load(OUT / "features.npy")
-metadata = pd.read_csv(OUT / "metadata.csv")
+from src.io import load_or_extract_features, load_metadata
+
+features = load_or_extract_features(OUT, csv_meta=str(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else None, batch_size=16, cache=True)
+metadata = pd.read_csv(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else load_metadata("data/new_all_tiles.csv")
 
 print("=" * 80)
 print("CONSTRAINT-INTEGRATION TEST: Legacy vs Scientific")

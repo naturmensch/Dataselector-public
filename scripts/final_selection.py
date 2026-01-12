@@ -39,9 +39,12 @@ gamma = cfg.get("selection", {}).get("gamma_temporal", 0.25)
 min_distance_km = cfg.get("selection", {}).get("min_distance_km", 50.0)
 seed = cfg.get("selection", {}).get("random_state", 42)
 
-# Load data
-features = np.load(ROOT / "outputs" / "features.npy")
-metadata = pd.read_csv(ROOT / "outputs" / "metadata.csv")
+# Load data (cached or extract on-demand)
+from src.io import load_or_extract_features, load_metadata
+
+OUT_ROOT = ROOT / "outputs"
+features = load_or_extract_features(OUT_ROOT, csv_meta=str(OUT_ROOT / "metadata.csv") if (OUT_ROOT / "metadata.csv").exists() else None, batch_size=16, cache=True)
+metadata = pd.read_csv(OUT_ROOT / "metadata.csv") if (OUT_ROOT / "metadata.csv").exists() else load_metadata(str(ROOT / "data" / "new_all_tiles.csv"))
 
 # Clustering
 clustering = ClusteringPipeline(n_clusters=8)
