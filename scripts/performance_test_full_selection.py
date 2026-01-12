@@ -25,8 +25,12 @@ from src.diversity_selector import DiversitySelector
 from src.spatial_facility_location import haversine_distance
 
 OUT = Path("outputs")
-features = np.load(OUT / "features.npy")
-metadata = pd.read_csv(OUT / "metadata.csv")
+from src.io import load_or_extract_features, load_metadata
+
+csv_meta = OUT / "metadata.csv"
+csv_meta = str(csv_meta) if csv_meta.exists() else None
+features = load_or_extract_features(out_dir=OUT, csv_meta=csv_meta, batch_size=16, cache=False)
+metadata = load_metadata(csv_meta if csv_meta is not None else "data/new_all_tiles.csv")
 
 print("=" * 80)
 print("MULTI-CRITERIA PERFORMANCE TEST: n_samples=673 (Full Dataset)")

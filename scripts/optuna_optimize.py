@@ -36,8 +36,10 @@ def load_or_create_data(n=500, dim=512, seed=123):
     features_path = OUT_DIR / "features.npy"
     metadata_path = OUT_DIR / "metadata.csv"
 
+    from src.io import load_or_extract_features, load_metadata
+
     if features_path.exists() and metadata_path.exists():
-        features = np.load(features_path)
+        features = load_or_extract_features(out_dir=OUT_DIR, csv_meta=str(metadata_path), batch_size=16, cache=False)
         metadata = pd.read_csv(metadata_path)
     else:
         rng = np.random.RandomState(seed)

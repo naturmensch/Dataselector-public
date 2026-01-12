@@ -43,37 +43,37 @@ def run_benchmark(subset_size: int = 50, stop_on_success: bool = True):
     from src.io import load_or_extract_features, load_metadata
 
     features = load_or_extract_features(OUT, csv_meta=str(meta_cache) if meta_cache.exists() else None, batch_size=16, cache=True)
-    metadata = pd.read_csv(meta_cache) if meta_cache.exists() else load_metadata(str(meta_path))
+    metadata = pd.read_csv(meta_cache) if meta_cache.exists() else load_metadata("data/new_all_tiles.csv")
 
     # Use subset
     n = min(subset_size, len(features))
     feat_sub = features[:n]
     meta_sub = metadata.iloc[:n].reset_index(drop=True)
 
-        timings = {}
-        timings["start"] = 0.0
-        # timing UMAP + clustering + selection
-        t0 = time.perf_counter()
-        cl = ClusteringPipeline(n_clusters=8)
-        emb, labels = cl.fit_transform(feat_sub)
-        timings["umap_and_kmeans_s"] = time.perf_counter() - t0
+    timings = {}
+    timings["start"] = 0.0
+    # timing UMAP + clustering + selection
+    t0 = time.perf_counter()
+    cl = ClusteringPipeline(n_clusters=8)
+    emb, labels = cl.fit_transform(feat_sub)
+    timings["umap_and_kmeans_s"] = time.perf_counter() - t0
 
-        t1 = time.perf_counter()
-        selector = DiversitySelector(n_samples=10)
-        sel = selector.select(
-            feat_sub, metadata=meta_sub, temporal_weight=0.2, spatial_constraint=False
-        )
-        timings["selection_s"] = time.perf_counter() - t1
-        timings["total_s"] = sum(
-            [timings.get("umap_and_kmeans_s", 0.0), timings.get("selection_s", 0.0)]
-        )
-        print("Cached flow timings:", timings)
-        # Save quick summary
-        summary = {"mode": "cached", "subset_n": n, "timings": timings, "success": True}
-        (OUT / "quick_benchmark_summary.json").write_text(
-            json.dumps(summary, ensure_ascii=False, indent=2)
-        )
-        return summary
+    t1 = time.perf_counter()
+    selector = DiversitySelector(n_samples=10)
+    sel = selector.select(
+        feat_sub, metadata=meta_sub, temporal_weight=0.2, spatial_constraint=False
+    )
+    timings["selection_s"] = time.perf_counter() - t1
+    timings["total_s"] = sum(
+        [timings.get("umap_and_kmeans_s", 0.0), timings.get("selection_s", 0.0)]
+    )
+    print("Cached flow timings:", timings)
+    # Save quick summary
+    summary = {"mode": "cached", "subset_n": n, "timings": timings, "success": True}
+    (OUT / "quick_benchmark_summary.json").write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2)
+    )
+    return summary
 
     # else: prepare image list from metadata
     meta_path = Path("data/new_all_tiles.csv")
