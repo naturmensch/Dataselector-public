@@ -48,8 +48,10 @@ def test_meta_provenance_includes_versions(tmp_path, monkeypatch):
     assert "python_version" in meta
     assert "numpy_version" in meta
     assert "torch_version" in meta
+    assert "pip_packages" in meta
 
     # Basic sanity checks
     assert isinstance(meta["python_version"], (str, type(None)))
     assert isinstance(meta["numpy_version"], (str, type(None)))
     assert isinstance(meta["torch_version"], (str, type(None)))
+    assert isinstance(meta["pip_packages"], (dict, type(None)))
