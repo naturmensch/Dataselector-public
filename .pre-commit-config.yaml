@@ -1,0 +1,10 @@
+repos:
+  - repo: local
+    hooks:
+      - id: check-protected
+        name: Check protected paths
+        entry: python scripts/check_protected.py
+        language: system
+        pass_filenames: false
+        stages: [commit]
+        files: ''

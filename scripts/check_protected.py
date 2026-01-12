@@ -71,11 +71,25 @@ def git_staged_files() -> List[str]:
         return []
 
 
+def git_tracked_files() -> List[str]:
+    """Return a list of tracked files in the repository (git ls-files).
+
+    Useful for CI checks that need to ensure protected files aren't tracked.
+    """
+    try:
+        out = subprocess.check_output(["git", "ls-files"], stderr=subprocess.DEVNULL)
+        files = out.decode().splitlines()
+        return [f for f in files if f]
+    except Exception:
+        return []
+
+
 def main(argv=None):
     p = argparse.ArgumentParser()
     p.add_argument('--list', action='store_true', help='List protected paths and exit')
     p.add_argument('--protect', action='append', help='Add protected path (repeatable)')
     p.add_argument('--staged', nargs='*', help='Provide staged files explicitly (for testing)')
+    p.add_argument('--all', action='store_true', help='Check all tracked files (git ls-files)')
     args = p.parse_args(argv)
 
     protected = get_protected_paths(args.protect)
@@ -88,6 +102,8 @@ def main(argv=None):
     staged = None
     if args.staged is not None:
         staged = args.staged
+    elif args.all:
+        staged = git_tracked_files()
     else:
         staged = git_staged_files()
 
