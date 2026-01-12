@@ -66,6 +66,18 @@ outputs/*.pkl
 outputs/cache_backup_*/
 outputs/tuning_weights/
 
+# Explicitly ignore profiling outputs, optuna caches/plots and experiment artifacts
+/outputs/*.prof
+/outputs/profile_*.txt
+/outputs/optuna_study.pkl
+/outputs/optuna_autoscale_study_*.pkl
+/outputs/optuna_*.png
+/outputs/optuna_history_*.png
+/outputs/optuna_min_distance_hist_*.png
+/outputs/experiments_*.png
+/outputs/quick_benchmark_summary.json
+/outputs/experiments/
+
 # Models
 models/
 *.pth
