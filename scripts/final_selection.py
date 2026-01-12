@@ -69,6 +69,10 @@ print(
     f"Running final selection: n_samples={n_samples}, α={alpha}, β={beta}, γ={gamma}, min_dist={min_distance_km}"
 )
 start = time.time()
+# Optional: pre-selected names/indices from config (e.g., ['KDR_146'] or ['Hamburg'])
+pre_selected_names = cfg.get("selection", {}).get("pre_selected_names", None)
+pre_selected_indices = cfg.get("selection", {}).get("pre_selected_indices", None)
+
 selected_idx = selector.select(
     features=features,
     metadata=metadata,
@@ -77,6 +81,8 @@ selected_idx = selector.select(
     gamma_temporal=gamma,
     spatial_constraint=True,
     min_distance_km=min_distance_km,
+    pre_selected=pre_selected_indices,
+    pre_selected_names=pre_selected_names,
 )
 duration = time.time() - start
 
