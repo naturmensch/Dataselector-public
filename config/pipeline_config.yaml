@@ -40,7 +40,6 @@ selection:
   alpha_visual: 0.70     # Empfohlene visuelle Gewichtung für finale Auswahl
   beta_spatial: 0.05     # Empfohlene räumliche Gewichtung für finale Auswahl
   gamma_temporal: 0.25   # Empfohlene zeitliche Gewichtung (gegen WWI-Clustering)
-  spatial_penalty_weight: 0.10 # λ spatial penalty weight (soft spatial constraint)
   
   # Spatial constraint
   spatial_constraint: true

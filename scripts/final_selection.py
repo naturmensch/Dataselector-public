@@ -37,7 +37,6 @@ alpha = cfg.get("selection", {}).get("alpha_visual", 0.7)
 beta = cfg.get("selection", {}).get("beta_spatial", 0.05)
 gamma = cfg.get("selection", {}).get("gamma_temporal", 0.25)
 min_distance_km = cfg.get("selection", {}).get("min_distance_km", 50.0)
-spatial_penalty_weight = cfg.get("selection", {}).get("spatial_penalty_weight", 0.1)
 seed = cfg.get("selection", {}).get("random_state", 42)
 
 # Load data (cached or extract on-demand)
@@ -76,7 +75,6 @@ selected_idx = selector.select(
     alpha_visual=alpha,
     beta_spatial=beta,
     gamma_temporal=gamma,
-    spatial_penalty_weight=spatial_penalty_weight,
     spatial_constraint=True,
     min_distance_km=min_distance_km,
 )
