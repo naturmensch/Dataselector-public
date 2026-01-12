@@ -6,16 +6,12 @@ Usage:
     PYTHONPATH=. python scripts/tune_weights_and_run.py
 
 """
+
 from pathlib import Path
-import itertools
-import json
+
 import numpy as np
-import pandas as pd
-from src.feature_extractor import FeatureExtractor
+
 from src.metadata_processor import MetadataProcessor
-from src.diversity_selector import DiversitySelector
-from src.visualizer import Visualizer
-from sklearn.cluster import KMeans
 
 # Config
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,14 +30,12 @@ weight_combinations = [
     (0.7, 0.10, 0.20),
     (0.7, 0.25, 0.05),
     (0.7, 0.05, 0.25),
-    
     # Balanced (60%)
     (0.6, 0.20, 0.20),
     (0.6, 0.25, 0.15),
     (0.6, 0.15, 0.25),
     (0.6, 0.30, 0.10),
     (0.6, 0.10, 0.30),
-    
     # Visual reduced (50%)
     (0.5, 0.25, 0.25),
     (0.5, 0.30, 0.20),
@@ -53,21 +47,26 @@ weight_combinations = [
 # Fixed clustering configuration (same as used in perf tests)
 n_clusters = 8
 
+
 # Helpers
 def compute_metrics(selected_idx, metadata, cluster_labels, features):
     selected = metadata.iloc[selected_idx]
-    temporal_std = float(selected['year'].std())
-    temporal_range = int(selected['year'].max() - selected['year'].min())
-    wwi_frac = float((selected['year'].between(1914, 1918)).mean() * 100)
+    temporal_std = float(selected["year"].std())
+    temporal_range = int(selected["year"].max() - selected["year"].min())
+    wwi_frac = float((selected["year"].between(1914, 1918)).mean() * 100)
     # spatial mean distance: pairwise mean distance
-    from src.metadata_processor import MetadataProcessor
+
     mp = MetadataProcessor("")
-    coords = selected[['N','left']].values
+    coords = selected[["N", "left"]].values
     if len(coords) > 1:
         dists = []
         for i in range(len(coords)):
-            for j in range(i+1, len(coords)):
-                dists.append(mp.calculate_spatial_distance(coords[i,0], coords[i,1], coords[j,0], coords[j,1]))
+            for j in range(i + 1, len(coords)):
+                dists.append(
+                    mp.calculate_spatial_distance(
+                        coords[i, 0], coords[i, 1], coords[j, 0], coords[j, 1]
+                    )
+                )
         spatial_mean = float(np.mean(dists))
         spatial_min = float(np.min(dists))
     else:
@@ -77,22 +76,26 @@ def compute_metrics(selected_idx, metadata, cluster_labels, features):
     clusters_covered = int(len(np.unique(cluster_labels[selected_idx])))
 
     return {
-        'n_selected': len(selected_idx),
-        'temporal_std': temporal_std,
-        'temporal_range': temporal_range,
-        'wwi_percent': wwi_frac,
-        'spatial_mean_km': spatial_mean,
-        'spatial_min_km': spatial_min,
-        'clusters_covered': clusters_covered
+        "n_selected": len(selected_idx),
+        "temporal_std": temporal_std,
+        "temporal_range": temporal_range,
+        "wwi_percent": wwi_frac,
+        "spatial_mean_km": spatial_mean,
+        "spatial_min_km": spatial_min,
+        "clusters_covered": clusters_covered,
     }
 
 
 def main():
     from src.experiments import ExperimentRunner
-    from src.pareto import compute_pareto_front, visualize_pareto_front, export_pareto_report
+    from src.pareto import (
+        compute_pareto_front,
+        export_pareto_report,
+        visualize_pareto_front,
+    )
 
     runner = ExperimentRunner(output_dir=str(OUTPUT_DIR))
-    
+
     # Run full sweep (no early stopping for Pareto analysis)
     results = runner.run_weight_sweep(
         csv_meta=str(DATA_META),
@@ -101,25 +104,28 @@ def main():
         n_clusters=n_clusters,
         batch_size=16,
         min_distance_km=30.0,  # Kompromiss: realistische constraint, aber nicht zu restriktiv
-        patience=None  # Kein Early-Stopping für Pareto
+        patience=None,  # Kein Early-Stopping für Pareto
     )
-    
+
     # Compute Pareto front
-    print("\n" + "="*70)
+    print("\n" + "=" * 70)
     print("Computing Pareto-Front...")
-    print("="*70)
-    
+    print("=" * 70)
+
     pareto_front = compute_pareto_front(results)
-    
-    print(f"\nPareto-Front: {len(pareto_front)} von {len(results)} Lösungen sind Pareto-optimal")
-    
+
+    print(
+        f"\nPareto-Front: {len(pareto_front)} von {len(results)} Lösungen sind Pareto-optimal"
+    )
+
     # Visualize
     visualize_pareto_front(results, pareto_front, output_dir=str(OUTPUT_DIR / "pareto"))
-    
+
     # Export report
-    export_pareto_report(pareto_front, output_path=str(OUTPUT_DIR / "pareto" / "pareto_solutions.csv"))
+    export_pareto_report(
+        pareto_front, output_path=str(OUTPUT_DIR / "pareto" / "pareto_solutions.csv")
+    )
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

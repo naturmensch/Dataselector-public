@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+
 from src.clustering import ClusteringPipeline
 
 
@@ -19,7 +20,7 @@ def test_fit_transform_and_predict():
     assert emb.shape == (20, 2)
     assert labels.shape == (20,)
     stats = cl.get_cluster_statistics()
-    assert stats['total_samples'] == 20
+    assert stats["total_samples"] == 20
     # predict on a subset
     new = rng.normal(size=(5, 32))
     preds = cl.predict_cluster(new)
