@@ -40,7 +40,7 @@ def test_meta_provenance_includes_versions(tmp_path, monkeypatch):
     out_dir = tmp_path / "out"
     runner = experiments_module.ExperimentRunner(output_dir=str(out_dir))
 
-    _df = runner.run_weight_sweep(
+    runner.run_weight_sweep(
         csv_meta=str(csv_path),
         n_samples=1,
         n_clusters=1,
