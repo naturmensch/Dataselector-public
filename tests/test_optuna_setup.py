@@ -10,7 +10,7 @@ OUT = Path("outputs")
 
 def test_optuna_script_runs(tmp_path):
     try:
-        import optuna  # type: ignore
+        pass  # type: ignore
     except Exception:
         pytest.skip("optuna not installed in test environment")
 

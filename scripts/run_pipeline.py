@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Run pipeline with optional tuning.
 
 Usage:

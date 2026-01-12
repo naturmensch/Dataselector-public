@@ -80,7 +80,7 @@ def test_coverage_statistics():
     metadata = make_metadata(n)
 
     selector = DiversitySelector(n_samples=8, use_multi_criteria=False)
-    selected = selector.select(features, metadata, spatial_constraint=False)
+    _selected = selector.select(features, metadata, spatial_constraint=False)
 
     # fake clustering labels
     cluster_labels = np.random.randint(0, 5, size=n)

@@ -12,7 +12,11 @@ def test_multi_criteria_weight_validation():
     # Weights do not sum to 1.0 -> ValueError
     with pytest.raises(ValueError):
         MultiCriteriaFacilityLocation(
-            n_samples=1, metadata=meta, alpha_visual=0.5, beta_spatial=0.5, gamma_temporal=0.2
+            n_samples=1,
+            metadata=meta,
+            alpha_visual=0.5,
+            beta_spatial=0.5,
+            gamma_temporal=0.2,
         )
 
 
@@ -29,7 +33,14 @@ def test_greedy_selection_spatial_constraint():
     # Create simple features so greedy selection has deterministic behavior
     X = np.array([[1.0, 0.0], [0.9, 0.1], [0.0, 1.0]])
 
-    m = MultiCriteriaFacilityLocation(n_samples=2, metadata=meta, alpha_visual=0.7, beta_spatial=0.15, gamma_temporal=0.15, min_distance_km=1.0)
+    m = MultiCriteriaFacilityLocation(
+        n_samples=2,
+        metadata=meta,
+        alpha_visual=0.7,
+        beta_spatial=0.15,
+        gamma_temporal=0.15,
+        min_distance_km=1.0,
+    )
 
     # Compute pairwise distances and run greedy selection
     distances = m._compute_pairwise_distances(X)

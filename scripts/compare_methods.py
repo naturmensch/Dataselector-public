@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """
 Vergleichstest: Legacy Post-Filter vs Constraint-integrierte Optimierung
 
@@ -20,10 +21,19 @@ from src.diversity_selector import DiversitySelector
 
 # Load features and metadata (cached or on-demand)
 OUT = Path("outputs")
-from src.io import load_or_extract_features, load_metadata
+from src.io import load_metadata, load_or_extract_features
 
-features = load_or_extract_features(OUT, csv_meta=str(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else None, batch_size=16, cache=True)
-metadata = pd.read_csv(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else load_metadata("data/new_all_tiles.csv")
+features = load_or_extract_features(
+    OUT,
+    csv_meta=str(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else None,
+    batch_size=16,
+    cache=True,
+)
+metadata = (
+    pd.read_csv(OUT / "metadata.csv")
+    if (OUT / "metadata.csv").exists()
+    else load_metadata("data/new_all_tiles.csv")
+)
 
 print("=" * 80)
 print("CONSTRAINT-INTEGRATION TEST: Legacy vs Scientific")

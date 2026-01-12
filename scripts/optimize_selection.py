@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """
 Parameter sweep for selection optimization with optional subset sampling.
 Saves results to outputs/optimization_results.csv (full) or to outputs/optimization_results_subset.csv when using subset.
@@ -24,11 +25,20 @@ n_clusters = [8, 10, 12]
 OUT = Path("outputs")
 OUT.mkdir(exist_ok=True, parents=True)
 
-from src.io import load_or_extract_features, load_metadata
+from src.io import load_metadata, load_or_extract_features
 
 # Load features and metadata (cached or on-demand)
-features_full = load_or_extract_features(OUT, csv_meta=str(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else None, batch_size=16, cache=True)
-metadata_full = pd.read_csv(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else load_metadata("data/new_all_tiles.csv")
+features_full = load_or_extract_features(
+    OUT,
+    csv_meta=str(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else None,
+    batch_size=16,
+    cache=True,
+)
+metadata_full = (
+    pd.read_csv(OUT / "metadata.csv")
+    if (OUT / "metadata.csv").exists()
+    else load_metadata("data/new_all_tiles.csv")
+)
 
 
 def run_grid(

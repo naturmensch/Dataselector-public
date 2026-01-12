@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Profiling script for the DiversitySelector pipeline.
 
 Usage:
@@ -37,7 +38,9 @@ def load_or_create_data(n=2000, dim=512):
     if features_path.exists() and metadata_path.exists():
         print("Loading existing features/metadata from outputs/ ...")
         # Use central helper to load or extract features (returns np.ndarray)
-        features = load_or_extract_features(out_dir=OUT_DIR, csv_meta=str(metadata_path), batch_size=16, cache=False)
+        features = load_or_extract_features(
+            out_dir=OUT_DIR, csv_meta=str(metadata_path), batch_size=16, cache=False
+        )
         metadata = pd.read_csv(metadata_path)
     else:
         print("No existing data found — generating synthetic dataset for profiling.")

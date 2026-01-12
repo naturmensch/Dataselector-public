@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Final selection runner: runs selection with given weights and min_distance and produces outputs.
 
 Usage:
@@ -7,7 +8,6 @@ Usage:
 import time
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -40,11 +40,22 @@ min_distance_km = cfg.get("selection", {}).get("min_distance_km", 50.0)
 seed = cfg.get("selection", {}).get("random_state", 42)
 
 # Load data (cached or extract on-demand)
-from src.io import load_or_extract_features, load_metadata
+from src.io import load_metadata, load_or_extract_features
 
 OUT_ROOT = ROOT / "outputs"
-features = load_or_extract_features(OUT_ROOT, csv_meta=str(OUT_ROOT / "metadata.csv") if (OUT_ROOT / "metadata.csv").exists() else None, batch_size=16, cache=True)
-metadata = pd.read_csv(OUT_ROOT / "metadata.csv") if (OUT_ROOT / "metadata.csv").exists() else load_metadata(str(ROOT / "data" / "new_all_tiles.csv"))
+features = load_or_extract_features(
+    OUT_ROOT,
+    csv_meta=(
+        str(OUT_ROOT / "metadata.csv") if (OUT_ROOT / "metadata.csv").exists() else None
+    ),
+    batch_size=16,
+    cache=True,
+)
+metadata = (
+    pd.read_csv(OUT_ROOT / "metadata.csv")
+    if (OUT_ROOT / "metadata.csv").exists()
+    else load_metadata(str(ROOT / "data" / "new_all_tiles.csv"))
+)
 
 # Clustering
 clustering = ClusteringPipeline(n_clusters=8)

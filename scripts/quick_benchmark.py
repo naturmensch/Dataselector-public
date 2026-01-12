@@ -35,15 +35,24 @@ def filter_existing(image_names, image_dir: Path):
 
 
 def run_benchmark(subset_size: int = 50, stop_on_success: bool = True):
-    features_cache = OUT / "features.npy"
+    _features_cache = OUT / "features.npy"
     meta_cache = OUT / "metadata.csv"
     image_dir = Path("data/images")
 
     # Load features and metadata (cached or extracted on-demand)
-    from src.io import load_or_extract_features, load_metadata
+    from src.io import load_metadata, load_or_extract_features
 
-    features = load_or_extract_features(OUT, csv_meta=str(meta_cache) if meta_cache.exists() else None, batch_size=16, cache=True)
-    metadata = pd.read_csv(meta_cache) if meta_cache.exists() else load_metadata("data/new_all_tiles.csv")
+    features = load_or_extract_features(
+        OUT,
+        csv_meta=str(meta_cache) if meta_cache.exists() else None,
+        batch_size=16,
+        cache=True,
+    )
+    metadata = (
+        pd.read_csv(meta_cache)
+        if meta_cache.exists()
+        else load_metadata("data/new_all_tiles.csv")
+    )
 
     # Use subset
     n = min(subset_size, len(features))

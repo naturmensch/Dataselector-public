@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """
 Multi-Criteria Performance-Test: n_samples=673 (Full Dataset)
 
@@ -18,18 +19,19 @@ import time
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 
 from src.clustering import ClusteringPipeline
 from src.diversity_selector import DiversitySelector
 from src.spatial_facility_location import haversine_distance
 
 OUT = Path("outputs")
-from src.io import load_or_extract_features, load_metadata
+from src.io import load_metadata, load_or_extract_features
 
 csv_meta = OUT / "metadata.csv"
 csv_meta = str(csv_meta) if csv_meta.exists() else None
-features = load_or_extract_features(out_dir=OUT, csv_meta=csv_meta, batch_size=16, cache=False)
+features = load_or_extract_features(
+    out_dir=OUT, csv_meta=csv_meta, batch_size=16, cache=False
+)
 metadata = load_metadata(csv_meta if csv_meta is not None else "data/new_all_tiles.csv")
 
 print("=" * 80)

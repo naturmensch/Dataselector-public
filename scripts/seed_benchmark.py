@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """
 Seed and parallelism benchmark for UMAP on cached features.
 Strategy:
@@ -13,20 +14,20 @@ import csv
 import time
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
 
 from src.clustering import ClusteringPipeline
 
 OUT = Path("outputs")
 OUT.mkdir(exist_ok=True, parents=True)
 
-from src.io import load_or_extract_features, load_metadata
+from src.io import load_metadata, load_or_extract_features
 
 # Ensure features/metadata exists or extract on-the-fly
 csv_meta = OUT / "metadata.csv"
 csv_meta = str(csv_meta) if csv_meta.exists() else None
-features = load_or_extract_features(out_dir=OUT, csv_meta=csv_meta, batch_size=16, cache=True)
+features = load_or_extract_features(
+    out_dir=OUT, csv_meta=csv_meta, batch_size=16, cache=True
+)
 metadata = load_metadata(csv_meta if csv_meta is not None else "data/new_all_tiles.csv")
 
 # subset size for quick timing

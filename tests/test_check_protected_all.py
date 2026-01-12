@@ -1,4 +1,3 @@
-
 import scripts.check_protected as cp
 
 

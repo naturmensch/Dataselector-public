@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """
 Benchmark script to measure runtime for different UMAP and feature extraction settings.
 Saves results to outputs/benchmark_results.csv
@@ -7,7 +8,6 @@ import itertools
 import time
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import torch
 import umap
@@ -18,10 +18,19 @@ OUT = Path("outputs")
 OUT.mkdir(exist_ok=True, parents=True)
 
 # Load features and metadata (cached or on-demand)
-from src.io import load_or_extract_features, load_metadata
+from src.io import load_metadata, load_or_extract_features
 
-features = load_or_extract_features(OUT, csv_meta=str(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else None, batch_size=16, cache=True)
-metadata = pd.read_csv(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else load_metadata("data/new_all_tiles.csv")
+features = load_or_extract_features(
+    OUT,
+    csv_meta=str(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else None,
+    batch_size=16,
+    cache=True,
+)
+metadata = (
+    pd.read_csv(OUT / "metadata.csv")
+    if (OUT / "metadata.csv").exists()
+    else load_metadata("data/new_all_tiles.csv")
+)
 
 results = []
 

@@ -1,20 +1,32 @@
 import json
-import pandas as pd
+
 import numpy as np
-import pytest
+import pandas as pd
 
 from src import experiments as experiments_module
 
 
 def test_meta_provenance_includes_versions(tmp_path, monkeypatch):
     # Create minimal metadata CSV
-    meta_df = pd.DataFrame({"longName": ["a","b"], "N": [0.0, 1.0], "left": [0.0, 1.0], "year": [1900, 1901], "image_path": ["a.png", "b.png"]})
+    meta_df = pd.DataFrame(
+        {
+            "longName": ["a", "b"],
+            "N": [0.0, 1.0],
+            "left": [0.0, 1.0],
+            "year": [1900, 1901],
+            "image_path": ["a.png", "b.png"],
+        }
+    )
     csv_path = tmp_path / "meta.csv"
     meta_df.to_csv(csv_path, index=False)
 
     # Provide dummy features to avoid heavy extraction
     dummy_feats = np.ones((2, 8))
-    monkeypatch.setattr(experiments_module, "extract_features", lambda meta, batch_size=None: dummy_feats)
+    monkeypatch.setattr(
+        experiments_module,
+        "extract_features",
+        lambda meta, batch_size=None: dummy_feats,
+    )
 
     # Make selection deterministic and non-empty by patching DiversitySelector.select
     import src.diversity_selector as ds_mod
@@ -28,7 +40,7 @@ def test_meta_provenance_includes_versions(tmp_path, monkeypatch):
     out_dir = tmp_path / "out"
     runner = experiments_module.ExperimentRunner(output_dir=str(out_dir))
 
-    df = runner.run_weight_sweep(
+    _df = runner.run_weight_sweep(
         csv_meta=str(csv_path),
         n_samples=1,
         n_clusters=1,

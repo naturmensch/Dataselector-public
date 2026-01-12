@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 """Validierung der Pareto-Punkte mittels min_distance Sweep und Bootstrapping.
 
 Für jede Pareto-Lösung werden Runs für unterschiedliche `min_distance_km`
@@ -42,18 +43,31 @@ def validate(
 
     # Load metadata and features once to save time (from provided outdir if present)
     metadata_path = Path(ROOT) / "outputs" / "metadata.csv"
-    features_path = Path(ROOT) / "outputs" / "features.npy"
+    _features_path = Path(ROOT) / "outputs" / "features.npy"
 
     # Allow tests to override by placing files in outdir
     if (outdir / "metadata.csv").exists():
         metadata_path = outdir / "metadata.csv"
     if (outdir / "features.npy").exists():
-        features_path = outdir / "features.npy"
+        _features_path = outdir / "features.npy"
 
-    from src.io import load_or_extract_features, load_metadata
+    from src.io import load_metadata, load_or_extract_features
 
-    metadata = pd.read_csv(metadata_path) if metadata_path.exists() else load_metadata("data/new_all_tiles.csv")
-    features = load_or_extract_features(outdir, csv_meta=str(outdir / "metadata.csv") if (outdir / "metadata.csv").exists() else str(metadata_path) if metadata_path.exists() else None, batch_size=16, cache=True)
+    metadata = (
+        pd.read_csv(metadata_path)
+        if metadata_path.exists()
+        else load_metadata("data/new_all_tiles.csv")
+    )
+    features = load_or_extract_features(
+        outdir,
+        csv_meta=(
+            str(outdir / "metadata.csv")
+            if (outdir / "metadata.csv").exists()
+            else str(metadata_path) if metadata_path.exists() else None
+        ),
+        batch_size=16,
+        cache=True,
+    )
 
     # Compute embeddings and cluster labels using ClusteringPipeline (consistent with main pipeline)
     from src.clustering import ClusteringPipeline
