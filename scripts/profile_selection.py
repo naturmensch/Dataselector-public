@@ -32,9 +32,12 @@ def load_or_create_data(n=2000, dim=512):
     features_path = OUT_DIR / "features.npy"
     metadata_path = OUT_DIR / "metadata.csv"
 
+    from src.io import load_or_extract_features
+
     if features_path.exists() and metadata_path.exists():
         print("Loading existing features/metadata from outputs/ ...")
-        features = np.load(features_path)
+        # Use central helper to load or extract features (returns np.ndarray)
+        features = load_or_extract_features(out_dir=OUT_DIR, csv_meta=str(metadata_path), batch_size=16, cache=False)
         metadata = pd.read_csv(metadata_path)
     else:
         print("No existing data found — generating synthetic dataset for profiling.")

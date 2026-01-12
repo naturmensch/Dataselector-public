@@ -21,14 +21,13 @@ from src.clustering import ClusteringPipeline
 OUT = Path("outputs")
 OUT.mkdir(exist_ok=True, parents=True)
 
-features_path = OUT / "features.npy"
-metadata_path = OUT / "metadata.csv"
-if not features_path.exists() or not metadata_path.exists():
-    print("No cached features/metadata found. Run pipeline once to populate cache.")
-    raise SystemExit(1)
+from src.io import load_or_extract_features, load_metadata
 
-features = np.load(features_path)
-metadata = pd.read_csv(metadata_path)
+# Ensure features/metadata exists or extract on-the-fly
+csv_meta = OUT / "metadata.csv"
+csv_meta = str(csv_meta) if csv_meta.exists() else None
+features = load_or_extract_features(out_dir=OUT, csv_meta=csv_meta, batch_size=16, cache=True)
+metadata = load_metadata(csv_meta if csv_meta is not None else "data/new_all_tiles.csv")
 
 # subset size for quick timing
 SUBSET_N = min(200, len(features))
