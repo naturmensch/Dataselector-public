@@ -36,8 +36,10 @@ EXPDIR.mkdir(exist_ok=True)
 def run_experiments(n_runs: int = 20, n_samples: int = 100, seed: int = 42):
     rng = np.random.RandomState(seed)
 
-    features = np.load(OUT / "features.npy")
-    metadata = pd.read_csv(OUT / "metadata.csv")
+    from src.io import load_or_extract_features, load_metadata
+
+    features = load_or_extract_features(OUT, csv_meta=str(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else None, batch_size=16, cache=True)
+    metadata = pd.read_csv(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else load_metadata("data/new_all_tiles.csv")
 
     n_candidates = features.shape[0]
     print(
