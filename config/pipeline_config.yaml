@@ -40,6 +40,9 @@ selection:
   alpha_visual: 0.70     # Empfohlene visuelle Gewichtung für finale Auswahl
   beta_spatial: 0.05     # Empfohlene räumliche Gewichtung für finale Auswahl
   gamma_temporal: 0.25   # Empfohlene zeitliche Gewichtung (gegen WWI-Clustering)
+  # Optional: Pre-selection (seed) — set names (e.g. ['Hamburg']) or indices (e.g. [145])
+  pre_selected_names: ['Hamburg']
+  # pre_selected_indices: [145]
   
   # Spatial constraint
   spatial_constraint: true

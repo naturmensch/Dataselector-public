@@ -72,6 +72,10 @@ start = time.time()
 # Optional: pre-selected names/indices from config (e.g., ['KDR_146'] or ['Hamburg'])
 pre_selected_names = cfg.get("selection", {}).get("pre_selected_names", None)
 pre_selected_indices = cfg.get("selection", {}).get("pre_selected_indices", None)
+if pre_selected_names is not None:
+    print(f"Using pre-selected names: {pre_selected_names}")
+if pre_selected_indices is not None:
+    print(f"Using pre-selected indices: {pre_selected_indices}")
 
 selected_idx = selector.select(
     features=features,
@@ -84,6 +88,13 @@ selected_idx = selector.select(
     pre_selected=pre_selected_indices,
     pre_selected_names=pre_selected_names,
 )
+
+# Add pre-selected info to metrics/report
+metrics_extra = {
+    "pre_selected_names": pre_selected_names,
+    "pre_selected_indices": pre_selected_indices,
+}
+
 duration = time.time() - start
 
 # Export selection
@@ -109,6 +120,9 @@ metrics.update(
         "duration_s": duration,
     }
 )
+# include extra info (preselection)
+metrics.update(metrics_extra)
+
 
 # Visualizations
 viz = Visualizer(output_dir=str(OUT))

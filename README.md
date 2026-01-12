@@ -175,6 +175,18 @@ selected_indices = selector.select(
 )
 ```
 
+### Pre-selection / Seeding (optional)
+
+Wenn bereits annotierte Kacheln vorhanden sind (z. B. Hamburg), können diese als *Seed* in den Selektionsprozess integriert werden, sodass der Algorithmus die verbleibenden N-1 Samples optimiert.
+
+Beispiel (Config):
+```yaml
+selection:
+  pre_selected_names: ['Hamburg']  # oder pre_selected_indices: [145]
+```
+
+Das ist wissenschaftlich sauber: es handelt sich um eine Randbedingung (conditional selection), keine nachträgliche Manipulation der Ergebnisse.
+
 ## Jupyter Notebooks
 
 Für interaktive Exploration stehen Notebooks im `notebooks/` Verzeichnis zur Verfügung:
