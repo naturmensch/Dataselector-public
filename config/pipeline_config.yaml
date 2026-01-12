@@ -1,0 +1,67 @@
+# KDR100 Datenselektion - Pipeline Konfiguration
+
+# Datenpfade
+data:
+  metadata_path: "data/new_all_tiles.csv"  # aktualisiert auf konvertierte CSV
+  csv_path: "data/new_all_tiles.csv"
+  image_dir: "data/images"
+
+# Feature Extraction (Deep Learning)
+feature_extraction:
+  model: "resnet50"  # Optionen: 'resnet50', 'dinov2'
+  batch_size: 8
+  crop_size: [2048, 2048]
+  device: "auto"  # 'cuda', 'cpu', oder 'auto'
+
+# Clustering (UMAP + K-Means)
+clustering:
+  n_clusters: 8
+  umap_components: 2
+  umap_n_neighbors: 15
+  umap_min_dist: 0.1
+  umap_metric: "cosine"
+  # UMAP randomness: set to a fixed integer for reproducibility or null for non-deterministic + parallelism
+  umap_random_state: 2026  # empirically fastest seed on this notebook (benchmarked)
+  # Number of jobs for UMAP when non-deterministic (set -1 to use all CPUs)
+  umap_n_jobs: 1
+
+# Diversity Selection (Multi-Criteria Facility Location)
+# Updated: 2026-01-12 based on dataset analysis and parameter optimization
+# Dataset: 673 tiles, 42.8% WWI-clustering (1906-1918)
+# Default: finale Auswahlgröße auf 5% gesetzt (≈34 Samples)
+selection:
+  n_samples: 34  # 5% von 673 (~34) — Standard für finale Auswahl
+  metric: "euclidean"
+  
+  # DEPRECATED: Legacy parameters (use multi-criteria instead)
+  temporal_weight: 0.25  # Kept for backward compatibility
+  
+  # Multi-Criteria weights (REQUIRED for use_multi_criteria=true)
+  alpha_visual: 0.70     # Empfohlene visuelle Gewichtung für finale Auswahl
+  beta_spatial: 0.05     # Empfohlene räumliche Gewichtung für finale Auswahl
+  gamma_temporal: 0.25   # Empfohlene zeitliche Gewichtung (gegen WWI-Clustering)
+  
+  # Spatial constraint
+  spatial_constraint: true
+  min_distance_km: 50.0  # Empfohlener Abstand für finale Auswahl (km)
+  
+  # Method selection (IMPORTANT)
+  use_multi_criteria: true           # REQUIRED: Unified distance metric
+  use_constraint_integration: false  # Legacy constraint-integrated mode
+  
+  # Seed for reproducibility
+  random_state: 42
+  
+# Expected results with optimized config (for n=34):
+# - 34 Samples (≈5% of 673 tiles)
+# - WWI-Anteil: ~23.5% (bei empfohlenen Gewichten)
+# - Temporal STD: ~6.3 Jahre
+# - Temporal Range: ~32 Jahre
+# - Spatial Mean Distance: ~415km
+# - Runtime: ~0.6s
+
+# Output
+output:
+  dir: "outputs"
+  prefix: "kdr100_selection"
+  create_visualizations: true
