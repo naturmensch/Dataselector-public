@@ -1,23 +1,24 @@
+
 import scripts.check_protected as cp
-from pathlib import Path
 
 
 def test_check_all_tracked(tmp_path, monkeypatch):
     # Setup temporary git repo
     monkeypatch.chdir(tmp_path)
-    (tmp_path / 'data' / 'images').mkdir(parents=True)
-    (tmp_path / 'README.md').write_text('hi')
+    (tmp_path / "data" / "images").mkdir(parents=True)
+    (tmp_path / "README.md").write_text("hi")
 
     # init git, add files
     import subprocess
-    subprocess.check_call(['git', 'init'])
-    subprocess.check_call(['git', 'add', '.'])
-    subprocess.check_call(['git', 'commit', '-m', 'init'])
+
+    subprocess.check_call(["git", "init"])
+    subprocess.check_call(["git", "add", "."])
+    subprocess.check_call(["git", "commit", "-m", "init"])
 
     # override PROTECTED to a small set for test
-    monkeypatch.setenv('PROTECTED_PATHS', 'data/images')
+    monkeypatch.setenv("PROTECTED_PATHS", "data/images")
 
     # Run check_protected with --all, expect non-zero exit code when offending files exist
     staged = cp.git_tracked_files()
     offenders = cp.offending_files(staged, cp.get_protected_paths())
-    assert any('data/images' in f for f in offenders)
+    assert any("data/images" in f for f in offenders)

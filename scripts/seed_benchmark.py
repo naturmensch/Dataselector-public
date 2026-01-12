@@ -8,21 +8,23 @@ Strategy:
 
 This script intentionally uses only a subset (first N) for speed.
 """
-from pathlib import Path
-import time
-import pandas as pd
-import numpy as np
+
 import csv
+import time
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
 
 from src.clustering import ClusteringPipeline
 
-OUT = Path('outputs')
+OUT = Path("outputs")
 OUT.mkdir(exist_ok=True, parents=True)
 
-features_path = OUT / 'features.npy'
-metadata_path = OUT / 'metadata.csv'
+features_path = OUT / "features.npy"
+metadata_path = OUT / "metadata.csv"
 if not features_path.exists() or not metadata_path.exists():
-    print('No cached features/metadata found. Run pipeline once to populate cache.')
+    print("No cached features/metadata found. Run pipeline once to populate cache.")
     raise SystemExit(1)
 
 features = np.load(features_path)
@@ -35,52 +37,52 @@ feat_sub = features[:SUBSET_N]
 results = []
 
 # test utopian (fast) setting
-print('Testing utopian (non-deterministic, n_jobs=-1) setting...')
+print("Testing utopian (non-deterministic, n_jobs=-1) setting...")
 try:
     t0 = time.perf_counter()
     cl = ClusteringPipeline(n_clusters=8, umap_random_state=None, umap_n_jobs=-1)
     emb = cl.fit_transform(feat_sub)[0]
     t = time.perf_counter() - t0
-    print(f'UTOPIAN success: {t:.3f}s')
-    results.append({'mode':'utopian','seed':None,'n_jobs':-1,'time_s':t})
+    print(f"UTOPIAN success: {t:.3f}s")
+    results.append({"mode": "utopian", "seed": None, "n_jobs": -1, "time_s": t})
 except Exception as e:
-    print('UTOPIAN failed:', e)
+    print("UTOPIAN failed:", e)
 
 # if utopian succeeded and is fast enough we may stop; but we still measure seeds to compare
 seed_list = [42, 0, 1, 123, 999, 2026]
 for s in seed_list:
-    print(f'Testing seed={s} (deterministic, single-thread) ...')
+    print(f"Testing seed={s} (deterministic, single-thread) ...")
     try:
         t0 = time.perf_counter()
         cl = ClusteringPipeline(n_clusters=8, umap_random_state=int(s), umap_n_jobs=1)
         emb = cl.fit_transform(feat_sub)[0]
         t = time.perf_counter() - t0
-        print(f'  seed {s} success: {t:.3f}s')
-        results.append({'mode':'seeded','seed':int(s),'n_jobs':1,'time_s':t})
+        print(f"  seed {s} success: {t:.3f}s")
+        results.append({"mode": "seeded", "seed": int(s), "n_jobs": 1, "time_s": t})
     except Exception as e:
-        print(f'  seed {s} failed:', e)
+        print(f"  seed {s} failed:", e)
 
 # Save results
-out_csv = OUT / 'seed_benchmark_results.csv'
-keys = ['mode','seed','n_jobs','time_s']
-with open(out_csv, 'w', newline='') as f:
+out_csv = OUT / "seed_benchmark_results.csv"
+keys = ["mode", "seed", "n_jobs", "time_s"]
+with open(out_csv, "w", newline="") as f:
     writer = csv.DictWriter(f, fieldnames=keys)
     writer.writeheader()
     for r in results:
         writer.writerow(r)
 
-print('\nBenchmark results saved to', out_csv)
+print("\nBenchmark results saved to", out_csv)
 
 # Decide recommended configuration: fastest overall
 if results:
-    best = min(results, key=lambda x: x['time_s'])
-    print('\nBest config:')
+    best = min(results, key=lambda x: x["time_s"])
+    print("\nBest config:")
     print(best)
     # Recommend but do not auto-change config file; instead persist recommendation
-    rec_file = OUT / 'seed_benchmark_recommendation.txt'
-    with open(rec_file, 'w') as f:
-        f.write('Best config (fastest):\n')
-        f.write(str(best) + '\n')
-    print('Recommendation written to', rec_file)
+    rec_file = OUT / "seed_benchmark_recommendation.txt"
+    with open(rec_file, "w") as f:
+        f.write("Best config (fastest):\n")
+        f.write(str(best) + "\n")
+    print("Recommendation written to", rec_file)
 else:
-    print('No successful runs recorded.')
+    print("No successful runs recorded.")

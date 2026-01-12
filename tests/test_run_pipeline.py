@@ -1,40 +1,41 @@
 import json
-from pathlib import Path
 from datetime import datetime, timedelta, timezone
-import tempfile
-import pytest
+from pathlib import Path
+
 
 from scripts.run_pipeline import should_run_tuning
 
 
 def _write_meta(path: Path, csv_hash: str, days_ago: int = 0):
     meta = {
-        'timestamp_utc': (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat(),
-        'csv_meta_hash': csv_hash
+        "timestamp_utc": (
+            datetime.now(timezone.utc) - timedelta(days=days_ago)
+        ).isoformat(),
+        "csv_meta_hash": csv_hash,
     }
-    with open(path, 'w') as f:
+    with open(path, "w") as f:
         json.dump(meta, f)
 
 
 def _write_file(path: Path, content: bytes):
-    with open(path, 'wb') as f:
+    with open(path, "wb") as f:
         f.write(content)
 
 
 def test_should_run_tuning_logic(tmp_path):
-    csv = tmp_path / 'meta.csv'
-    csv.write_bytes(b'hello')
-    out = tmp_path / 'out'
+    csv = tmp_path / "meta.csv"
+    csv.write_bytes(b"hello")
+    out = tmp_path / "out"
     out.mkdir()
 
     # 1) No meta -> run
     assert should_run_tuning(True, False, 7, csv, out) is True
 
     # 2) meta present, same hash, recent -> don't run
-    meta_path = out / 'meta.json'
-    results_path = out / 'tuning_results.csv'
+    meta_path = out / "meta.json"
+    results_path = out / "tuning_results.csv"
     # create a dummy results file so the function doesn't early-exit on missing file
-    results_path.write_text('run,alpha\n')
+    results_path.write_text("run,alpha\n")
 
     # override meta json to have matching hash
     _write_meta(meta_path, _compute_hash(csv), days_ago=1)
@@ -54,8 +55,9 @@ def test_should_run_tuning_logic(tmp_path):
 
 def _compute_hash(path: Path) -> str:
     import hashlib
+
     h = hashlib.sha256()
-    with open(path, 'rb') as fh:
+    with open(path, "rb") as fh:
         while True:
             chunk = fh.read(8192)
             if not chunk:

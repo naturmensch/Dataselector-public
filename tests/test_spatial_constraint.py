@@ -1,15 +1,18 @@
 import numpy as np
 import pandas as pd
+
 from src.diversity_selector import DiversitySelector
 from src.metadata_processor import MetadataProcessor
 
 
 def make_metadata(n):
-    return pd.DataFrame({
-        'N': np.random.uniform(48, 55, n),
-        'left': np.random.uniform(6, 15, n),
-        'year': np.random.randint(1880, 1945, n)
-    })
+    return pd.DataFrame(
+        {
+            "N": np.random.uniform(48, 55, n),
+            "left": np.random.uniform(6, 15, n),
+            "year": np.random.randint(1880, 1945, n),
+        }
+    )
 
 
 def test_spatial_constraint_preserves_count():
@@ -18,7 +21,9 @@ def test_spatial_constraint_preserves_count():
     features = np.random.randn(100, 2048)
     metadata = make_metadata(100)
 
-    result = selector.select(features, metadata, spatial_constraint=True, min_distance_km=1.0)
+    result = selector.select(
+        features, metadata, spatial_constraint=True, min_distance_km=1.0
+    )
 
     assert len(result) == 10, f"Expected 10 samples, got {len(result)}"
 
@@ -29,13 +34,15 @@ def test_spatial_constraint_respects_distance():
     metadata = make_metadata(50)
 
     min_dist = 100.0
-    result = selector.select(features, metadata, spatial_constraint=True, min_distance_km=min_dist)
+    result = selector.select(
+        features, metadata, spatial_constraint=True, min_distance_km=min_dist
+    )
 
     processor = MetadataProcessor("")
     for i, idx1 in enumerate(result):
-        for idx2 in result[i+1:]:
-            lat1, lon1 = metadata.loc[idx1, 'N'], metadata.loc[idx1, 'left']
-            lat2, lon2 = metadata.loc[idx2, 'N'], metadata.loc[idx2, 'left']
+        for idx2 in result[i + 1 :]:
+            lat1, lon1 = metadata.loc[idx1, "N"], metadata.loc[idx1, "left"]
+            lat2, lon2 = metadata.loc[idx2, "N"], metadata.loc[idx2, "left"]
             dist = processor.calculate_spatial_distance(lat1, lon1, lat2, lon2)
             assert dist >= min_dist or len(result) == selector.n_samples
 
@@ -45,7 +52,9 @@ def test_spatial_constraint_with_insufficient_samples():
     features = np.random.randn(10, 2048)  # Nur 10 Samples
     metadata = make_metadata(10)
 
-    result = selector.select(features, metadata, spatial_constraint=True, min_distance_km=5000.0)
+    result = selector.select(
+        features, metadata, spatial_constraint=True, min_distance_km=5000.0
+    )
     # Wenn min_distance unrealistisch groß ist, dürfen wir weniger als n_samples zurückgeben
     assert len(result) <= 10
     assert len(result) <= 20
