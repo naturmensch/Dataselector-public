@@ -14,13 +14,11 @@ import csv
 import time
 from pathlib import Path
 
-
 from src.clustering import ClusteringPipeline
+from src.io import load_metadata, load_or_extract_features
 
 OUT = Path("outputs")
 OUT.mkdir(exist_ok=True, parents=True)
-
-from src.io import load_metadata, load_or_extract_features
 
 # Ensure features/metadata exists or extract on-the-fly
 csv_meta = OUT / "metadata.csv"
