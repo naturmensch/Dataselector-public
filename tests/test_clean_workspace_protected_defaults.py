@@ -1,20 +1,11 @@
-import sys
-
-import scripts.clean_workspace as cw
+import scripts.check_protected as cp
 
 
-def test_dry_run_shows_protected(tmp_path, capsys, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    # Create some of the default protected folders
-    (tmp_path / "data" / "images").mkdir(parents=True)
-    (tmp_path / "data" / "archive").mkdir(parents=True)
-    (tmp_path / "outputs" / "final_selection").mkdir(parents=True)
-
-    sys.argv = ["clean_workspace.py", "--dry-run"]
-    cw.main()
+def test_dry_run_shows_protected(capsys):
+    cp.main(["--list"])
     captured = capsys.readouterr()
+    out = captured.out
 
-    assert "data/images" in captured.out
-    assert "data/archive" in captured.out
-    assert "outputs/final_selection" in captured.out
-    assert "PROTECTED" in captured.out
+    assert "data/images" in out
+    assert "data/archive" in out
+    assert "outputs/final_selection" in out

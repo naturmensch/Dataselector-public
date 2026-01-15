@@ -1,54 +1,27 @@
-import sys
+from pathlib import Path
+import scripts.check_protected as cp
+import scripts.archive_workspace as aw
 
-import scripts.clean_workspace as cw
 
+def test_images_are_protected():
+    staged = [
+        "data/images/a.jpg",
+        "outputs/validation/run.txt",
+    ]
+    protected = cp.get_protected_paths()
+    offenders = cp.offending_files(staged, protected)
 
-def test_images_are_protected(tmp_path, monkeypatch, capsys):
-    # Create fake candidates in a temporary workspace
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "data" / "images").mkdir(parents=True)
-    (tmp_path / "outputs" / "validation").mkdir(parents=True)
-    (tmp_path / ".venv").mkdir(parents=True)
-
-    # Override CANDIDATES to point to our temp dirs
-    monkeypatch.setattr(
-        cw,
-        "CANDIDATES",
-        {
-            "outputs/validation": "outputs/validation",
-            "data/images": "data/images",
-            ".venv": ".venv",
-        },
-    )
-
-    # Run dry-run and capture output
-    monkeypatch.setenv("PYTHONWARNINGS", "ignore")
-    sys.argv = ["clean_workspace.py", "--dry-run"]
-    cw.main()
-    captured = capsys.readouterr()
-
-    assert "data/images" in captured.out
-    assert "PROTECTED" in captured.out
+    assert "data/images/a.jpg" in offenders
+    assert "outputs/validation/run.txt" not in offenders
 
 
 def test_delete_outputs_skips_protected(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "data" / "images").mkdir(parents=True)
-    (tmp_path / "outputs" / "validation").mkdir(parents=True)
+    monkeypatch.setattr(aw, "ROOT", tmp_path)
 
-    monkeypatch.setattr(
-        cw,
-        "CANDIDATES",
-        {
-            "outputs/validation": "outputs/validation",
-            "data/images": "data/images",
-        },
-    )
+    images = tmp_path / "data" / "images"
+    out_validation = tmp_path / "outputs" / "validation"
+    images.mkdir(parents=True, exist_ok=True)
+    out_validation.mkdir(parents=True, exist_ok=True)
 
-    # Perform delete outputs
-    sys.argv = ["clean_workspace.py", "--delete-outputs"]
-    cw.main()
-
-    # images should still exist, outputs/validation should be removed
-    assert (tmp_path / "data" / "images").exists()
-    assert not (tmp_path / "outputs" / "validation").exists()
+    assert aw.is_whitelisted(images) is True
+    assert aw.is_whitelisted(out_validation) is False

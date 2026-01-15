@@ -1,9 +1,6 @@
-import tarfile
+import json
 from pathlib import Path
-import tempfile
-import os
-
-from scripts.manage_archives import archive_outputs, list_archives, restore_archive
+import scripts.archive_workspace as aw
 
 
 def touch(p: Path):
@@ -11,40 +8,42 @@ def touch(p: Path):
     p.write_text("x")
 
 
-def test_archive_with_exclude(tmp_path):
-    # prepare fake outputs
-    out = tmp_path / "outputs"
-    (out / "keep" / "a.txt").parent.mkdir(parents=True)
-    (out / "keep" / "a.txt").write_text("keep")
-    (out / "final_selection" / "final.csv").parent.mkdir(parents=True)
-    (out / "final_selection" / "final.csv").write_text("final")
-    (out / "tuning_weights" / "run.json").parent.mkdir(parents=True)
-    (out / "tuning_weights" / "run.json").write_text("run")
+def test_archive_outputs_with_manifest(tmp_path, monkeypatch):
+    root = tmp_path
+    outputs = root / "outputs"
+    keep = outputs / "keep" / "a.txt"
+    final_sel = outputs / "final_selection" / "final.csv"
+    tw_run = outputs / "tuning_weights" / "run.json"
+    touch(keep)
+    touch(final_sel)
+    touch(tw_run)
 
-    dst = tmp_path / "archive"
-    # exclude final_selection and tuning_weights
-    archive_path = archive_outputs(out, dst, exclude=["final_selection/*", "tuning_weights/*"]) 
+    monkeypatch.setattr(aw, "ROOT", root)
+    archive_dir = root / "archive_local"
+    monkeypatch.setattr(aw, "ARCHIVE_DIR", archive_dir)
 
-    assert archive_path.exists()
+    monkeypatch.setattr(
+        aw, "WHITELIST_PATTERNS",
+        set(aw.WHITELIST_PATTERNS) | {"outputs/tuning_weights", "tuning_weights"}
+    )
 
-    with tarfile.open(archive_path, "r:gz") as tar:
-        names = tar.getnames()
-        # ensure excluded not present
-        assert not any("final_selection" in n for n in names)
-        assert not any("tuning_weights" in n for n in names)
-        # ensure keep present
-        assert any("keep/a.txt" in n for n in names)
+    cat = aw.ArchiveCategory("old_outputs", "Test outputs")
+    cat.add_directory(outputs)
 
+    archived_count = aw.archive_category(cat, dry_run=False)
 
-def test_list_and_restore(tmp_path):
-    out = tmp_path / "outputs"
-    out.mkdir(parents=True, exist_ok=True)
-    (out / "x.txt").write_text("x")
-    dst = tmp_path / "archive"
-    archive_path = archive_outputs(out, dst)
-    listed = list_archives(dst)
-    assert archive_path in listed
-    # restore into new dir
-    target = tmp_path / "restore"
-    restore_archive(archive_path, target)
-    assert (target / "outputs" / "x.txt").exists()
+    assert archived_count >= 1
+    assert archive_dir.exists()
+
+    subdirs = sorted([p for p in archive_dir.iterdir() if p.is_dir()])
+    assert subdirs, "expected an archive subdir"
+    latest = subdirs[-1]
+    manifest = latest / "old_outputs_manifest.json"
+    assert manifest.exists()
+
+    data = json.loads(manifest.read_text())
+    archived_files = {f["path"] for f in data["files"]}
+
+    assert "outputs/keep/a.txt" in archived_files
+    assert not any("final_selection" in p for p in archived_files)
+    assert not any("tuning_weights" in p for p in archived_files)

@@ -1,0 +1,38 @@
+# CPU-only Requirements für i5-12500H (ohne CUDA, spart ~3.3 GB)
+# Installation: pip install -r requirements-cpu.txt
+
+# PyTorch CPU-only (~200 MB statt ~3.5 GB)
+--index-url https://download.pytorch.org/whl/cpu
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Restliche Dependencies
+Pillow>=10.0.0
+pandas>=2.0.0
+numpy>=1.24.0
+dbfread>=2.0.7
+
+# Clustering & Dimensionality Reduction
+scikit-learn>=1.3.0
+umap-learn>=0.5.3
+
+# Submodular Optimization
+apricot-select>=0.6.0
+
+# Hyperparameter Optimization
+optuna>=3.0.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Configuration
+tqdm>=4.65.0
+pyyaml>=6.0
+
+# Development
+pytest>=7.0.0
+
+# Code Quality
+flake8>=6.0.0
+mypy>=1.9.0

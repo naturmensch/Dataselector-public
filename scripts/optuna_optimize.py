@@ -70,8 +70,8 @@ def objective_factory(features, metadata, n_samples, min_distance_km):
         gamma = c / total
 
         # Use conservative bounds for min_distance based on dataset grid (median ≈ 28km).
-        # Limit search to [0, 60] km to avoid overly restrictive values that prevent selecting enough samples.
-        min_dist = trial.suggest_int("min_distance_km", 0, 60)
+        # Limit search to a focused range around empirically validated optimum (25–55 km)
+        min_dist = trial.suggest_int("min_distance_km", 25, 55)
 
         selector = DiversitySelector(n_samples=n_samples, use_multi_criteria=True)
         selected = selector.select(
@@ -114,7 +114,7 @@ def run_optuna(
     n_candidates=500,
     dim=512,
     n_samples=34,
-    min_distance_km=28,
+    min_distance_km=40,  # Updated: optimal basierend auf Fine Sweep & Optuna Validierung
     seed=42,
     study_name="kdr100_opt",
 ):
@@ -140,6 +140,36 @@ def run_optuna(
         # Fallback: save trials dataframe only
         print("joblib not available: only saving trials dataframe")
 
+    # Extract best trial and write an Optuna-config YAML into outputs for provenance
+    try:
+        best = study.best_trial
+        a = best.params.get('a', None)
+        b = best.params.get('b', None)
+        c = best.params.get('c', None)
+        if a is not None and b is not None and c is not None:
+            total = a + b + c
+            alpha = float(a / total)
+            beta = float(b / total)
+            gamma = float(c / total)
+        else:
+            alpha, beta, gamma = (None, None, None)
+        min_dist = int(best.params.get('min_distance_km', min_distance_km))
+
+        import yaml
+        opt_cfg = {
+            'selection': {
+                'alpha_visual': alpha,
+                'beta_spatial': beta,
+                'gamma_temporal': gamma,
+                'min_distance_km': min_dist,
+            }
+        }
+        with open(OUT_DIR / 'pipeline_config.optuna.yaml', 'w') as f:
+            yaml.safe_dump(opt_cfg, f)
+        print(f"Wrote Optuna config artifact: {OUT_DIR / 'pipeline_config.optuna.yaml'}")
+    except Exception as e:
+        print(f"Warning: could not write optuna config artifact: {e}")
+
     print("Optuna optimization finished. Results saved to outputs/optuna_results.csv")
     return study
 
@@ -150,7 +180,7 @@ if __name__ == "__main__":
     parser.add_argument("--n-candidates", type=int, default=500)
     parser.add_argument("--dim", type=int, default=256)
     parser.add_argument("--n-samples", type=int, default=34)
-    parser.add_argument("--min-distance-km", type=int, default=28)
+    parser.add_argument("--min-distance-km", type=int, default=40)
     parser.add_argument("--seed", type=int, default=42)
 
     args = parser.parse_args()

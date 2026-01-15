@@ -24,19 +24,38 @@ OUT.mkdir(parents=True, exist_ok=True)
 
 # Parameters (default read from config)
 import yaml
+import argparse
 
-config_path = ROOT / "config" / "pipeline_config.yaml"
+# Parse CLI args first
+parser = argparse.ArgumentParser()
+parser.add_argument('--use-bootstrap-best', action='store_true', help='Use bootstrap-best config from outputs/pipeline_config.bootstrap.yaml')
+parser.add_argument('--n-samples', type=int, default=None, help='Override n_samples')
+parser.add_argument('--min-distance-km', type=float, default=None, help='Override min_distance_km')
+args = parser.parse_args()
+
+# Select config source
+if args.use_bootstrap_best:
+    bootstrap_cfg = ROOT / "outputs" / "pipeline_config.bootstrap.yaml"
+    if bootstrap_cfg.exists():
+        config_path = bootstrap_cfg
+        print(f"Using Bootstrap-best config: {config_path}")
+    else:
+        print(f"Warning: Bootstrap config not found at {bootstrap_cfg}, falling back to default")
+        config_path = ROOT / "config" / "pipeline_config.yaml"
+else:
+    config_path = ROOT / "config" / "pipeline_config.yaml"
+
 if config_path.exists():
     with open(config_path, "r") as f:
         cfg = yaml.safe_load(f)
 else:
     cfg = {}
 
-n_samples = cfg.get("selection", {}).get("n_samples", 34)
+n_samples = args.n_samples if args.n_samples else cfg.get("selection", {}).get("n_samples", 34)
 alpha = cfg.get("selection", {}).get("alpha_visual", 0.7)
 beta = cfg.get("selection", {}).get("beta_spatial", 0.05)
 gamma = cfg.get("selection", {}).get("gamma_temporal", 0.25)
-min_distance_km = cfg.get("selection", {}).get("min_distance_km", 50.0)
+min_distance_km = args.min_distance_km if args.min_distance_km else cfg.get("selection", {}).get("min_distance_km", 50.0)
 seed = cfg.get("selection", {}).get("random_state", 42)
 
 # Load data (cached or extract on-demand)
