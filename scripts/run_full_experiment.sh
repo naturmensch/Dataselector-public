@@ -92,13 +92,15 @@ if [[ $ASSUME_YES -eq 0 ]]; then
 fi
 
 # Helper to run a command with timestamped logging
+# NOTE: We join all args into a shell command string and run via 'bash -lc' so
+# constructs like 'PYTHONPATH=. python script.py' work correctly.
 run_step() {
   local label="$1"; shift
-  local cmd=("$@")
+  local cmd_str="$*"
   local logfile="${OUT_DIR}/${label}.log"
   echo "\n=== [$label] Starting: $(date -u +%FT%TZ) ==="
-  echo "> ${cmd[*]}" | tee -a "$logfile"
-  if "${cmd[@]}" >>"$logfile" 2>&1; then
+  echo "> ${cmd_str}" | tee -a "$logfile"
+  if bash -lc "$cmd_str" >>"$logfile" 2>&1; then
     echo "[${label}] Completed: $(date -u +%FT%TZ)" | tee -a "$logfile"
   else
     echo "[${label}] FAILED (see ${logfile})" | tee -a "$logfile"
