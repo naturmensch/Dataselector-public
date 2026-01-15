@@ -14,6 +14,7 @@ import subprocess
 import sys
 from pathlib import Path
 import argparse
+from datetime import datetime
 import numpy as np
 import pandas as pd
 
@@ -47,13 +48,20 @@ parser.add_argument('--n-boot', type=int, default=200)
 parser.add_argument('--fine-max-runs', type=int, default=None, help='Max runs for fine sweep (smoke testing)')
 parser.add_argument('--skip-optuna', action='store_true', help='Skip Optuna stage')
 parser.add_argument('--skip-bootstrap-injection', action='store_true', help='Skip Bootstrap-best config generation')
+parser.add_argument('--dry-run', action='store_true', help='Print commands but do not execute heavy subprocess calls')
 args = parser.parse_args()
+
+# Helper to optionally run shell commands (support --dry-run)
+def run_cmd(cmd: str):
+    print(f"CMD: {cmd}")
+    if not args.dry_run:
+        subprocess.check_call(['bash', '-lc', cmd])
 
 # 1) Run LHS Exploration (ersetzt alten Coarse Sweep)
 print('=== Phase 1: Exploration (LHS) ===')
 print(f'Running LHS with {args.n_lhs} samples (replacing old manual Coarse Grid)...')
 lhs_cmd = f'PYTHONPATH=. python scripts/tune_weights_and_run.py --n-samples {args.n_lhs} --seed 42'
-subprocess.check_call(['bash', '-lc', lhs_cmd])
+run_cmd(lhs_cmd)
 
 # 2) Compute Fine Bounds from LHS results
 pareto_lhs = OUT / 'tuning_weights' / 'pareto' / 'pareto_solutions.csv'
@@ -69,7 +77,7 @@ print('=== Phase 2: Fine Sweep (Adaptive Bounds) ===')
 fine_cmd = f'PYTHONPATH=. python scripts/run_fine_sweep.py --min-distances "{min_distances_arg}"'
 if args.fine_max_runs:
     fine_cmd += f' --max-runs {args.fine_max_runs}'
-subprocess.check_call(['bash', '-lc', fine_cmd])
+run_cmd(fine_cmd)
 
 # 4) Compute Optuna bounds
 pareto_fine = OUT / 'fine_sweep' / 'pareto_solutions.csv'
@@ -90,9 +98,9 @@ else:
             print('Optuna not installed: skipping Optuna stage. Install optuna to enable.')
         else:
             print('=== Phase 3: Optimization (Optuna) ===')
-            subprocess.check_call(['bash', '-lc', f'PYTHONPATH=. python scripts/optuna_optimize.py --n-trials {args.n_trials} --n-candidates {args.n_candidates} --min-distance-km {center}'])
+            run_cmd(f'PYTHONPATH=. python scripts/optuna_optimize.py --n-trials {args.n_trials} --n-candidates {args.n_candidates} --min-distance-km {center}')
             # 6) Analyze Optuna convergence
-            subprocess.check_call(['bash', '-lc', f'python scripts/analyze_optuna_convergence.py outputs/optuna_comparison --output-dir outputs'])
+            run_cmd('python scripts/analyze_optuna_convergence.py outputs/optuna_comparison --output-dir outputs')
     except Exception as e:
         print(f'Warning while running Optuna or analysis: {e}\nProceeding to Bootstrap stage.')
 
@@ -100,13 +108,13 @@ else:
 print('=== Phase 4: Validation (Bootstrap) ===')
 bootstrap_out = OUT / 'bootstrap_results.csv'
 bootstrap_summary = bootstrap_out.with_name(bootstrap_out.stem + '_summary.csv')
-subprocess.check_call(['bash', '-lc', f'PYTHONPATH=. python scripts/bootstrap_pareto_candidates.py --pareto {pareto_fine} --n-boot {args.n_boot} --out {bootstrap_out} --seed 42'])
+run_cmd(f'PYTHONPATH=. python scripts/bootstrap_pareto_candidates.py --pareto {pareto_fine} --n-boot {args.n_boot} --out {bootstrap_out} --seed 42')
 
 # 8) Apply Bootstrap Best (optional)
 if not args.skip_bootstrap_injection and bootstrap_summary.exists():
     print('=== Applying Bootstrap Best ===')
     try:
-        subprocess.check_call(['bash', '-lc', f'PYTHONPATH=. python scripts/apply_bootstrap_best.py --bootstrap-summary {bootstrap_summary} --write-config outputs/pipeline_config.bootstrap.yaml'])
+        run_cmd(f'PYTHONPATH=. python scripts/apply_bootstrap_best.py --bootstrap-summary {bootstrap_summary} --write-config outputs/pipeline_config.bootstrap.yaml')
         print(f'✓ Bootstrap-best config written to outputs/pipeline_config.bootstrap.yaml')
     except Exception as e:
         print(f'Warning: Bootstrap-best application failed: {e}')
@@ -125,3 +133,15 @@ print(f'  2. Fine Sweep: {len(fine_bounds)} adaptive bounds')
 print(f'  3. Optuna: {args.n_trials} trials (center={center}km)')
 print(f'  4. Bootstrap: {args.n_boot} resamples')
 print('='*80)
+
+# 9) Optional: Generate an experiment report for this adaptive run in outputs/experiments
+try:
+    ts = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+    report_dir = OUT / 'experiments' / f'run_adaptive_{ts}'
+    report_dir.mkdir(parents=True, exist_ok=True)
+    (report_dir / 'run_info.txt').write_text(f'Adaptive pipeline run completed: n_lhs={args.n_lhs} at {ts}\n')
+    print(f'Generating experiment report in: {report_dir}')
+    run_cmd(f'PYTHONPATH=. python scripts/generate_experiment_report.py --outdir "{report_dir}"')
+    print(f'Report written: {report_dir / "experiment_report.md"}')
+except Exception as e:
+    print(f'Warning: automatic report generation failed: {e}')
