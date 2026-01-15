@@ -10,13 +10,13 @@ The script collects:
 - snippets of step logs (coarse/fine/optuna/bootstrap/final)
 - the applied Optuna config (if present)
 - a short summary with counts and key metrics (if present in CSV outputs)
+- Optionally set `DATASELECTOR_OUTPUTS_ROOT` to override the global `outputs/` root (useful in tests)
 
 Report written to <outdir>/experiment_report.md
 """
 
 from pathlib import Path
 import argparse
-import textwrap
 import yaml
 import csv
 import os
@@ -71,8 +71,8 @@ def main(argv=None):
     # Basic header
     meta = {'run_dir': str(outdir), 'generated_by': 'generate_experiment_report.py'}
 
-    # list files
-    files = sorted([p.name for p in outdir.rglob('*') if p.is_file()])
+    # list files (relative to outdir)
+    files = sorted([str(p.relative_to(outdir)) for p in outdir.rglob('*') if p.is_file()])
 
     # try to load applied optuna config if present
     optuna_cfg = None
@@ -99,7 +99,7 @@ def main(argv=None):
             p = outdir.parent / name
         if not p.exists() and name == 'pareto_solutions.csv':
             # search in outputs for pareto files and prefer tuning_weights
-            matches = sorted(list(outputs_root.rglob('**/pareto_solutions.csv')))
+            matches = sorted(list(outputs_root.rglob('pareto_solutions.csv')))
             if matches:
                 preferred = None
                 for m in matches:
@@ -158,7 +158,7 @@ def main(argv=None):
         lines.append("Optuna convergence analysis available. Check CSV and plots in outputs.\n\n")
 
     # Pareto solutions found (LHS or Fine)
-    pareto_files = sorted([str(p) for p in outputs_root.rglob('**/pareto_solutions.csv')])
+    pareto_files = sorted([str(p) for p in outputs_root.rglob('pareto_solutions.csv')])
     if pareto_files:
         lines.append("## Pareto solutions found\n")
         for p in pareto_files:

@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import shutil
 import yaml
+import pytest
 from scripts.generate_experiment_report import main
 
 
@@ -37,6 +38,7 @@ import pytest
 def test_report_finds_local_pareto(tmp_path):
     # Use env var to point report generator to a temp outputs root (no moving/copying repo outputs)
     outputs_root = tmp_path / 'outputs'
+    prev = os.environ.get('DATASELECTOR_OUTPUTS_ROOT')
     os.environ['DATASELECTOR_OUTPUTS_ROOT'] = str(outputs_root)
 
     # Create LHS pareto under tuning_weights and an experiments run dir
@@ -55,3 +57,9 @@ def test_report_finds_local_pareto(tmp_path):
     assert 'pareto_solutions.csv' in text
     # ensure it lists a file under tuning_weights
     assert 'tuning_weights' in text
+
+    # restore env
+    if prev is None:
+        os.environ.pop('DATASELECTOR_OUTPUTS_ROOT', None)
+    else:
+        os.environ['DATASELECTOR_OUTPUTS_ROOT'] = prev
