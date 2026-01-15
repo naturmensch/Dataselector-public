@@ -27,3 +27,12 @@ format-check:
 
 test:
 	pytest -q
+
+archive-outputs:
+	@echo "Archive outputs to data/archive/"
+	python scripts/manage_archives.py archive --outputs outputs --dest data/archive
+
+restore-outputs:
+	@echo "Restore latest archive from data/archive/"
+	python -c "import pathlib,sys; import glob; a=list(pathlib.Path('data/archive').glob('outputs_archive_*.tar.gz')); a.sort(); print('No archive found' if not a else a[-1]); sys.exit(0 if a else 1)" \
+	&& python scripts/manage_archives.py restore --archive $(python -c "import pathlib; a=list(pathlib.Path('data/archive').glob('outputs_archive_*.tar.gz')); a.sort(); print(a[-1])") --dest .
