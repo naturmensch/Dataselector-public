@@ -38,6 +38,7 @@ def test_archive_with_exclude(tmp_path):
 
 def test_list_and_restore(tmp_path):
     out = tmp_path / "outputs"
+    out.mkdir(parents=True, exist_ok=True)
     (out / "x.txt").write_text("x")
     dst = tmp_path / "archive"
     archive_path = archive_outputs(out, dst)
