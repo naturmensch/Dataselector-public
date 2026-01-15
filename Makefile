@@ -30,7 +30,7 @@ test:
 
 archive-outputs:
 	@echo "Archive outputs to data/archive/"
-	python scripts/manage_archives.py archive --outputs outputs --dest data/archive
+	python scripts/manage_archives.py archive --outputs outputs --dest data/archive $(foreach p,$(EXCLUDE),--exclude $(p))
 
 restore-outputs:
 	@echo "Restore latest archive from data/archive/"

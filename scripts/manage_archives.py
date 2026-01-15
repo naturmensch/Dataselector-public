@@ -18,7 +18,7 @@ import tarfile
 import sys
 
 
-def archive_outputs(outputs_dir: Path, dest_dir: Path, prefix: str = "outputs_archive") -> Path:
+def archive_outputs(outputs_dir: Path, dest_dir: Path, prefix: str = "outputs_archive", exclude: list[str] | None = None) -> Path:
     outputs_dir = Path(outputs_dir)
     dest_dir = Path(dest_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -27,8 +27,29 @@ def archive_outputs(outputs_dir: Path, dest_dir: Path, prefix: str = "outputs_ar
     archive_name = f"{prefix}_{timestamp}.tar.gz"
     archive_path = dest_dir / archive_name
 
+    # Normalize exclude patterns (relative to outputs_dir)
+    exclude = exclude or []
+
     with tarfile.open(archive_path, "w:gz") as tar:
-        tar.add(outputs_dir, arcname=outputs_dir.name)
+        # Walk files to support exclude globs
+        for root, dirs, files in __import__("os").walk(outputs_dir):
+            root_path = Path(root)
+            for fname in files:
+                fpath = root_path / fname
+                rel = fpath.relative_to(outputs_dir).as_posix()
+                # check excludes
+                skip = False
+                for pat in exclude:
+                    from fnmatch import fnmatch
+
+                    if fnmatch(rel, pat):
+                        skip = True
+                        break
+                if skip:
+                    # print excluded file for traceability
+                    print(f"Excluding: {rel}")
+                    continue
+                tar.add(fpath, arcname=(outputs_dir.name + "/" + rel))
 
     return archive_path
 
@@ -56,6 +77,7 @@ def main(argv: list[str] | None = None) -> int:
     p_archive = sub.add_parser("archive")
     p_archive.add_argument("--outputs", required=True)
     p_archive.add_argument("--dest", default="data/archive")
+    p_archive.add_argument("--exclude", nargs="*", default=None, help="Glob patterns to exclude (relative to outputs dir), e.g. 'final_selection/*' 'tuning_weights/*'.")
 
     p_restore = sub.add_parser("restore")
     p_restore.add_argument("--archive", required=True)
@@ -67,7 +89,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.cmd == "archive":
-        archive_path = archive_outputs(Path(args.outputs), Path(args.dest))
+        archive_path = archive_outputs(Path(args.outputs), Path(args.dest), exclude=args.exclude)
         print(f"Created archive: {archive_path}")
         return 0
     if args.cmd == "restore":
