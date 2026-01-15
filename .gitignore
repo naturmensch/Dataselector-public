@@ -96,3 +96,20 @@ Thumbs.db
 .mypy_cache/
 .cache/
 .tox/
+
+# === Ergänzungen (von Copilot, per Anweisung) ===
+# Local archives/backups (werden nicht versioniert)
+/archive_local/
+archive_local.zip
+
+# Ignore generated plots and large artifacts in outputs, but keep docs/reports and whitelisted CSVs
+/outputs/final_selection/**/*.png
+/outputs/final_selection/**/*.jpg
+/outputs/final_selection/**/*.svg
+/outputs/validation/plots/
+/outputs/validation/**/*.png
+/outputs/validation/**/*.npy
+/outputs/*.prof
+/outputs/profile_*.txt
+/outputs/quick_benchmark_summary.json
+# Ende Ergänzungen
