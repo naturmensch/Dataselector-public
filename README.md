@@ -80,6 +80,42 @@ Dataselector/
 1. Platzieren Sie die Metadaten-Datei (`KDR100_foliage_with_files_epsg3857.csv` oder `all_png_tiles.dbf`) im `data/` Verzeichnis
 2. Erstellen Sie einen Ordner `data/images/` und legen Sie die Kartenbilder dort ab
 
+### Vollständiger Experiment-Workflow (Coarse → Fine → Optuna → Bootstrap → Final)
+
+Für das intensivste, reproduzierbare Lauf-Setup nutzen Sie das mitgelieferte Orchestrator-Skript `scripts/run_full_experiment.sh`.
+
+Beispiel (komplett, interaktiv):
+
+```bash
+# Standard Lauf: coarse sweep → fine sweep → Optuna → Bootstrap → final selection
+./scripts/run_full_experiment.sh
+```
+
+Nicht-interaktiv, Optuna mit 300 Trials und 300 Bootstrap-Resamples:
+
+```bash
+./scripts/run_full_experiment.sh --n-trials 300 --n-boot 300 --yes
+```
+
+Wichtige Flags:
+- `--use-optuna-best` : Extrahiert nach Optuna den besten Trial und schreibt eine konfigurationsdatei in den Experiment-Ordner (`outputs/experiments/run_<TS>/pipeline_config.optuna.yaml`).
+- `--inject-optuna` : Injiziert den besten Optuna-Trial direkt in `config/pipeline_config.yaml` (vorher wird ein Backup `config/pipeline_config.yaml.optuna_bak` angelegt).
+- `--final-with-optuna-config` : Führt den finalen Run temporär mit der generierten Optuna-Konfiguration aus (Original-Konfig wird danach wiederhergestellt).
+
+Provenance & Reproduzierbarkeit:
+- Das Orchestrator-Skript kopiert sämtliche relevanten Artefakte in `outputs/experiments/run_<TIMESTAMP>/`, darunter die `optuna_results.csv`, ggf. die `optuna_study.pkl`, eine `pipeline_config.optuna.yaml` (oder die Backup-Datei bei Injection) und die finalen CSV/Plots. So sind alle Eingaben dokumentiert.
+
+Schneller Smoke-Run (lokal / CI):
+
+```bash
+# Schneller Test: kleiner Optuna Run (2 Trials) und Unit-Tests
+pytest -q
+python scripts/optuna_optimize.py --n-trials 2 --n-candidates 50 --dim 32 --n-samples 5 --min-distance-km 10
+```
+
+Diese Commands sind absichtlich klein gehalten, damit sie schnell laufen und als Smoke-Test in CI nutzbar sind.
+
+
 ### Pipeline ausführen
 
 ```bash
