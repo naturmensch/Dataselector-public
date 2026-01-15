@@ -80,40 +80,84 @@ Dataselector/
 1. Platzieren Sie die Metadaten-Datei (`KDR100_foliage_with_files_epsg3857.csv` oder `all_png_tiles.dbf`) im `data/` Verzeichnis
 2. Erstellen Sie einen Ordner `data/images/` und legen Sie die Kartenbilder dort ab
 
-### Vollständiger Experiment-Workflow (Coarse → Fine → Optuna → Bootstrap → Final)
+### Vollständiger Experiment-Workflow
 
-Für das intensivste, reproduzierbare Lauf-Setup nutzen Sie das mitgelieferte Orchestrator-Skript `scripts/run_full_experiment.sh`.
+Es gibt **zwei Hauptmodi** für die Pipeline-Ausführung:
 
-Beispiel (komplett, interaktiv):
+#### **Option A: Adaptive/Production Pipeline (EMPFOHLEN)** 🚀
+
+Nutzt **Latin Hypercube Sampling (LHS)** für wissenschaftlich fundierte Parameter-Exploration:
 
 ```bash
-# Standard Lauf: coarse sweep → fine sweep → Optuna → Bootstrap → final selection
-./scripts/run_full_experiment.sh
+# Automatischer vollständiger Lauf (LHS → Fine → Optuna → Bootstrap → Final)
+python scripts/run_adaptive_pipeline.py --yes
+
+# Oder mit Bash-Wrapper:
+./scripts/run_full_experiment.sh --adaptive --yes
 ```
 
-Nicht-interaktiv, Optuna mit 300 Trials und 300 Bootstrap-Resamples:
+**Vorteile:**
+- ✅ Gleichmäßige Abdeckung des Parameterraums (keine Lücken)
+- ✅ Adaptiv skalierend: `n_lhs = max(27, √n_tiles)` (Standard)
+- ✅ Wissenschaftlich fundiert (Quasi-Monte-Carlo)
+- ✅ Schneller als manuelle Grid-Suche bei gleicher Coverage
+
+**Parameter:**
+- `--n-lhs`: Anzahl LHS-Samples (Standard: adaptiv, min. 27)
+- `--fine-max-runs`: Fine Grid Runs (Standard: 100)
+- `--n-trials`: Optuna Trials (Standard: 200)
+- `--n-boot`: Bootstrap Resamples (Standard: 200)
+- `--skip-optuna`: Überspringt Optuna-Phase
+- `--skip-bootstrap-injection`: Überspringt Bootstrap-Injection
+
+#### **Option B: Thesis/Research Pipeline** 📊
+
+Für **doppelte Exploration** und ausführliche Visualisierungen:
 
 ```bash
-./scripts/run_full_experiment.sh --n-trials 300 --n-boot 300 --yes
+# Thesis-Mode mit doppelter LHS-Dichte
+python scripts/run_thesis_pipeline.py --yes
 ```
 
-Wichtige Flags:
-- `--use-optuna-best` : Extrahiert nach Optuna den besten Trial und schreibt eine konfigurationsdatei in den Experiment-Ordner (`outputs/experiments/run_<TS>/pipeline_config.optuna.yaml`).
-- `--inject-optuna` : Injiziert den besten Optuna-Trial direkt in `config/pipeline_config.yaml` (vorher wird ein Backup `config/pipeline_config.yaml.optuna_bak` angelegt).
-- `--final-with-optuna-config` : Führt den finalen Run temporär mit der generierten Optuna-Konfiguration aus (Original-Konfig wird danach wiederhergestellt).
+**Unterschiede:**
+- 🔬 `n_lhs = max(50, 2×√n_tiles)` statt `max(27, √n_tiles)`
+- 📊 Erweiterte Visualisierungen und Logs
+- 🎯 Optimiert für wissenschaftliche Reproduzierbarkeit
 
-Provenance & Reproduzierbarkeit:
-- Das Orchestrator-Skript kopiert sämtliche relevanten Artefakte in `outputs/experiments/run_<TIMESTAMP>/`, darunter die `optuna_results.csv`, ggf. die `optuna_study.pkl`, eine `pipeline_config.optuna.yaml` (oder die Backup-Datei bei Injection) und die finalen CSV/Plots. So sind alle Eingaben dokumentiert.
+---
 
-Schneller Smoke-Run (lokal / CI):
+**Legacy Manual Grid Sweep (Veraltet):**
+
+Für Rückwärtskompatibilität ist der alte Coarse-Sweep noch verfügbar:
 
 ```bash
-# Schneller Test: kleiner Optuna Run (2 Trials) und Unit-Tests
+./scripts/run_full_experiment.sh --yes  # (ohne --adaptive Flag)
+```
+
+⚠️ **Nicht empfohlen**: Nutzt 9×3=27 manuelles Grid statt adaptivem LHS.
+
+---
+
+**Wichtige Flags:**
+- `--use-optuna-best`: Extrahiert besten Trial nach Optuna → `outputs/experiments/run_<TS>/pipeline_config.optuna.yaml`
+- `--inject-optuna`: Injiziert Optuna-Best direkt in `config/pipeline_config.yaml` (Backup: `.optuna_bak`)
+- `--final-with-optuna-config`: Führt Final-Run temporär mit Optuna-Config aus (Original wird wiederhergestellt)
+
+**Provenance & Reproduzierbarkeit:**
+Alle Artefakte werden nach `outputs/experiments/run_<TIMESTAMP>/` kopiert:
+- `optuna_results.csv`, `optuna_study.pkl`
+- `pipeline_config.optuna.yaml` (oder Backup bei Injection)
+- Finale CSVs und Plots
+
+**Schneller Smoke-Run (CI/Testing):**
+
+```bash
+# Unit-Tests
 pytest -q
-python scripts/optuna_optimize.py --n-trials 2 --n-candidates 50 --dim 32 --n-samples 5 --min-distance-km 10
-```
 
-Diese Commands sind absichtlich klein gehalten, damit sie schnell laufen und als Smoke-Test in CI nutzbar sind.
+# Minimal-Pipeline zum Testen
+python scripts/run_adaptive_pipeline.py --n-lhs 5 --fine-max-runs 3 --skip-optuna
+```
 
 
 ### Pipeline ausführen

@@ -8,16 +8,25 @@
 set -euo pipefail
 IFS=$'\n\t'
 
-# Defaults
-N_TRIALS=200
-N_CANDIDATES=500
-DIM=256
-N_SAMPLES=34
-MIN_DISTANCE_KM=28
-N_BOOT=200
+# Prefer local virtualenv if present
+if [[ -f ".venv/bin/activate" && -z "${VIRTUAL_ENV:-}" ]]; then
+  echo "Activating local virtualenv: .venv"
+  # shellcheck disable=SC1091
+  source .venv/bin/activate
+fi
+
+# Defaults (wissenschaftlich validiert 2026-01-15)
+N_TRIALS=200         # Konvergenzanalyse: 99.5% bei Trial 134-166 → 200 angemessen
+N_CANDIDATES=500     # 74% des Datasets (500/673) → ausreichende Repräsentativität
+DIM=256              # Standard ResNet50 Feature-Dimension
+N_SAMPLES=34         # 5% von 673 → 57k-114k Trainingssamples nach Patch-Augmentation
+MIN_DISTANCE_KM=40   # Empirisch optimal: Fine Sweep (40km), Optuna (36-39km), Median ~28km
+N_BOOT=200           # Bootstrap-Resamples für 95% CI (Standard-Wert)
 TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
 OUT_DIR="outputs/experiments/run_${TIMESTAMP}"
 mkdir -p "$OUT_DIR"
+# Save a copy of the current pipeline config for provenance
+cp -v config/pipeline_config.yaml "${OUT_DIR}/pipeline_config.used.yaml" 2>/dev/null || true
 
 SKIP_COARSE=0
 SKIP_FINE=0
@@ -27,6 +36,7 @@ SKIP_FINAL=0
 USE_OPTUNA_BEST=0
 USE_OPTUNA_INJECT=0
 FINAL_WITH_OPTUNA_CONFIG=0
+ADAPTIVE=0
 ASSUME_YES=0
 
 function usage() {
@@ -41,6 +51,7 @@ Options:
   --use-optuna-best      After running Optuna, extract best trial and write config to experiment folder
   --inject-optuna        Inject best Optuna trial directly into 'config/pipeline_config.yaml' (backup created)
   --final-with-optuna-config Run final selection temporarily using the generated Optuna config
+  --adaptive             Run the adaptive pipeline with LHS exploration (NEW production path) - RECOMMENDED
   --n-trials N           Optuna trials (default: ${N_TRIALS})
   --n-candidates N       Optuna candidates (default: ${N_CANDIDATES})
   --n-boot N             Bootstrap resamples (default: ${N_BOOT})
@@ -60,6 +71,7 @@ while [[ $# -gt 0 ]]; do
     --skip-optuna) SKIP_OPTUNA=1; shift ;;
     --skip-bootstrap) SKIP_BOOTSTRAP=1; shift ;;
     --skip-final) SKIP_FINAL=1; shift ;;
+    --adaptive) ADAPTIVE=1; shift ;;
     --use-optuna-best) USE_OPTUNA_BEST=1; shift ;;
     --inject-optuna) USE_OPTUNA_INJECT=1; shift ;;
     --final-with-optuna-config) FINAL_WITH_OPTUNA_CONFIG=1; shift ;;
@@ -78,11 +90,11 @@ done
 echo "Experiment run: ${TIMESTAMP}"
 echo "Output dir: ${OUT_DIR}"
 echo "Steps: "
-[[ $SKIP_COARSE -eq 0 ]] && echo "  - coarse sweep"
+[[ $ADAPTIVE -eq 1 ]] && echo "  - [NEW] Adaptive pipeline with LHS exploration"
+[[ $ADAPTIVE -eq 0 && $SKIP_COARSE -eq 0 ]] && echo "  - [LEGACY] Coarse sweep (use --adaptive for LHS-based production path)"
 [[ $SKIP_FINE -eq 0 ]] && echo "  - fine sweep"
 [[ $SKIP_OPTUNA -eq 0 ]] && echo "  - optuna (n_trials=${N_TRIALS})"
 [[ $SKIP_BOOTSTRAP -eq 0 ]] && echo "  - bootstrap (n_boot=${N_BOOT})"
-[[ $SKIP_FINAL -eq 0 ]] && echo "  - final selection"
 
 if [[ $ASSUME_YES -eq 0 ]]; then
   read -p "Proceed with the run? [y/N] " RESP
@@ -96,11 +108,18 @@ fi
 # constructs like 'PYTHONPATH=. python script.py' work correctly.
 run_step() {
   local label="$1"; shift
-  local cmd_str="$*"
+  # Join args safely into a single-line command string (replace any newlines)
+  local cmd_str
+  cmd_str=$(printf "%s " "$@")
+  cmd_str=${cmd_str% }  # remove trailing space
+  # sanitize possible embedded newlines
+  cmd_str="${cmd_str//$'\n'/ }"
+
   local logfile="${OUT_DIR}/${label}.log"
   echo "\n=== [$label] Starting: $(date -u +%FT%TZ) ==="
   echo "> ${cmd_str}" | tee -a "$logfile"
-  if bash -lc "$cmd_str" >>"$logfile" 2>&1; then
+  # Execute and stream both to terminal and to logfile so the user sees live output
+  if bash -lc "$cmd_str" 2>&1 | tee -a "$logfile"; then
     echo "[${label}] Completed: $(date -u +%FT%TZ)" | tee -a "$logfile"
   else
     echo "[${label}] FAILED (see ${logfile})" | tee -a "$logfile"
@@ -108,14 +127,25 @@ run_step() {
   fi
 }
 
-# 1) Coarse sweep
+if [[ $ADAPTIVE -eq 1 ]]; then
+  echo "[$(date -u +%H:%M:%S)] Running ADAPTIVE pipeline (LHS -> Fine -> Optuna -> Bootstrap) - NEW PRODUCTION PATH"
+  run_step "adaptive_pipeline" PYTHONPATH=. python scripts/run_adaptive_pipeline.py --yes --n-trials ${N_TRIALS} --n-candidates ${N_CANDIDATES} --n-boot ${N_BOOT}
+  exit 0
+fi
+
+# 1) Legacy Coarse Sweep (deprecated but available for backwards compatibility)
+# NOTE: If you want LHS-based modern approach, use: ./scripts/run_full_experiment.sh --adaptive
 if [[ $SKIP_COARSE -eq 0 ]]; then
+  # Legacy: This uses old manual 9x3=27 grid sweep (not LHS)
+  # For production, prefer LHS via run_adaptive_pipeline.py (--adaptive flag above)
   run_step "coarse_sweep" PYTHONPATH=. python scripts/run_coarse_sweep.py
 fi
 
 # 2) Fine sweep
 if [[ $SKIP_FINE -eq 0 ]]; then
   run_step "fine_sweep" PYTHONPATH=. python scripts/run_fine_sweep.py
+  # Analyze feasibility for sweeps
+  run_step "feasibility_analysis" PYTHONPATH=. python scripts/analyze_sweep_feasibility.py || true
 fi
 
 # 3) Optuna optimization
@@ -124,6 +154,11 @@ if [[ $SKIP_OPTUNA -eq 0 ]]; then
   # copy results into experiment folder
   cp -v outputs/optuna_results.csv "${OUT_DIR}/" || true
   cp -v outputs/optuna_study.pkl "${OUT_DIR}/" 2>/dev/null || true
+  cp -v outputs/pipeline_config.optuna.yaml "${OUT_DIR}/" 2>/dev/null || true
+  
+  # Analyze Optuna convergence
+  echo "[$(date -u +%H:%M:%S)] Analyzing Optuna convergence..."
+  run_step "optuna_convergence" PYTHONPATH=. python scripts/analyze_optuna_convergence.py "${OUT_DIR}" --output-dir "${OUT_DIR}"
 fi
 
 # Optionally apply the best Optuna trial to the pipeline config
@@ -166,6 +201,10 @@ if [[ $SKIP_BOOTSTRAP -eq 0 ]]; then
   fi
   run_step "bootstrap" PYTHONPATH=. python scripts/bootstrap_pareto_candidates.py --pareto ${PARETO} --n-boot ${N_BOOT} --out ${OUT_DIR}/bootstrap_results.csv --seed 42
   cp -v outputs/fine_sweep/bootstrap_summary.csv "${OUT_DIR}/" 2>/dev/null || true
+  
+  # Analyze Bootstrap convergence
+  echo "[$(date -u +%H:%M:%S)] Analyzing Bootstrap convergence..."
+  run_step "bootstrap_convergence" PYTHONPATH=. python scripts/analyze_bootstrap_convergence.py --n-repeats 10 --output-dir "${OUT_DIR}"
 fi
 
 # 5) Final selection run (use recommended config or pick best found config manually)
@@ -203,5 +242,10 @@ if [[ $USE_OPTUNA_INJECT -eq 1 ]]; then
 fi
 
 echo "\nAll requested steps finished. Experiment outputs are under: ${OUT_DIR}"
+
+# Generate an experiment report that consolidates configs, logs and key metrics
+if [[ -n "${OUT_DIR}" && -d "${OUT_DIR}" ]]; then
+  run_step "gen_report" PYTHONPATH=. python scripts/generate_experiment_report.py --outdir "${OUT_DIR}"
+fi
 
 echo "Done."
