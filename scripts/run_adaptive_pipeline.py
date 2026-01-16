@@ -23,25 +23,26 @@ from src.pipeline_utils import compute_fine_search_bounds, compute_optuna_bounds
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "outputs"
 
-# Compute adaptive default for n_lhs based on dataset size
-# Faustregel: max(27, sqrt(n_tiles)) für ausreichende Abdeckung
+# Read dataset size (optional) - used by legacy heuristic
 try:
     metadata_path = ROOT / "data" / "new_all_tiles.csv"
     if metadata_path.exists():
         n_tiles = len(pd.read_csv(metadata_path))
-        n_lhs_default = max(27, int(np.sqrt(n_tiles)))
-        print(f"📊 Adaptive n_lhs: {n_lhs_default} (based on {n_tiles} tiles)")
+        print(f"📊 Found {n_tiles} data tiles (used by legacy heuristics)")
     else:
-        n_lhs_default = 27
-        print("⚠️  Metadata not found, using default n_lhs=27")
+        n_tiles = None
+        print("⚠️  Metadata not found; legacy heuristics will use defaults")
 except Exception as e:
-    n_lhs_default = 27
-    print(f"⚠️  Could not compute adaptive n_lhs: {e}. Using default=27")
+    n_tiles = None
+    print(f"⚠️  Could not read metadata: {e}; legacy heuristics will use defaults")
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--yes', action='store_true', help='Non-interactive')
-parser.add_argument('--n-lhs', type=int, default=n_lhs_default, 
-                    help=f'Number of samples for exploration (default: {n_lhs_default}, computed from sqrt(n_tiles))')
+parser.add_argument('--n-lhs', type=int, default=None, 
+                    help='Number of samples for exploration (if omitted, computed via --n-initial-strategy)')
+parser.add_argument('--n-initial-strategy', choices=['legacy','modern'], default='modern',
+                    help='Strategy to compute initial sample size: legacy=max(27,sqrt(n_tiles)) or modern=2*D^2 (default: modern)')
+parser.add_argument('--n-dimensions', type=int, default=3, help='Number of optimization dimensions (default: 3 weights)')
 parser.add_argument('--sampler', choices=['lhs','sobol'], default='sobol',
                     help='Sampler for initial exploration (default: sobol)')
 parser.add_argument('--n-trials', type=int, default=200)
@@ -52,6 +53,14 @@ parser.add_argument('--skip-optuna', action='store_true', help='Skip Optuna stag
 parser.add_argument('--skip-bootstrap-injection', action='store_true', help='Skip Bootstrap-best config generation')
 parser.add_argument('--dry-run', action='store_true', help='Print commands but do not execute heavy subprocess calls')
 args = parser.parse_args()
+
+# If user didn't provide n_lhs explicitly, compute using chosen strategy
+from src.pipeline_utils import compute_adaptive_n_initial
+if args.n_lhs is None:
+    args.n_lhs = compute_adaptive_n_initial(args.n_dimensions, n_tiles=n_tiles, strategy=args.n_initial_strategy)
+    print(f"📊 Adaptive n_lhs: {args.n_lhs} (strategy={args.n_initial_strategy})")
+else:
+    print(f"📊 Using user-specified n_lhs: {args.n_lhs}")
 
 # Helper to optionally run shell commands (support --dry-run)
 def run_cmd(cmd: str):

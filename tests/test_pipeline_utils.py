@@ -1,6 +1,11 @@
 import pandas as pd
 import tempfile
-from src.pipeline_utils import compute_fine_search_bounds, compute_optuna_bounds, compute_bootstrap_candidates
+from src.pipeline_utils import (
+    compute_fine_search_bounds,
+    compute_optuna_bounds,
+    compute_bootstrap_candidates,
+    compute_adaptive_n_initial,
+)
 
 
 def test_compute_fine_search_bounds(tmp_path):
@@ -27,3 +32,17 @@ def test_compute_bootstrap_candidates(tmp_path):
     df.to_csv(p, index=False)
     candidates = compute_bootstrap_candidates(str(p), delta=5)
     assert len(candidates) == 3
+
+
+def test_compute_adaptive_n_initial_legacy():
+    # legacy uses sqrt(n_tiles)
+    assert compute_adaptive_n_initial(3, n_tiles=1000, strategy='legacy') == max(27, int(1000 ** 0.5))
+    # when n_tiles missing, fallback to 27
+    assert compute_adaptive_n_initial(3, n_tiles=None, strategy='legacy') == 27
+
+
+def test_compute_adaptive_n_initial_modern():
+    # for 3 dims modern rule returns at least 20
+    assert compute_adaptive_n_initial(3, n_tiles=None, strategy='modern') == 20
+    # for higher dims returns 2*D^2
+    assert compute_adaptive_n_initial(5, n_tiles=None, strategy='modern') == 2 * 5 * 5
