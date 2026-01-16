@@ -153,7 +153,7 @@ Alle Artefakte werden nach `outputs/experiments/run_<TIMESTAMP>/` kopiert:
 
 ```bash
 # Unit-Tests
-pytest -q
+pytest
 
 # Minimal-Pipeline zum Testen
 python scripts/run_adaptive_pipeline.py --n-lhs 5 --fine-max-runs 3 --skip-optuna

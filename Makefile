@@ -26,7 +26,7 @@ format-check:
 	ruff check .
 
 test:
-	pytest -q
+	pytest
 
 archive-outputs:
 	@echo "Archive outputs to data/archive/"

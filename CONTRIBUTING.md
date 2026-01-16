@@ -36,7 +36,7 @@ python scripts/clean_workspace.py --delete-outputs --delete-venvs
 `make clean` runs a dry-run by default; use `make clean-force` to perform deletion (it will still skip protected paths).
 
 ## Testing
-- Tests include safety checks for protected files. Run the test suite with `pytest -q`.
+- Tests include safety checks for protected files. Run the test suite with `pytest`.
 - CI runs `scripts/check_protected.py --all` to ensure no tracked files are in protected paths.
 
 If you're unsure, open a draft PR and ask for a quick review before deleting anything important.
