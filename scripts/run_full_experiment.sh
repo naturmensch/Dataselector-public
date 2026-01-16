@@ -98,7 +98,7 @@ echo "Steps: "
 [[ $SKIP_OPTUNA -eq 0 ]] && echo "  - optuna (n_trials=${N_TRIALS})"
 [[ $SKIP_BOOTSTRAP -eq 0 ]] && echo "  - bootstrap (n_boot=${N_BOOT})"
 
-if [[ $DETACH -eq 1 && -z "${RUN_DETACHED:-}" ]]; then
+if [[ "${DETACH:-0}" -eq 1 && -z "${RUN_DETACHED:-}" ]]; then
   # Detach and re-run non-interactively with clean logging and a PID file.
   TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
   LOGFILE="outputs/experiments/run_adaptive_${TIMESTAMP}.session.log"
