@@ -41,7 +41,9 @@ except Exception as e:
 parser = argparse.ArgumentParser()
 parser.add_argument('--yes', action='store_true', help='Non-interactive')
 parser.add_argument('--n-lhs', type=int, default=n_lhs_default, 
-                    help=f'Number of LHS samples for exploration (default: {n_lhs_default}, computed from sqrt(n_tiles))')
+                    help=f'Number of samples for exploration (default: {n_lhs_default}, computed from sqrt(n_tiles))')
+parser.add_argument('--sampler', choices=['lhs','sobol'], default='sobol',
+                    help='Sampler for initial exploration (default: sobol)')
 parser.add_argument('--n-trials', type=int, default=200)
 parser.add_argument('--n-candidates', type=int, default=500)
 parser.add_argument('--n-boot', type=int, default=200)
@@ -60,7 +62,7 @@ def run_cmd(cmd: str):
 # 1) Run LHS Exploration (ersetzt alten Coarse Sweep)
 print('=== Phase 1: Exploration (LHS) ===')
 print(f'Running LHS with {args.n_lhs} samples (replacing old manual Coarse Grid)...')
-lhs_cmd = f'PYTHONPATH=. python scripts/tune_weights_and_run.py --n-samples {args.n_lhs} --seed 42'
+lhs_cmd = f'PYTHONPATH=. python scripts/tune_weights_and_run.py --n-samples {args.n_lhs} --seed 42 --sampler {args.sampler}'
 run_cmd(lhs_cmd)
 
 # 2) Compute Fine Bounds from LHS results

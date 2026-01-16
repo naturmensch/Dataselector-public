@@ -43,43 +43,34 @@ MIN_DISTANCE_KM = 28.0  # Median des Datensatzes (wissenschaftlich begründet)
 # --- WISSENSCHAFTLICHE PARAMETER-GENERIERUNG (LHS) ---
 
 
-def generate_lhs_weights(n_points: int = 50, seed: int = 42):
+from src.sampling_strategies import (
+    sample_weights_on_simplex_lhs,
+    sample_weights_on_simplex_sobol,
+)
+
+
+def generate_weights(n_points: int = 50, seed: int = 42, sampler: str = 'lhs'):
     """
-    Generiert Gewichtungen mittels Latin Hypercube Sampling auf dem Simplex.
+    Generate weight combinations on the simplex using the specified sampler.
 
     Args:
-        n_points: Anzahl der LHS-Samples
-        seed: Random seed für Reproduzierbarkeit
+        n_points: number of samples
+        seed: random seed
+        sampler: 'lhs' or 'sobol'
 
     Returns:
-        Liste von (alpha, beta, gamma) Tuples mit Σ = 1.0
+        List of (alpha, beta, gamma) tuples summing to 1.0
     """
-    if not HAS_LHS:
-        # Fallback: Manuelles Grid (9 Kombinationen)
-        print("⚠️  Fallback: Verwende predefiniertes Grid statt LHS")
-        return [
-            (0.70, 0.15, 0.15),
-            (0.70, 0.20, 0.10),
-            (0.75, 0.15, 0.10),
-            (0.60, 0.20, 0.20),
-            (0.65, 0.20, 0.15),
-            (0.60, 0.15, 0.25),
-            (0.55, 0.25, 0.20),
-            (0.50, 0.30, 0.20),
-            (0.65, 0.25, 0.10),
-        ]
+    if sampler.lower() == 'sobol':
+        if not hasattr(sample_weights_on_simplex_sobol, '__call__'):
+            raise RuntimeError("Sobol sampler not available")
+        return sample_weights_on_simplex_sobol(n_points, dim=3, seed=seed)
 
-    print(f"Generiere {n_points} LHS-Samples für Gewichte...")
+    # default to LHS behavior (existing behavior)
+    if sampler.lower() == 'lhs':
+        return sample_weights_on_simplex_lhs(n_points, dim=3, seed=seed)
 
-    # 1. Erzeuge LHS Samples im 3D-Hyperwürfel [0,1]^3
-    sampler = qmc.LatinHypercube(d=3, seed=seed)
-    sample = sampler.random(n=n_points)
-
-    # 2. Projiziere auf den Simplex (Summe = 1) durch Normalisierung
-    # Dies ist eine Standardmethode für Random Search über Gewichtungen
-    weights = sample / sample.sum(axis=1)[:, None]
-
-    return [tuple(w) for w in weights]
+    raise ValueError(f"Unknown sampler: {sampler}")
 
 
 # --- ENDE GENERIERUNG ---
@@ -93,7 +84,13 @@ def main():
         "--n-samples",
         type=int,
         default=50,
-        help="Anzahl LHS-Samples (default: 50)",
+        help="Anzahl Samples (default: 50)",
+    )
+    parser.add_argument(
+        "--sampler",
+        choices=['lhs', 'sobol'],
+        default='lhs',
+        help="Sampler für die Generierung der Gewichtungen (lhs=LatinHypercube, sobol=QMC Sobol), default: lhs",
     )
     parser.add_argument(
         "--seed", type=int, default=42, help="Random seed (default: 42)"
@@ -120,9 +117,9 @@ def main():
 
     runner = ExperimentRunner(output_dir=str(OUTPUT_DIR))
 
-    # Generiere LHS-Kombinationen
-    weight_combinations = generate_lhs_weights(
-        n_points=args.n_samples, seed=args.seed
+    # Generiere Gewicht-Kombinationen (wahlweise LHS oder Sobol)
+    weight_combinations = generate_weights(
+        n_points=args.n_samples, seed=args.seed, sampler=args.sampler
     )
 
     print("\n" + "=" * 70)
