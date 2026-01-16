@@ -129,7 +129,7 @@ run_step() {
 
 if [[ $ADAPTIVE -eq 1 ]]; then
   echo "[$(date -u +%H:%M:%S)] Running ADAPTIVE pipeline (LHS -> Fine -> Optuna -> Bootstrap) - NEW PRODUCTION PATH"
-  run_step "adaptive_pipeline" PYTHONPATH=. python scripts/run_adaptive_pipeline.py --yes --n-trials ${N_TRIALS} --n-candidates ${N_CANDIDATES} --n-boot ${N_BOOT}
+  run_step "adaptive_pipeline" PYTHONPATH=. ./scripts/exec_in_env.sh --env ${ENV_NAME:-dataselector} -- python scripts/run_adaptive_pipeline.py --yes --n-trials ${N_TRIALS} --n-candidates ${N_CANDIDATES} --n-boot ${N_BOOT}
   exit 0
 fi
 
@@ -150,7 +150,7 @@ fi
 
 # 3) Optuna optimization
 if [[ $SKIP_OPTUNA -eq 0 ]]; then
-  run_step "optuna" PYTHONPATH=. python scripts/optuna_optimize.py --n-trials ${N_TRIALS} --n-candidates ${N_CANDIDATES} --dim ${DIM} --n-samples ${N_SAMPLES} --min-distance-km ${MIN_DISTANCE_KM}
+  run_step "optuna" PYTHONPATH=. ./scripts/exec_in_env.sh --env ${ENV_NAME:-dataselector} -- python scripts/optuna_optimize.py --n-trials ${N_TRIALS} --n-candidates ${N_CANDIDATES} --dim ${DIM} --n-samples ${N_SAMPLES} --min-distance-km ${MIN_DISTANCE_KM}
   # copy results into experiment folder
   cp -v outputs/optuna_results.csv "${OUT_DIR}/" || true
   cp -v outputs/optuna_study.pkl "${OUT_DIR}/" 2>/dev/null || true
@@ -199,7 +199,7 @@ if [[ $SKIP_BOOTSTRAP -eq 0 ]]; then
   if [[ ! -f "$PARETO" ]]; then
     echo "Pareto file not found at ${PARETO}. Skipping bootstrap (or run fine sweep first)."; exit 1
   fi
-  run_step "bootstrap" PYTHONPATH=. python scripts/bootstrap_pareto_candidates.py --pareto ${PARETO} --n-boot ${N_BOOT} --out ${OUT_DIR}/bootstrap_results.csv --seed 42
+  run_step "bootstrap" PYTHONPATH=. ./scripts/exec_in_env.sh --env ${ENV_NAME:-dataselector} -- python scripts/bootstrap_pareto_candidates.py --pareto ${PARETO} --n-boot ${N_BOOT} --out ${OUT_DIR}/bootstrap_results.csv --seed 42
   cp -v outputs/fine_sweep/bootstrap_summary.csv "${OUT_DIR}/" 2>/dev/null || true
   
   # Analyze Bootstrap convergence

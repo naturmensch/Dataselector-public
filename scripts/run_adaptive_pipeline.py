@@ -12,6 +12,7 @@ Usage:
 """
 import subprocess
 import sys
+import os
 from pathlib import Path
 import argparse
 from datetime import datetime
@@ -66,12 +67,18 @@ else:
 def run_cmd(cmd: str):
     print(f"CMD: {cmd}")
     if not args.dry_run:
-        subprocess.check_call(['bash', '-lc', cmd])
+        # Use exec_in_env wrapper so the same command runs inside the canonical conda env if present
+        wrapper = Path(__file__).resolve().parents[1] / 'scripts' / 'exec_in_env.sh'
+        if wrapper.exists():
+            subprocess.check_call([str(wrapper), '--env', os.environ.get('ENV_NAME','dataselector'), '--', 'bash', '-lc', cmd])
+        else:
+            subprocess.check_call(['bash', '-lc', cmd])
 
 # 1) Run LHS Exploration (ersetzt alten Coarse Sweep)
 print('=== Phase 1: Exploration (LHS) ===')
 print(f'Running LHS with {args.n_lhs} samples (replacing old manual Coarse Grid)...')
 lhs_cmd = f'PYTHONPATH=. python scripts/tune_weights_and_run.py --n-samples {args.n_lhs} --seed 42 --sampler {args.sampler}'
+# Run through wrapper when available to ensure canonical env usage
 run_cmd(lhs_cmd)
 
 # 2) Compute Fine Bounds from LHS results
