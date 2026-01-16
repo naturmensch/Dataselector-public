@@ -1,0 +1,21 @@
+name: dataselector
+channels:
+  - conda-forge
+  - pytorch
+  - defaults
+dependencies:
+  - python=3.11
+  - pandas=2
+  - numpy
+  - scipy
+  - scikit-learn
+  - umap-learn
+  - apricot-select
+  - optuna
+  - matplotlib
+  - seaborn
+  - pyyaml
+  - tqdm
+  - pip
+  - pip:
+    - -r requirements-cpu.txt

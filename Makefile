@@ -29,13 +29,22 @@ test:
 	pytest
 
 # Developer helpers
-deps-optional:
-	@echo "Install optional dependencies for experimentation (Jupyter, DPP, GP libs)"
-	python -m pip install -r requirements-optional.txt
+# Note: `requirements-optional.txt` is not maintained by default anymore.
+# Install optional packages ad-hoc (e.g., `pip install dppy`) or open a PR to add a curated optional file.
 
 check-deps:
 	@echo "Run import scanner to detect unlisted imports"
 	python tools/check_imports.py --requirements requirements-cpu.txt
+
+
+# Create / refresh development conda/mamba environment
+env:
+	@echo "Create conda/mamba environment 'dataselector' (default: python=3.11)"
+	./scripts/create_env.sh dataselector 3.11
+
+env-force:
+	@echo "Recreate 'dataselector' environment from scratch"
+	./scripts/create_env.sh dataselector 3.11 --force
 
 
 archive-outputs:

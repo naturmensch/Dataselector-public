@@ -50,6 +50,36 @@ venv\Scripts\activate  # Windows
 pip install -r requirements.txt
 ```
 
+### Development environment (recommended: mamba / conda)
+
+For reproducible experiments and a stable scientific stack we recommend creating a conda environment using `mamba` (fast solver) with an explicit `environment.yml` file. If `mamba` is not installed the script will fall back to `conda`.
+
+Quick start (mamba preferred):
+
+```bash
+# Prefer mamba; fallback to conda if missing
+if command -v mamba >/dev/null 2>&1; then PM=mamba; else PM=conda; fi
+
+# Create environment (Python 3.11 recommended)
+$PM env create -f environment.yml -n dataselector
+conda activate dataselector
+
+# Optional: install pip extras (keeps parity with venv setup)
+pip install -r requirements-cpu.txt
+```
+
+There is also a helper script to automate this process:
+
+```bash
+# Create env (default name: dataselector, python: 3.11)
+./scripts/create_env.sh dataselector 3.11
+
+# Force recreate
+./scripts/create_env.sh dataselector 3.11 --force
+```
+
+You can use `make env` as a convenience target which calls the helper script.
+
 ## Projektstruktur
 
 ```
