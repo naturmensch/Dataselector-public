@@ -28,6 +28,16 @@ format-check:
 test:
 	pytest
 
+# Developer helpers
+deps-optional:
+	@echo "Install optional dependencies for experimentation (Jupyter, DPP, GP libs)"
+	python -m pip install -r requirements-optional.txt
+
+check-deps:
+	@echo "Run import scanner to detect unlisted imports"
+	python tools/check_imports.py --requirements requirements-cpu.txt
+
+
 archive-outputs:
 	@echo "Archive outputs to data/archive/"
 	python scripts/manage_archives.py archive --outputs outputs --dest data/archive $(foreach p,$(EXCLUDE),--exclude $(p))
