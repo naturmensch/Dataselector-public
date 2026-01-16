@@ -38,6 +38,8 @@ CMD=("$@")
 # export safe thread caps
 export OMP_NUM_THREADS=${OMP_NUM_THREADS:-$THREADS}
 export MKL_NUM_THREADS=${MKL_NUM_THREADS:-$THREADS}
+# Ensure PYTHONPATH includes repository root for local imports when running repo scripts
+export PYTHONPATH=${PYTHONPATH:-$PWD}
 
 # prefer mamba run -> conda run -> local .venv -> direct
 if command -v mamba >/dev/null 2>&1; then
