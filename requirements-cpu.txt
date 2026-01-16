@@ -15,6 +15,10 @@ dbfread>=2.0.7
 # Clustering & Dimensionality Reduction
 scikit-learn>=1.3.0
 umap-learn>=0.5.3
+# Scientific computing (needed for QMC samplers among others)
+scipy>=1.7.0
+# Note: optional packages used in docs/archives (e.g., dppy for determinantal point processes) are not required by default
+# dppy  # Optional: pip install dppy
 
 # Submodular Optimization
 apricot-select>=0.6.0
