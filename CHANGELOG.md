@@ -1,5 +1,10 @@
 # Changelog
 
+## [2026-01-16] - Run orchestration: detach flag
+- Added `--detach` flag to `scripts/run_full_experiment.sh` to start experiments detached; writes PID and session log into `outputs/experiments/`.
+- Added test `tests/test_run_full_experiment_detach.py` to verify detach behavior.
+- Documented usage in `README.md` (Detached runs section) and updated `docs/ENV_SETUP.md`.
+
 ## [2026-01-11] - Final master grid fixes
 - Fixed 28 sheets using final master_coords list.
 - See `data/changes_applied.csv` and `data/duplikate_manual_followup.csv` for remaining manual cases.
@@ -24,6 +29,8 @@
 - Added CI smoke job `env-smoke-run` that runs a dry adaptive pipeline inside the created `dataselector` env, and `conda-lock` job to generate and upload lockfiles. ✅
 - Added conda lockfile `locks/conda-lock-linux-64.lock` for reproducible installs on linux-64. ✅
 - Updated README and added `docs/ENV_SETUP.md` with environment and reproducibility guidance. ✅
+- Added `scripts/watch_experiment.sh` enhancements: automatic selection of the latest `outputs/experiments/run_*` directory, `--filter '<regex>'` for live filtering, `--show-proc` to display PID/%CPU/%MEM (no new dependencies), and `--lines N` to set initial tail lines.
+- Added smoke test README: `tests/smoke/README.md` with quick start, watch examples and checklist.
 
 ## [2026-01-11] - DBF-Reset und Master-Fix
 - Converted original DBF to CSV via dbfread, dropping true duplicates by BLATTNUMME.
