@@ -95,13 +95,21 @@ This wrapper also sets safe defaults for thread control via `--threads` or the `
 
 Conda lockfile
 
-For reproducible installs across platforms we generate a `locks/conda-lock-<platform>.yml` file (e.g. `locks/conda-lock-linux-64.yml`). The CI will attempt to generate this lockfile and upload it as an artifact. You can also generate it locally with:
+For reproducible installs across platforms we generate lockfiles under `locks/` (e.g. `locks/conda-lock-linux-64.lock`). The CI will attempt to generate this lockfile and upload it as an artifact. You can also generate it locally with:
 
 ```bash
 ./scripts/generate_conda_lock.sh --platform linux-64
 ```
 
+To install from a lockfile:
+
+```bash
+conda-lock install --name dataselector locks/conda-lock-linux-64.lock
+```
+
 If you want fully reproducible installs in CI or locally prefer using the generated lockfile, see `conda-lock` docs for how to install from a lockfile on your platform.
+
+See `docs/ENV_SETUP.md` for the complete reproducibility guide and troubleshooting tips.
 
 ## Projektstruktur
 

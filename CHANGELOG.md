@@ -19,6 +19,11 @@
 - Added Deep Ensembles UQ (`scripts/uncertainty_quantification.py`) and `--uq-method ensemble` for faster uncertainty estimation.
 - Added sampling benchmark script: `scripts/benchmark_sampling_methods.py` (LHS vs Sobol comparison).
 - CI: installed optional deps for benchmarks/optuna & added separate `torch-tests` job using `requirements-cpu.txt`.
+- Added a mamba-first environment helper (`scripts/create_env.sh`) and environment spec `environment.yml` for reproducible installs. ✅
+- Added a canonical execution wrapper `scripts/exec_in_env.sh` (mamba -> conda -> .venv fallback), and integrated it into `run_full_experiment.sh` and `run_adaptive_pipeline.py` for consistent env usage. ✅
+- Added CI smoke job `env-smoke-run` that runs a dry adaptive pipeline inside the created `dataselector` env, and `conda-lock` job to generate and upload lockfiles. ✅
+- Added conda lockfile `locks/conda-lock-linux-64.lock` for reproducible installs on linux-64. ✅
+- Updated README and added `docs/ENV_SETUP.md` with environment and reproducibility guidance. ✅
 
 ## [2026-01-11] - DBF-Reset und Master-Fix
 - Converted original DBF to CSV via dbfread, dropping true duplicates by BLATTNUMME.
