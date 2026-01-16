@@ -51,7 +51,8 @@ Options:
   --use-optuna-best      After running Optuna, extract best trial and write config to experiment folder
   --inject-optuna        Inject best Optuna trial directly into 'config/pipeline_config.yaml' (backup created)
   --final-with-optuna-config Run final selection temporarily using the generated Optuna config
-  --adaptive             Run the adaptive pipeline with LHS exploration (NEW production path) - RECOMMENDED
+  --adaptive             Run the adaptive pipeline (exploration default: Sobol; LHS optional) - RECOMMENDED
+  --detach               Detach and run in background (writes PID and session log under outputs/experiments)
   --n-trials N           Optuna trials (default: ${N_TRIALS})
   --n-candidates N       Optuna candidates (default: ${N_CANDIDATES})
   --n-boot N             Bootstrap resamples (default: ${N_BOOT})
@@ -75,6 +76,7 @@ while [[ $# -gt 0 ]]; do
     --use-optuna-best) USE_OPTUNA_BEST=1; shift ;;
     --inject-optuna) USE_OPTUNA_INJECT=1; shift ;;
     --final-with-optuna-config) FINAL_WITH_OPTUNA_CONFIG=1; shift ;;
+    --detach) DETACH=1; shift ;;
     --n-trials) N_TRIALS="$2"; shift 2 ;;
     --n-candidates) N_CANDIDATES="$2"; shift 2 ;;
     --n-boot) N_BOOT="$2"; shift 2 ;;
@@ -90,11 +92,28 @@ done
 echo "Experiment run: ${TIMESTAMP}"
 echo "Output dir: ${OUT_DIR}"
 echo "Steps: "
-[[ $ADAPTIVE -eq 1 ]] && echo "  - [NEW] Adaptive pipeline with LHS exploration"
-[[ $ADAPTIVE -eq 0 && $SKIP_COARSE -eq 0 ]] && echo "  - [LEGACY] Coarse sweep (use --adaptive for LHS-based production path)"
+[[ $ADAPTIVE -eq 1 ]] && echo "  - [NEW] Adaptive pipeline (exploration default: Sobol; LHS optional)"
+[[ $ADAPTIVE -eq 0 && $SKIP_COARSE -eq 0 ]] && echo "  - [LEGACY] Coarse sweep (use --adaptive to run adaptive pipeline; sampler default: Sobol)"
 [[ $SKIP_FINE -eq 0 ]] && echo "  - fine sweep"
 [[ $SKIP_OPTUNA -eq 0 ]] && echo "  - optuna (n_trials=${N_TRIALS})"
 [[ $SKIP_BOOTSTRAP -eq 0 ]] && echo "  - bootstrap (n_boot=${N_BOOT})"
+
+if [[ $DETACH -eq 1 && -z "${RUN_DETACHED:-}" ]]; then
+  # Detach and re-run non-interactively with clean logging and a PID file.
+  TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
+  LOGFILE="outputs/experiments/run_adaptive_${TIMESTAMP}.session.log"
+  PIDFILE="outputs/experiments/run_adaptive_${TIMESTAMP}.pid"
+  mkdir -p outputs/experiments
+  echo "Detaching run: logfile=${LOGFILE}, pidfile=${PIDFILE}"
+  # Ensure reproducible single-thread defaults if not set externally
+  export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}
+  export MKL_NUM_THREADS=${MKL_NUM_THREADS:-1}
+  # Re-run this script in background (mark RUN_DETACHED to avoid recursion)
+  nohup env RUN_DETACHED=1 bash -lc "exec \"$0\" $* --yes" > "${LOGFILE}" 2>&1 &
+  echo $! > "${PIDFILE}"
+  echo "Launched detached process with PID $(cat "${PIDFILE}"). Log: ${LOGFILE}"
+  exit 0
+fi
 
 if [[ $ASSUME_YES -eq 0 ]]; then
   read -p "Proceed with the run? [y/N] " RESP
@@ -128,13 +147,13 @@ run_step() {
 }
 
 if [[ $ADAPTIVE -eq 1 ]]; then
-  echo "[$(date -u +%H:%M:%S)] Running ADAPTIVE pipeline (LHS -> Fine -> Optuna -> Bootstrap) - NEW PRODUCTION PATH"
+  echo "[$(date -u +%H:%M:%S)] Running ADAPTIVE pipeline (exploration: Sobol (default) -> Fine -> Optuna -> Bootstrap) - NEW PRODUCTION PATH"
   run_step "adaptive_pipeline" PYTHONPATH=. ./scripts/exec_in_env.sh --env ${ENV_NAME:-dataselector} -- python scripts/run_adaptive_pipeline.py --yes --n-trials ${N_TRIALS} --n-candidates ${N_CANDIDATES} --n-boot ${N_BOOT}
   exit 0
 fi
 
 # 1) Legacy Coarse Sweep (deprecated but available for backwards compatibility)
-# NOTE: If you want LHS-based modern approach, use: ./scripts/run_full_experiment.sh --adaptive
+# NOTE: Modern adaptive approach uses Sobol by default; to force LHS: add --sampler lhs when running the adaptive pipeline (see scripts/run_adaptive_pipeline.py)
 if [[ $SKIP_COARSE -eq 0 ]]; then
   # Legacy: This uses old manual 9x3=27 grid sweep (not LHS)
   # For production, prefer LHS via run_adaptive_pipeline.py (--adaptive flag above)

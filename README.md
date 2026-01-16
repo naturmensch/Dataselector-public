@@ -203,6 +203,18 @@ Für Rückwärtskompatibilität ist der alte Coarse-Sweep noch verfügbar:
 - `--use-optuna-best`: Extrahiert besten Trial nach Optuna → `outputs/experiments/run_<TS>/pipeline_config.optuna.yaml`
 - `--inject-optuna`: Injiziert Optuna-Best direkt in `config/pipeline_config.yaml` (Backup: `.optuna_bak`)
 - `--final-with-optuna-config`: Führt Final-Run temporär mit Optuna-Config aus (Original wird wiederhergestellt)
+- `--detach`: Starte den Run im Hintergrund; schreibt PID und Session‑Log nach `outputs/experiments/` (siehe Beispiel unten)
+
+#### Detached runs (empfohlen für lange Läufe)
+Für lange, nicht-interaktive Läufe kannst du das `--detach` Flag verwenden. Das Skript startet sich im Hintergrund, schreibt eine Session‑Logdatei und eine PID‑Datei in `outputs/experiments/` und beendet sofort die interaktive Shell:
+
+```bash
+# Beispiel: intensiver, detachter Run (Ein‑Thread für Reproduzierbarkeit empfohlen)
+export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
+./scripts/run_full_experiment.sh --adaptive --detach --n-trials 500 --n-candidates 800 --n-boot 500 --yes
+```
+
+Die Ausgaben findest du dann in `outputs/experiments/run_adaptive_<TIMESTAMP>.session.log` und die PID in `outputs/experiments/run_adaptive_<TIMESTAMP>.pid`.
 
 **Provenance & Reproduzierbarkeit:**
 Alle Artefakte werden nach `outputs/experiments/run_<TIMESTAMP>/` kopiert:
