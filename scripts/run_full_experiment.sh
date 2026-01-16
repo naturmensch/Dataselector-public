@@ -109,7 +109,7 @@ if [[ "${DETACH:-0}" -eq 1 && -z "${RUN_DETACHED:-}" ]]; then
   export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}
   export MKL_NUM_THREADS=${MKL_NUM_THREADS:-1}
   # Re-run this script in background (mark RUN_DETACHED to avoid recursion)
-  nohup env RUN_DETACHED=1 bash -lc "exec \"$0\" $* --yes" > "${LOGFILE}" 2>&1 &
+  nohup env RUN_DETACHED=1 "$0" "$@" --yes > "${LOGFILE}" 2>&1 &
   echo $! > "${PIDFILE}"
   echo "Launched detached process with PID $(cat "${PIDFILE}"). Log: ${LOGFILE}"
   exit 0
