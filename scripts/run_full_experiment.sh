@@ -108,8 +108,13 @@ if [[ "${DETACH:-0}" -eq 1 && -z "${RUN_DETACHED:-}" ]]; then
   # Ensure reproducible single-thread defaults if not set externally
   export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}
   export MKL_NUM_THREADS=${MKL_NUM_THREADS:-1}
-  # Re-run this script in background (mark RUN_DETACHED to avoid recursion)
-  nohup env RUN_DETACHED=1 "$0" "$@" --yes > "${LOGFILE}" 2>&1 &
+  # Detect exec_in_env wrapper
+  EXEC_WRAPPER=""
+  if [[ -x "./scripts/exec_in_env.sh" ]]; then
+    EXEC_WRAPPER="./scripts/exec_in_env.sh --env ${ENV_NAME:-dataselector} --"
+  fi
+  # Re-run this script in background (mark RUN_DETACHED to avoid recursion) using canonical env
+  nohup env RUN_DETACHED=1 bash -lc "$EXEC_WRAPPER \"$0\" $* --yes" > "${LOGFILE}" 2>&1 &
   echo $! > "${PIDFILE}"
   echo "Launched detached process with PID $(cat "${PIDFILE}"). Log: ${LOGFILE}"
   exit 0
