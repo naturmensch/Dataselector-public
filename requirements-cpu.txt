@@ -1,5 +1,6 @@
-# CPU-only Requirements für i5-12500H (ohne CUDA, spart ~3.3 GB)
-# Installation: pip install -r requirements-cpu.txt
+# CPU-only requirements for typical laptops (no CUDA, saves ~3.3 GB)
+# Recommended: use the conda/mamba environment (`environment.yml`) for reproducible installs.
+# Installation (pip fallback): pip install -r requirements-cpu.txt
 
 # PyTorch CPU-only (~200 MB statt ~3.5 GB)
 --index-url https://download.pytorch.org/whl/cpu
