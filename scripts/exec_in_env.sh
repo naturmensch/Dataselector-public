@@ -46,14 +46,16 @@ if command -v mamba >/dev/null 2>&1; then
     echo "Running in conda env via mamba: $ENV_NAME"
     # Quote the command to exec inside a shell within the env to ensure arguments are forwarded correctly
     sh_cmd=$(printf '%q ' "${CMD[@]}")
-    exec mamba run -n "$ENV_NAME" -- bash -lc "$sh_cmd"
+    # Note: avoid 'mamba run -n ... --' to prevent odd argument re-ordering on some mamba versions
+    exec mamba run -n "$ENV_NAME" bash -lc "$sh_cmd"
   fi
 fi
 if command -v conda >/dev/null 2>&1; then
   if conda env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
     echo "Running in conda env via conda: $ENV_NAME"
     sh_cmd=$(printf '%q ' "${CMD[@]}")
-    exec conda run -n "$ENV_NAME" -- bash -lc "$sh_cmd"
+    # similarly avoid extra '--' with conda run
+    exec conda run -n "$ENV_NAME" bash -lc "$sh_cmd"
   fi
 fi
 
