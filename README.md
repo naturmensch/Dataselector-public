@@ -80,6 +80,19 @@ There is also a helper script to automate this process:
 
 You can use `make env` as a convenience target which calls the helper script.
 
+Running repository scripts inside the canonical environment
+
+We provide a canonical wrapper `scripts/exec_in_env.sh` that prefers `mamba run` (if available) or `conda run`, and falls back to a local `.venv` or direct execution when necessary. This keeps behavior consistent between local development and CI.
+
+Example:
+
+```bash
+# Run the adaptive pipeline dry-run inside the `dataselector` env
+./scripts/exec_in_env.sh --env dataselector -- python scripts/run_adaptive_pipeline.py --dry-run --yes --n-lhs 5 --n-trials 5 --n-boot 5 --n-candidates 20
+```
+
+This wrapper also sets safe defaults for thread control via `--threads` or the `OMP_NUM_THREADS` / `MKL_NUM_THREADS` environment variables.
+
 ## Projektstruktur
 
 ```
