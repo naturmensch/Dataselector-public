@@ -182,7 +182,7 @@ if [[ $SKIP_OPTUNA -eq 0 ]]; then
   
   # Analyze Optuna convergence
   echo "[$(date -u +%H:%M:%S)] Analyzing Optuna convergence..."
-  run_step "optuna_convergence" PYTHONPATH=. python scripts/analyze_optuna_convergence.py "${OUT_DIR}" --output-dir "${OUT_DIR}"
+  run_step "optuna_convergence" PYTHONPATH=. python scripts/analyze_optuna_convergence.py "${OUT_DIR}" --output-dir "${OUT_DIR}" || echo "Warning: Optuna convergence analysis failed (non-critical)"
 fi
 
 # Optionally apply the best Optuna trial to the pipeline config
@@ -228,7 +228,7 @@ if [[ $SKIP_BOOTSTRAP -eq 0 ]]; then
   
   # Analyze Bootstrap convergence
   echo "[$(date -u +%H:%M:%S)] Analyzing Bootstrap convergence..."
-  run_step "bootstrap_convergence" PYTHONPATH=. python scripts/analyze_bootstrap_convergence.py --n-repeats 10 --output-dir "${OUT_DIR}"
+  run_step "bootstrap_convergence" PYTHONPATH=. python scripts/analyze_bootstrap_convergence.py --n-repeats 10 --output-dir "${OUT_DIR}" || echo "Warning: Bootstrap convergence analysis failed (non-critical)"
 fi
 
 # 5) Final selection run (use recommended config or pick best found config manually)
