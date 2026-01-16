@@ -109,6 +109,33 @@ def objective_factory(features, metadata, n_samples, min_distance_km):
     return objective
 
 
+def get_optuna_sampler(sampler_name: str = 'qmc', seed: int = 42):
+    """Return an Optuna sampler instance based on a name.
+
+    Supported samplers: 'qmc' (QMCSampler/Sobol), 'tpe' (TPESampler), 'cmaes' (CmaEsSampler)
+    Falls back to TPESampler when requested sampler is unavailable.
+    """
+    name = sampler_name.lower()
+    try:
+        if name == 'qmc':
+            # Prefer QMCSampler (Sobol) for QMC sampling
+            try:
+                sampler = optuna.samplers.QMCSampler(seed=seed, qmc='sobol')
+            except TypeError:
+                # Older optuna versions may not accept qmc arg
+                sampler = optuna.samplers.QMCSampler(seed=seed)
+            return sampler
+        elif name == 'cmaes':
+            return optuna.samplers.CmaEsSampler(seed=seed)
+        else:
+            # Default to TPE for 'tpe' or unknown learners
+            return optuna.samplers.TPESampler(seed=seed, multivariate=True)
+    except Exception as e:
+        # Fallback: ensure we can always return a working sampler
+        print(f"Warning: could not instantiate sampler '{sampler_name}' ({e}), falling back to TPE.")
+        return optuna.samplers.TPESampler(seed=seed, multivariate=True)
+
+
 def run_optuna(
     n_trials=50,
     n_candidates=500,
@@ -117,10 +144,12 @@ def run_optuna(
     min_distance_km=40,  # Updated: optimal basierend auf Fine Sweep & Optuna Validierung
     seed=42,
     study_name="kdr100_opt",
+    sampler_name: str = 'qmc',
 ):
     features, metadata = load_or_create_data(n=n_candidates, dim=dim, seed=seed)
 
-    study = optuna.create_study(direction="maximize", study_name=study_name)
+    sampler = get_optuna_sampler(sampler_name, seed=seed)
+    study = optuna.create_study(direction="maximize", study_name=study_name, sampler=sampler)
     objective = objective_factory(
         features, metadata, n_samples=n_samples, min_distance_km=min_distance_km
     )
@@ -182,6 +211,12 @@ if __name__ == "__main__":
     parser.add_argument("--n-samples", type=int, default=34)
     parser.add_argument("--min-distance-km", type=int, default=40)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--sampler",
+        choices=["tpe", "qmc", "cmaes"],
+        default="qmc",
+        help="Sampler to use for Optuna (default: qmc)",
+    )
 
     args = parser.parse_args()
 
@@ -192,4 +227,5 @@ if __name__ == "__main__":
         n_samples=args.n_samples,
         min_distance_km=args.min_distance_km,
         seed=args.seed,
+        sampler_name=args.sampler,
     )
