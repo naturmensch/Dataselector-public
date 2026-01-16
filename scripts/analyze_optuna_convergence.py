@@ -229,6 +229,11 @@ def main():
                 continue
             
             csv_files = sorted(search_dir.glob('*trials*.csv'))
+            # Also accept the canonical optuna_results.csv filename produced by the optimizer
+            opt_csv = search_dir / 'optuna_results.csv'
+            if opt_csv.exists():
+                csv_files = [opt_csv] + csv_files
+
             for csv_file in csv_files:
                 result = plot_convergence_from_csv(csv_file, args.output_dir)
                 if result:
