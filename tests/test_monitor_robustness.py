@@ -23,6 +23,7 @@ def test_monitor_args_no_new_session(monkeypatch):
         # Mock other calls to avoid side effects
         m_open = mock_open(read_data='{}')
         with patch('pathlib.Path.touch'), patch('pathlib.Path.symlink_to'), patch('builtins.open', m_open), patch('os.getpgid', return_value=12345):
+            monitor.main()
         args, kwargs = mock_subprocess.call_args
         assert kwargs.get('start_new_session') is False
 
