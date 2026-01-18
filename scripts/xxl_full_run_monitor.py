@@ -61,6 +61,15 @@ def run_hook(name: str, cmd_str: str, base_log_dir: Path, active_log: Path, time
         'success': False
     }
     
+    # If the command starts with a plain `python` executable name, replace it with
+    # the exact interpreter used to run the monitor (sys.executable). This ensures
+    # hooks run in the same environment as the monitor.
+    import re, shlex
+    rewritten = re.sub(r"^\s*(python3?|py)\b", shlex.quote(sys.executable), cmd_str, count=1)
+    if rewritten != cmd_str:
+        _monitor_log(f"[{name}] Rewrote hook command to use sys.executable: {rewritten}", active_log)
+        cmd_str = rewritten
+
     _monitor_log(f"[{name}] Running hook: {cmd_str}", active_log)
     _monitor_log(f"[{name}] Log: {log_file}", active_log)
 

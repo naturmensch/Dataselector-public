@@ -164,6 +164,37 @@ def test_monitor_passes_child_dry_run(monkeypatch, tmp_path):
         cmd_list = args[0]
         assert '--dry-run' in cmd_list
 
+
+def test_run_hook_uses_monitor_python(monkeypatch, tmp_path):
+    """If the hook command starts with `python`, it should be rewritten to use sys.executable."""
+    monkeypatch.setattr(sys, 'argv', ['monitor.py', '--pre-run-cmd', "python -c 'import sys; print(sys.executable)'", '--pre-run-fail-mode', 'continue', '--poll-interval', '1'])
+    monkeypatch.setattr(monitor, 'LOG_FILE', tmp_path / 'XXL_FULL_RUN.log')
+
+    mock_popen = MagicMock()
+    mock_popen.pid = 2222
+    mock_popen.poll.side_effect = [None, 0]
+
+    captured = {'calls': []}
+    def fake_popen(*args, **kwargs):
+        # record the raw cmd argument (first positional) or the cmd kw
+        cmd = args[0] if args else kwargs.get('args')
+        captured['calls'].append({'cmd': cmd, 'args': args, 'kwargs': kwargs})
+        return mock_popen
+
+    with patch('subprocess.Popen', side_effect=fake_popen) as mock_subproc, \
+         patch('time.sleep'), \
+         patch('scripts.xxl_full_run_monitor.datetime') as mock_dt, \
+         patch('os.getpgid', return_value=2222):
+
+        mock_dt.now.return_value.strftime.return_value = "TS"
+        mock_dt.now.return_value.isoformat.return_value = "ISO"
+        mock_dt.fromtimestamp.return_value.isoformat.return_value = "ISO"
+
+        monitor.main()
+        # Ensure at least one recorded call contains the absolute sys.executable path
+        assert any(sys.executable in (c['cmd'] or '') for c in captured['calls'])
+
+
 def test_monitor_log_truncation_handling(monkeypatch, tmp_path):
     """Test that monitor handles log file truncation (rotation) gracefully."""
     monkeypatch.setattr(sys, 'argv', ['monitor.py', '--poll-interval', '0'])
