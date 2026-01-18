@@ -32,6 +32,7 @@ def test_monitor_args_no_new_session(monkeypatch, tmp_path):
 
 def test_monitor_pid_file_creation(monkeypatch, tmp_path):
     """Test that PID file is created."""
+    """Test that PID file is created."""
     monkeypatch.setattr(sys, 'argv', ['monitor.py', '--poll-interval', '1'])
     
     mock_popen = MagicMock()
@@ -138,6 +139,31 @@ def test_monitor_sigkill_fallback(monkeypatch, tmp_path):
         assert calls[0][0][1] == signal.SIGTERM
         assert calls[1][0][1] == signal.SIGKILL
 
+
+def test_monitor_passes_child_dry_run(monkeypatch, tmp_path):
+    """Test that monitor passes --dry-run to the child orchestrator when requested."""
+    monkeypatch.setattr(sys, 'argv', ['monitor.py', '--child-dry-run', '--poll-interval', '1'])
+    monkeypatch.setattr(monitor, 'LOG_FILE', tmp_path / 'XXL_FULL_RUN.log')
+
+    mock_popen = MagicMock()
+    mock_popen.pid = 1111
+    mock_popen.poll.side_effect = [None, 0]
+
+    with patch('subprocess.Popen', return_value=mock_popen) as mock_subproc, \
+         patch('time.sleep'), \
+         patch('scripts.xxl_full_run_monitor.datetime') as mock_dt, \
+         patch('os.getpgid', return_value=1111):
+
+        mock_dt.now.return_value.strftime.return_value = "TS"
+        mock_dt.now.return_value.isoformat.return_value = "ISO"
+        mock_dt.fromtimestamp.return_value.isoformat.return_value = "ISO"
+
+        monitor.main()
+        # The first arg list passed to Popen should include the child script and the '--dry-run' flag
+        args, kwargs = mock_subproc.call_args
+        cmd_list = args[0]
+        assert '--dry-run' in cmd_list
+
 def test_monitor_log_truncation_handling(monkeypatch, tmp_path):
     """Test that monitor handles log file truncation (rotation) gracefully."""
     monkeypatch.setattr(sys, 'argv', ['monitor.py', '--poll-interval', '0'])
@@ -223,3 +249,67 @@ def test_monitor_config_validation(monkeypatch, tmp_path):
         assert any('unexpected sampler' in s for s in meta['config_issues'])
         assert any('n_trials too small' in s for s in meta['config_issues'])
         assert any('n_candidates mismatch' in s for s in meta['config_issues'])
+
+def test_monitor_hooks(monkeypatch, tmp_path):
+    """Test that monitor executes pre-run and post-run hooks."""
+    monkeypatch.setattr(sys, 'argv', [
+        'monitor.py', 
+        '--poll-interval', '0',
+        '--pre-run-cmd', 'echo pre',
+        '--post-run-cmd', 'echo post',
+        '--pre-run-dry-run'
+    ])
+    
+    # Mock Popen to handle 3 calls: pre-run, main run, post-run
+    mock_pre = MagicMock()
+    mock_pre.wait.return_value = 0
+    
+    mock_main = MagicMock()
+    mock_main.pid = 8888
+    mock_main.poll.side_effect = [None, 0]
+    
+    mock_post = MagicMock()
+    mock_post.wait.return_value = 0
+    
+    # We need side_effect to return different mocks for each call
+    # 1. pre-run (shell=True)
+    # 2. main run (list args)
+    # 3. post-run (shell=True)
+    
+    with patch('subprocess.Popen', side_effect=[mock_pre, mock_main, mock_post]) as mock_popen, \
+         patch('time.sleep'), \
+         patch('os.getpgid', return_value=8888), \
+         patch('scripts.xxl_full_run_monitor.datetime') as mock_dt:
+
+        mock_dt.now.return_value.strftime.return_value = "TS"
+        mock_dt.now.return_value.isoformat.return_value = "ISO"
+        mock_dt.fromtimestamp.return_value.isoformat.return_value = "ISO"
+
+        monkeypatch.setattr(monitor, 'LOG_FILE', tmp_path / 'XXL_FULL_RUN.log')
+        monkeypatch.setattr(monitor, 'ROOT', tmp_path)
+
+        monitor.main()
+
+        # Verify calls
+        assert mock_popen.call_count == 3
+        # Check pre-run args (first call)
+        args_pre, kwargs_pre = mock_popen.call_args_list[0]
+        assert 'echo pre' in args_pre[0]
+        assert '--dry-run' in args_pre[0] # passed via --pre-run-dry-run
+        assert kwargs_pre['shell'] is True
+        
+        # Check main run args (second call)
+        args_main, kwargs_main = mock_popen.call_args_list[1]
+        assert isinstance(args_main[0], list) # Main script is passed as list
+        
+        # Check post-run args (third call)
+        args_post, kwargs_post = mock_popen.call_args_list[2]
+        assert 'echo post' in args_post[0]
+        
+        # Verify meta file contains hook info
+        reports_dir = tmp_path / 'outputs' / 'monitor_reports'
+        meta_file = reports_dir / 'monitor_meta_TS.json'
+        assert meta_file.exists()
+        meta = json.loads(meta_file.read_text())
+        assert meta['pre_run']['success'] is True
+        assert meta['post_run']['success'] is True

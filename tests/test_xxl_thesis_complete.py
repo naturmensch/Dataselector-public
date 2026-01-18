@@ -197,6 +197,16 @@ def test_phase1_pass_params_false(mock_run_cmd):
     assert '--n-candidates' not in mock_run_cmd['cmd']
 
 
+def test_phase1_includes_dry_run_flag_when_requested(mock_run_cmd):
+    phase_1_xxl_hamburg(n_trials=50, n_candidates=20, pass_params=True, dry_run=True)
+    assert '--dry-run' in mock_run_cmd['cmd']
+
+
+def test_phase2_includes_dry_run_flag_when_requested(mock_run_cmd):
+    phase_2_reproducibility(seeds=[99], n_trials=10, n_candidates=20, pass_params=True, dry_run=True)
+    assert '--dry-run' in mock_run_cmd['cmd']
+
+
 def test_phase2_pass_params_false(mock_run_cmd):
     # Use the fixture for cleaner mocking
     phase_2_reproducibility(seeds=[99], n_trials=123, n_candidates=456, pass_params=False)

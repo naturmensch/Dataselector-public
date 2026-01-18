@@ -45,10 +45,94 @@ def _monitor_log(msg: str, active_log: Path) -> None:
     except Exception:
         pass
 
+def run_hook(name: str, cmd_str: str, base_log_dir: Path, active_log: Path, timeout: int, retries: int, env: dict, start_new_session: bool, pass_dry_run: bool) -> dict:
+    """Run a hook command with retries, timeout and logging."""
+    if pass_dry_run:
+        cmd_str += " --dry-run"
+    
+    ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    log_file = base_log_dir / f'{name}_{ts}.log'
+    
+    meta = {
+        'name': name,
+        'command': cmd_str,
+        'log_file': str(log_file),
+        'attempts': [],
+        'success': False
+    }
+    
+    _monitor_log(f"[{name}] Running hook: {cmd_str}", active_log)
+    _monitor_log(f"[{name}] Log: {log_file}", active_log)
+
+    for i in range(retries + 1):
+        attempt_info = {
+            'attempt': i + 1,
+            'start': datetime.now(timezone.utc).isoformat(),
+            'exit_code': None
+        }
+        
+        try:
+            with open(log_file, 'a') as f:
+                # Use shell=True for flexibility with complex commands passed as string
+                proc = subprocess.Popen(cmd_str, shell=True, stdout=f, stderr=subprocess.STDOUT, 
+                                      env=env, start_new_session=start_new_session)
+                
+                try:
+                    # Treat timeout <= 0 as None (infinite wait)
+                    wait_arg = timeout if timeout > 0 else None
+                    ret = proc.wait(timeout=wait_arg)
+                    attempt_info['exit_code'] = ret
+                    if ret == 0:
+                        meta['success'] = True
+                except subprocess.TimeoutExpired:
+                    _monitor_log(f"[{name}] Timeout ({timeout}s) expired, killing...", active_log)
+                    attempt_info['error'] = 'timeout'
+                    # Kill process group
+                    if start_new_session and hasattr(os, 'killpg'):
+                        try:
+                            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+                        except Exception:
+                            proc.kill()
+                    else:
+                        proc.kill()
+        except Exception as e:
+            attempt_info['error'] = str(e)
+            _monitor_log(f"[{name}] Exception: {e}", active_log)
+        
+        attempt_info['end'] = datetime.now(timezone.utc).isoformat()
+        meta['attempts'].append(attempt_info)
+        
+        if meta['success']:
+            break
+        
+        if i < retries:
+            _monitor_log(f"[{name}] Retrying ({i+1}/{retries})...", active_log)
+            time.sleep(2)
+
+    # Write hook meta
+    meta_file = base_log_dir / f'{name}_meta_{ts}.json'
+    try:
+        meta_file.write_text(json.dumps(meta, indent=2))
+    except Exception:
+        pass
+        
+    return meta
+
 def main():
     parser = argparse.ArgumentParser(description="Monitor XXL pipeline run")
     parser.add_argument('--no-new-session', action='store_true', help="Do not start child in new session (better for tests)")
     parser.add_argument('--poll-interval', type=int, default=30, help="Polling interval in seconds")
+    parser.add_argument('--child-dry-run', action='store_true', help='Pass --dry-run to the child orchestrator for fast smoke tests')
+    
+    # Hook arguments
+    parser.add_argument('--pre-run-cmd', type=str, help="Command to run before the orchestrator")
+    parser.add_argument('--post-run-cmd', type=str, help="Command to run after the orchestrator")
+    parser.add_argument('--pre-run-timeout', type=int, default=600, help="Timeout for pre-run command in seconds (0 = no timeout)")
+    parser.add_argument('--pre-run-delay', type=int, default=0, help="Delay in seconds after pre-run hook before starting main run")
+    parser.add_argument('--pre-run-retries', type=int, default=0, help="Retries for pre-run command")
+    parser.add_argument('--pre-run-fail-mode', choices=['abort', 'warn', 'continue'], default='abort', help="Action on pre-run failure")
+    parser.add_argument('--pre-run-dry-run', action='store_true', help="Pass --dry-run to pre-run command if present")
+    
     args = parser.parse_args()
 
     # Ensure PYTHONPATH in env
@@ -78,8 +162,50 @@ def main():
     # ACTIVE_LOG is the actual file we will write to and read from
     ACTIVE_LOG = LOG_FILE_TS
 
+    # 1. Run Pre-Run Hook
+    pre_run_meta = None
+    if args.pre_run_cmd:
+        _monitor_log("Starting PRE-RUN hook...", ACTIVE_LOG)
+        pre_run_meta = run_hook(
+            name="pre_run",
+            cmd_str=args.pre_run_cmd,
+            base_log_dir=LOG_FILE.parent,
+            active_log=ACTIVE_LOG,
+            timeout=args.pre_run_timeout,
+            retries=args.pre_run_retries,
+            env=env,
+            start_new_session=not args.no_new_session,
+            pass_dry_run=args.pre_run_dry_run
+        )
+        if not pre_run_meta['success']:
+            msg = f"PRE-RUN hook failed (exit code: {pre_run_meta['attempts'][-1].get('exit_code')})"
+            _monitor_log(msg, ACTIVE_LOG)
+            
+            # Print log excerpt for debugging
+            try:
+                log_path = Path(pre_run_meta['log_file'])
+                if log_path.exists():
+                    _monitor_log(f"--- Log excerpt from {log_path.name} ---", ACTIVE_LOG)
+                    _monitor_log(log_path.read_text(errors='replace')[-2000:], ACTIVE_LOG)
+                    _monitor_log("-------------------------------------------", ACTIVE_LOG)
+            except Exception as e:
+                _monitor_log(f"Could not read hook log: {e}", ACTIVE_LOG)
+
+            if args.pre_run_fail_mode == 'abort':
+                _monitor_log("Aborting run due to pre-run failure.", ACTIVE_LOG)
+                sys.exit(1)
+            else:
+                _monitor_log(f"Continuing despite pre-run failure (mode: {args.pre_run_fail_mode})", ACTIVE_LOG)
+
+        if args.pre_run_delay > 0:
+            _monitor_log(f"Waiting {args.pre_run_delay}s before starting main run...", ACTIVE_LOG)
+            time.sleep(args.pre_run_delay)
+
     # Start the full run subprocess
     cmd = [sys.executable, str(MAIN_SCRIPT)]
+    # Allow monitor to instruct child to run in dry-run mode for smoke tests
+    if args.child_dry_run:
+        cmd.append('--dry-run')
     print(f"Starting full run: {' '.join(cmd)} (log: {ACTIVE_LOG})")
     with open(ACTIVE_LOG, 'ab') as logf:
         # start_new_session=True creates a new process group, allowing us to kill the whole tree.
@@ -264,6 +390,22 @@ def main():
 
     end_time = time.time()
 
+    # 2. Run Post-Run Hook
+    post_run_meta = None
+    if args.post_run_cmd:
+        _monitor_log("Starting POST-RUN hook...", ACTIVE_LOG)
+        post_run_meta = run_hook(
+            name="post_run",
+            cmd_str=args.post_run_cmd,
+            base_log_dir=LOG_FILE.parent,
+            active_log=ACTIVE_LOG,
+            timeout=600, # Default timeout for post-run
+            retries=0,
+            env=env,
+            start_new_session=not args.no_new_session,
+            pass_dry_run=args.pre_run_dry_run # Reuse dry-run flag logic
+        )
+
     # After process end: assemble report
     exit_code = process.returncode
     elapsed = end_time - start_time
@@ -405,6 +547,8 @@ def main():
         'observed_phase_events': [str(e) for e in phase_events],
         'xxl_run_dir': str(latest_xxl) if latest_xxl else None,
         'config_issues': config_issues if config_issues else [],
+        'pre_run': pre_run_meta,
+        'post_run': post_run_meta,
     }
     try:
         report_meta.write_text(json.dumps(meta, indent=2))

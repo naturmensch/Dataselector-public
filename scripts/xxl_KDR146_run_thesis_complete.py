@@ -303,7 +303,7 @@ def _extract_xxl_final_statistics(root: Path) -> dict | None:
         log(f"Exception in statistics extraction: {e}", "ERROR")
         return None
 
-def phase_1_xxl_hamburg(n_trials: int = 500, n_candidates: int = 673, pass_params: bool = True) -> bool:
+def phase_1_xxl_hamburg(n_trials: int = 500, n_candidates: int = 673, pass_params: bool = True, dry_run: bool = False) -> bool:
     """Phase 1: XXL Hamburg Run (CMA-ES, Seed 42).
 
     Args:
@@ -323,12 +323,14 @@ def phase_1_xxl_hamburg(n_trials: int = 500, n_candidates: int = 673, pass_param
     log("=" * 70, "PHASE")
 
     param_opts = f"--n-trials {n_trials} --n-candidates {n_candidates} " if pass_params else ""
+    dry_flag = "--dry-run " if dry_run else ""
 
     cmd = (
         f"cd {ROOT} && "
         f"{sys.executable} scripts/run_adaptive_pipeline.py --yes "
         "--sampler sobol --optuna-sampler cmaes "
         f"{param_opts}"
+        f"{dry_flag}"
         "--seed 42 --hamburg "
         "--exp-name thesis_xxl_hamburg_final"
     )
@@ -341,7 +343,7 @@ def phase_1_xxl_hamburg(n_trials: int = 500, n_candidates: int = 673, pass_param
     log("Phase 1 COMPLETE", "INFO")
     return True
 
-def phase_2_reproducibility(seeds: list[int] | None = None, n_trials: int = 500, n_candidates: int = 673, pass_params: bool = True) -> bool:
+def phase_2_reproducibility(seeds: list[int] | None = None, n_trials: int = 500, n_candidates: int = 673, pass_params: bool = True, dry_run: bool = False) -> bool:
     """Phase 2: Reproducibility Validation (2 additional seeds).
 
     Args:
@@ -361,11 +363,13 @@ def phase_2_reproducibility(seeds: list[int] | None = None, n_trials: int = 500,
     for seed in seeds:
         log(f"Starting reproducibility run: Seed {seed}", "INFO")
         param_opts = f"--n-trials {n_trials} --n-candidates {n_candidates} " if pass_params else ""
+        dry_flag = "--dry-run " if dry_run else ""
         cmd = (
             f"cd {ROOT} && "
             f"{sys.executable} scripts/run_adaptive_pipeline.py --yes "
             "--sampler sobol --optuna-sampler cmaes "
             f"{param_opts}"
+            f"{dry_flag}"
             f"--seed {seed} --hamburg "
             f"--exp-name thesis_hamburg_reproducibility_s{seed}"
         )
@@ -533,8 +537,10 @@ def main() -> int:
     import argparse
     parser = argparse.ArgumentParser(add_help=False)
     parser.add_argument('--use-suite-defaults', action='store_true', help='Do not pass n_trials/n_candidates to run_adaptive_pipeline; let it compute defaults')
+    parser.add_argument('--dry-run', action='store_true', help='Do a dry-run and pass --dry-run to heavy sub-scripts')
     parsed_args, _ = parser.parse_known_args()
     use_suite_defaults = parsed_args.use_suite_defaults
+    dry_run = parsed_args.dry_run
 
     conv_data = None
     if not use_suite_defaults:
@@ -575,21 +581,21 @@ def main() -> int:
     # Phase 1: XXL Hamburg
     if use_suite_defaults:
         log("Running Phase 1 with suite-default calculation (no --n-trials/--n-candidates passed)", "PRE-FLIGHT")
-        if not phase_1_xxl_hamburg(pass_params=False):
+        if not phase_1_xxl_hamburg(pass_params=False, dry_run=dry_run):
             log("Pipeline aborted at Phase 1", "ERROR")
             return 1
     else:
-        if not phase_1_xxl_hamburg(n_trials=n_trials_calculated, n_candidates=n_candidates_calculated, pass_params=True):
+        if not phase_1_xxl_hamburg(n_trials=n_trials_calculated, n_candidates=n_candidates_calculated, pass_params=True, dry_run=dry_run):
             log("Pipeline aborted at Phase 1", "ERROR")
             return 1
 
     # Phase 2: Reproducibility
     if use_suite_defaults:
-        if not phase_2_reproducibility([43, 44], pass_params=False):
+        if not phase_2_reproducibility([43, 44], pass_params=False, dry_run=dry_run):
             log("Pipeline aborted at Phase 2", "ERROR")
             return 1
     else:
-        if not phase_2_reproducibility([43, 44], n_trials=n_trials_calculated, n_candidates=n_candidates_calculated, pass_params=True):
+        if not phase_2_reproducibility([43, 44], n_trials=n_trials_calculated, n_candidates=n_candidates_calculated, pass_params=True, dry_run=dry_run):
             log("Pipeline aborted at Phase 2", "ERROR")
             return 1
     

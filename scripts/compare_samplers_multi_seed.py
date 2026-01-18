@@ -67,7 +67,13 @@ def run_single_optuna(sampler: str, seed: int, n_trials: int, n_candidates: int,
     # Find latest run dir
     run_dirs = sorted(Path('outputs/runs').glob(f'*{exp_name}'))
     if not run_dirs:
-        raise FileNotFoundError(f"No run dir found for {exp_name}")
+        out = proc.stdout or ""
+        err = proc.stderr or ""
+        msg = f"No run dir found for {exp_name}\nSubprocess stdout:\n{out}\nSubprocess stderr:\n{err}"
+        # common hint: missing optuna in environment
+        if 'ModuleNotFoundError' in out or 'ModuleNotFoundError' in err:
+            msg += "\nHint: a ModuleNotFoundError was observed in the subprocess output; ensure required packages (e.g., optuna) are installed in the environment."
+        raise FileNotFoundError(msg)
     run_dir = run_dirs[-1]
     trials_csv = run_dir / 'results' / 'trials.csv'
     if not trials_csv.exists():
