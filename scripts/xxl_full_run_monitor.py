@@ -69,6 +69,17 @@ last_size = 0
 phase_events = []
 detected_xxl = None
 seen_lines = set()
+
+# Helper to print and append monitor messages to active log
+def _monitor_log(msg: str) -> None:
+    tsmsg = f"[{datetime.now(timezone.utc).isoformat()}] {msg}"
+    print(tsmsg)
+    try:
+        with open(ACTIVE_LOG, 'a') as _lf:
+            _lf.write(tsmsg + "\n")
+    except Exception:
+        pass
+
 try:
     while True:
         time.sleep(30)  # poll interval
@@ -93,40 +104,40 @@ try:
                 # Detect running tasks (e.g., "Running 1/20: alpha=...")
                 m = re.search(r'Running\s+\d+/\d+:\s*(.+)', line)
                 if m:
-                    print(f"[{datetime.now(timezone.utc).isoformat()}] Starte: {m.group(1)}")
+                    _monitor_log(f"Starte: {m.group(1)}")
                     continue
 
                 # Detect export completions
                 m = re.search(r'Auswahl exportiert nach:\s*(.+)$', line)
                 if m:
-                    print(f"[{datetime.now(timezone.utc).isoformat()}] Prozess beendet: Auswahl exportiert nach: {m.group(1)}")
+                    _monitor_log(f"Prozess beendet: Auswahl exportiert nach: {m.group(1)}")
                     continue
 
                 m = re.search(r'Saved results:\s*(.+)\s*\(csv', line)
                 if m:
-                    print(f"[{datetime.now(timezone.utc).isoformat()}] Prozess beendet: Saved results: {m.group(1)}")
+                    _monitor_log(f"Prozess beendet: Saved results: {m.group(1)}")
                     continue
 
                 # Phase completions (localized messages)
                 if 'Phase 1 ABGESCHLOSSEN' in line or 'PHASE 1 COMPLETE' in line:
                     if 'PHASE 1 COMPLETE' not in phase_events:
                         phase_events.append('PHASE 1 COMPLETE')
-                        print(f"[{datetime.now(timezone.utc).isoformat()}] OBSERVED: PHASE 1 COMPLETE")
+                        _monitor_log('OBSERVED: PHASE 1 COMPLETE')
                     continue
                 if 'Phase 2 COMPLETE' in line:
                     if 'PHASE 2 COMPLETE' not in phase_events:
                         phase_events.append('PHASE 2 COMPLETE')
-                        print(f"[{datetime.now(timezone.utc).isoformat()}] OBSERVED: PHASE 2 COMPLETE")
+                        _monitor_log('OBSERVED: PHASE 2 COMPLETE')
                     continue
                 if 'Phase 3 COMPLETE' in line:
                     if 'PHASE 3 COMPLETE' not in phase_events:
                         phase_events.append('PHASE 3 COMPLETE')
-                        print(f"[{datetime.now(timezone.utc).isoformat()}] OBSERVED: PHASE 3 COMPLETE")
+                        _monitor_log('OBSERVED: PHASE 3 COMPLETE')
                     continue
                 if 'Phase 4 COMPLETE' in line:
                     if 'PHASE 4 COMPLETE' not in phase_events:
                         phase_events.append('PHASE 4 COMPLETE')
-                        print(f"[{datetime.now(timezone.utc).isoformat()}] OBSERVED: PHASE 4 COMPLETE")
+                        _monitor_log('OBSERVED: PHASE 4 COMPLETE')
                     continue
 
         # Detect creation of XXXL run folder
@@ -134,7 +145,9 @@ try:
         if xxl_dirs:
             latest_xxl = Path(xxl_dirs[-1])
             if (latest_xxl / 'results' / 'trials.csv').exists():
-                print(f"Detected XXL run directory: {latest_xxl}")
+                if latest_xxl != detected_xxl:
+                    detected_xxl = latest_xxl
+                    _monitor_log(f"Detected XXL run directory: {latest_xxl}")
 
         if ret is not None:
             print(f"Process exited with code: {ret}")
