@@ -467,6 +467,12 @@ selection:
 - UMAP: McInnes et al., "UMAP: Uniform Manifold Approximation and Projection" (2018)
 - Submodular Optimization: Krause & Golovin, "Submodular Function Maximization" (2014)
 
+## Entwickler-Workflow (Kurz)
+
+- **Debug:** `pytest --lf` (schnelle Iteration)
+- **Vor Commit:** `pytest` (Regressionstests)
+- **CI Simulation:** `pytest --junitxml=test-results/junit.xml`
+
 > **Hinweis:**
 > Der empfohlene Default für `min_distance_km` ist 50.0 km (siehe `config/pipeline_config.yaml`).
 > In Experimenten und Skripten sollte dieser Wert übernommen werden, um räumliche Diversität zu gewährleisten.

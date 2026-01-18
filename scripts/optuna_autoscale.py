@@ -33,7 +33,7 @@ OUT = Path("outputs")
 OUT.mkdir(exist_ok=True)
 
 
-def load_or_create_data(n=673, dim=256, seed=123):
+def load_or_create_data(n=None, dim=256, seed=123):
     features_path = OUT / "features.npy"
     metadata_path = OUT / "metadata.csv"
 
@@ -46,6 +46,7 @@ def load_or_create_data(n=673, dim=256, seed=123):
         metadata = pd.read_csv(metadata_path)
     else:
         rng = np.random.RandomState(seed)
+        if n is None: n = 673 # Fallback
         features = rng.randn(n, dim).astype("float32")
         metadata = pd.DataFrame(
             {
@@ -335,7 +336,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--n-trials", type=int, nargs="+", default=[20, 40, 80, 160])
     parser.add_argument("--stages", nargs="+", default=["50", "100", "300", "full"])
-    parser.add_argument("--n-candidates", type=int, default=673)
+    parser.add_argument("--n-candidates", type=int, default=None)
     parser.add_argument("--dim", type=int, default=256)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--patience", type=int, default=2)
@@ -347,12 +348,15 @@ if __name__ == "__main__":
     features, metadata = load_or_create_data(
         n=args.n_candidates, dim=args.dim, seed=args.seed
     )
+    
+    # Resolve actual n if it was None
+    actual_n = len(features)
 
     # interpret stages
     stages = []
     for s in args.stages:
         if s == "full":
-            stages.append(min(args.n_candidates, 1000))
+            stages.append(actual_n)
         else:
             stages.append(int(s))
 

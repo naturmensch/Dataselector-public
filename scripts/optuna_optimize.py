@@ -49,7 +49,7 @@ OUT_DIR = Path("outputs")
 OUT_DIR.mkdir(exist_ok=True)
 
 
-def load_or_create_data(n=673, dim=512, seed=123, pre_selected_names: Optional[list] = None, pre_selected_indices: Optional[list] = None):
+def load_or_create_data(n: Optional[int] = None, dim=512, seed=123, pre_selected_names: Optional[list] = None, pre_selected_indices: Optional[list] = None):
     """Load real metadata from `data/new_all_tiles.csv` if available, otherwise
     fall back to synthetic metadata that includes `shortName` and `longName` so
     pre-selection by name works in Optuna seeded runs.
@@ -70,6 +70,9 @@ def load_or_create_data(n=673, dim=512, seed=123, pre_selected_names: Optional[l
         canonical_meta = Path("data") / "new_all_tiles.csv"
         if canonical_meta.exists():
             metadata_full = pd.read_csv(canonical_meta)
+            
+            if n is None:
+                n = len(metadata_full)
 
             # Identify rows that match any pre-selected names or indices to ensure they
             # are included in the sampled candidate set.
@@ -117,6 +120,7 @@ def load_or_create_data(n=673, dim=512, seed=123, pre_selected_names: Optional[l
             features = rng.randn(len(metadata), dim).astype("float32")
         else:
             rng = np.random.RandomState(seed)
+            if n is None: n = 673  # Fallback for synthetic data
             features = rng.randn(n, dim).astype("float32")
             metadata = pd.DataFrame(
                 {
@@ -263,7 +267,7 @@ def get_optuna_sampler(sampler_name: str = 'qmc', seed: int = 42):
 
 def run_optuna(
     n_trials: int = 50,
-    n_candidates: int = 673,
+    n_candidates: Optional[int] = None,
     dim: int = 512,
     n_samples: Optional[int] = None,
     n_samples_min: Optional[int] = None,
@@ -336,6 +340,10 @@ def run_optuna(
         pre_selected_names=pre_selected_names,
         pre_selected_indices=pre_selected_indices
     )
+    
+    # Update n_candidates if it was None (auto-detected)
+    if n_candidates is None:
+        n_candidates = len(metadata)
     
     # Document candidate set and preselection
     try:
@@ -525,7 +533,7 @@ def run_optuna(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Optuna optimization with experiment versioning")
     parser.add_argument("--n-trials", type=int, default=20, help="Number of trials")
-    parser.add_argument("--n-candidates", type=int, default=673, help="Number of candidates")
+    parser.add_argument("--n-candidates", type=int, default=None, help="Number of candidates (default: all)")
     parser.add_argument("--dim", type=int, default=256, help="Feature dimension")
     parser.add_argument("--n-samples", type=int, default=None, help="Fixed number of samples to select")
     parser.add_argument("--n-samples-min", type=int, default=None, help="Lower bound for optimizing n_samples")

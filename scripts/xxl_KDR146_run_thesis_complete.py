@@ -47,52 +47,79 @@ def _validate_convergence_from_validation_data(root: Path) -> dict | None:
     Returns:
         dict with convergence metrics or None on error
     """
+    # 1. Try to load cached baseline
+    baseline_file = root / 'outputs' / 'convergence_baseline.json'
+    if baseline_file.exists():
+        try:
+            log(f"Loading cached convergence baseline from {baseline_file}")
+            return json.loads(baseline_file.read_text())
+        except Exception as e:
+            log(f"Failed to load cached baseline: {e}", "WARN")
+
     try:
-        # Find Hamburg 10-seed CMA-ES runs (naming pattern: hamburg_cmaes_500trials_s42, etc.)
-        all_runs = sorted(root.glob('outputs/runs/*hamburg*cmaes*500trials*'))
+        # 2. Search for runs in multiple locations (robustness against archiving)
+        search_patterns = [
+            'outputs/runs/*hamburg*cmaes*500trials*',
+            'archive_local/old_runs/*hamburg*cmaes*500trials*',
+            'archive_local/*hamburg*cmaes*500trials*'
+        ]
+        all_runs = []
+        for pat in search_patterns:
+            all_runs.extend(list(root.glob(pat)))
+        all_runs = sorted(list(set(all_runs)))
+
         # Filter runs to seeds 42-51 and pick the latest run per seed to avoid duplicates
         runs_by_seed: dict[int, Path] = {}
         for r in all_runs:
-            for i in range(42, 52):
-                if f's{i}' in r.name:
+            # Robust seed extraction using regex
+            import re
+            m = re.search(r's(\d+)', r.name)
+            if m:
+                i = int(m.group(1))
+                if 42 <= i <= 51:
                     # keep the latest run (lexicographically larger name is assumed newer)
                     if i not in runs_by_seed or r.name > runs_by_seed[i].name:
                         runs_by_seed[i] = r
-                    break
+
         hamburg_runs = [runs_by_seed[s] for s in sorted(runs_by_seed.keys())]
         
-        if len(hamburg_runs) < 5:
-            log(f"WARNING: Found only {len(hamburg_runs)} Hamburg validation runs (expected 10)", "WARN")
-            log(f"         Looking for pattern: *hamburg*cmaes*500trials*s[42-51] and taking latest per seed", "WARN")
+        if len(hamburg_runs) < 3:
+            log(f"WARNING: Found only {len(hamburg_runs)} Hamburg validation runs (need at least 3)", "WARN")
+            log(f"         Searched in: outputs/runs/ and archive_local/", "WARN")
             return None
         
         convergence_trials = []
         
         for run_dir in hamburg_runs:
-            trials_csv = run_dir / 'results' / 'trials.csv'
-            if not trials_csv.exists():
+            try:
+                trials_csv = run_dir / 'results' / 'trials.csv'
+                if not trials_csv.exists():
+                    continue
+                
+                df = pd.read_csv(trials_csv)
+                # Robustness: Filter incomplete or NaN values to prevent crashes
+                df = df[(df['state'] == 'TrialState.COMPLETE') & (df['value'].notna())]
+                
+                if df.empty:
+                    continue
+                
+                # Calculate cumulative best
+                best_val = df['value'].max()
+                cumulative_best = df['value'].expanding().max()
+                
+                # Find trial where 99% of best is reached
+                threshold_99 = 0.99 * best_val
+                trials_above_99 = df[cumulative_best >= threshold_99]
+                
+                if not trials_above_99.empty:
+                    trial_99 = int(trials_above_99.iloc[0]['trial_number'])
+                    convergence_trials.append(trial_99)
+            except Exception as e:
+                log(f"Skipping corrupted run {run_dir.name}: {e}", "WARN")
                 continue
-            
-            df = pd.read_csv(trials_csv)
-            df = df[df['state'] == 'TrialState.COMPLETE']
-            
-            if df.empty:
-                continue
-            
-            # Calculate cumulative best
-            best_val = df['value'].max()
-            cumulative_best = df['value'].expanding().max()
-            
-            # Find trial where 99% of best is reached
-            threshold_99 = 0.99 * best_val
-            trials_above_99 = df[cumulative_best >= threshold_99]
-            
-            if not trials_above_99.empty:
-                trial_99 = int(trials_above_99.iloc[0]['trial_number'])
-                convergence_trials.append(trial_99)
         
         if len(convergence_trials) < 3:
-            log("WARNING: Could not analyze convergence from validation data", "WARN")
+            log("WARNING: Could not analyze convergence from validation data (insufficient valid trials)", "WARN")
             return None
         
         median_conv = int(np.median(convergence_trials))
@@ -105,8 +132,17 @@ def _validate_convergence_from_validation_data(root: Path) -> dict | None:
             'convergence_99_trials_min': min_conv,
             'convergence_99_trials_max': max_conv,
             'convergence_99_trials_all': convergence_trials,
+            'generated_at': datetime.now(timezone.utc).isoformat()
         }
         
+        # 3. Save to cache for future robustness
+        try:
+            baseline_file.parent.mkdir(parents=True, exist_ok=True)
+            baseline_file.write_text(json.dumps(result, indent=2))
+            log(f"Saved convergence baseline to {baseline_file}")
+        except Exception as e:
+            log(f"Failed to save baseline cache: {e}", "WARN")
+
         return result
         
     except Exception as e:

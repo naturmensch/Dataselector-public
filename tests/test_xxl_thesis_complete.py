@@ -146,28 +146,28 @@ def test_run_cmd_with_retry_failure():
     assert run_cmd_with_retry('false', retries=1, delay=0) != 0
 
 
-def test_phase1_pass_params_false(monkeypatch):
+@pytest.fixture
+def mock_run_cmd(monkeypatch):
+    """Mock run_cmd_with_retry to avoid starting real subprocesses."""
     captured = {}
     def fake_run(cmd, retries=2, delay=5, cwd=None, fail_ok=False):
         captured['cmd'] = cmd
         return 0
     monkeypatch.setattr('scripts.xxl_KDR146_run_thesis_complete.run_cmd_with_retry', fake_run)
+    return captured
 
+def test_phase1_pass_params_false(mock_run_cmd):
+    # Use the fixture for cleaner mocking
     phase_1_xxl_hamburg(n_trials=123, n_candidates=456, pass_params=False)
-    assert '--n-trials' not in captured['cmd']
-    assert '--n-candidates' not in captured['cmd']
+    assert '--n-trials' not in mock_run_cmd['cmd']
+    assert '--n-candidates' not in mock_run_cmd['cmd']
 
 
-def test_phase2_pass_params_false(monkeypatch):
-    captured = {}
-    def fake_run(cmd, retries=2, delay=5, cwd=None, fail_ok=False):
-        captured['cmd'] = cmd
-        return 0
-    monkeypatch.setattr('scripts.xxl_KDR146_run_thesis_complete.run_cmd_with_retry', fake_run)
-
+def test_phase2_pass_params_false(mock_run_cmd):
+    # Use the fixture for cleaner mocking
     phase_2_reproducibility(seeds=[99], n_trials=123, n_candidates=456, pass_params=False)
-    assert '--n-trials' not in captured['cmd']
-    assert '--n-candidates' not in captured['cmd']
+    assert '--n-trials' not in mock_run_cmd['cmd']
+    assert '--n-candidates' not in mock_run_cmd['cmd']
 
 
 # New tests for caching, archive fallback, and NaN handling
@@ -230,4 +230,3 @@ def test_validate_convergence_ignores_nan_values(tmp_path):
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
-

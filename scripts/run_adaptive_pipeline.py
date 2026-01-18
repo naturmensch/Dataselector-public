@@ -116,16 +116,24 @@ if args.sampler == 'sobol':
     if adjusted != args.n_lhs:
         print(f"⚠ Using Sobol sampler: rounding n_lhs {args.n_lhs} -> next power of two {adjusted}")
         args.n_lhs = adjusted
-    # Persist and log the final n_lhs value in the ExperimentManager so it is visible in run logs/monitor
-    try:
-            # Merge important run-level fields to avoid overwriting seed or other metadata
-            em.save_config('run', {
-                'n_lhs': args.n_lhs,
-                'sampler': args.sampler,
-                'n_trials': args.n_trials,
-                'n_candidates': args.n_candidates,
-                'seed': args.seed,
-            })
+
+# Persist and log the final resolved values (n_lhs, n_candidates) in the ExperimentManager
+try:
+    em.save_config('run', {
+        'n_lhs': args.n_lhs,
+        'n_trials': args.n_trials,
+        'n_candidates': args.n_candidates,
+        'sampler': args.sampler,
+        'seed': args.seed
+    })
+    em.log(f"📊 Final config: n_lhs={args.n_lhs}, n_candidates={args.n_candidates} (sampler={args.sampler})")
+except Exception as e:
+    print(f"⚠ Could not persist final config to ExperimentManager: {e}")
+
+# Helper to optionally run shell commands (support --dry-run)
+def run_cmd(cmd: str):
+    print(f"CMD: {cmd}")
+    if not args.dry_run:
         # Use exec_in_env wrapper so the same command runs inside the canonical conda env if present
         wrapper = Path(__file__).resolve().parents[1] / 'scripts' / 'exec_in_env.sh'
         if wrapper.exists():
