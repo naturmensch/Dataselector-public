@@ -15,13 +15,20 @@ if [[ -f ".venv/bin/activate" && -z "${VIRTUAL_ENV:-}" ]]; then
   source .venv/bin/activate
 fi
 
+# Enforce deterministic single-threaded numeric libs for reproducibility unless user overrides
+export OMP_NUM_THREADS=${OMP_NUM_THREADS:-1}
+export MKL_NUM_THREADS=${MKL_NUM_THREADS:-1}
+export OPENBLAS_NUM_THREADS=${OPENBLAS_NUM_THREADS:-1}
+export NUMEXPR_NUM_THREADS=${NUMEXPR_NUM_THREADS:-1}
+
 # Defaults (wissenschaftlich validiert 2026-01-15)
 N_TRIALS=200         # Konvergenzanalyse: 99.5% bei Trial 134-166 → 200 angemessen
 N_CANDIDATES=500     # 74% des Datasets (500/673) → ausreichende Repräsentativität
 DIM=256              # Standard ResNet50 Feature-Dimension
-N_SAMPLES=34         # 5% von 673 → 57k-114k Trainingssamples nach Patch-Augmentation
+N_SAMPLES=""         # adaptiv berechnen (kein harter Default). Empfohlen: leave empty and let pipeline compute via `run_adaptive_pipeline.py` or pass via --n-samples
 MIN_DISTANCE_KM=40   # Empirisch optimal: Fine Sweep (40km), Optuna (36-39km), Median ~28km
 N_BOOT=200           # Bootstrap-Resamples für 95% CI (Standard-Wert)
+SEED=42               # Global seed for reproducibility
 TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
 OUT_DIR="outputs/experiments/run_${TIMESTAMP}"
 mkdir -p "$OUT_DIR"
@@ -36,8 +43,15 @@ SKIP_FINAL=0
 USE_OPTUNA_BEST=0
 USE_OPTUNA_INJECT=0
 FINAL_WITH_OPTUNA_CONFIG=0
-ADAPTIVE=0
+# Default: run adaptive pipeline (recommended). Use --legacy to run old coarse/fine/manual sequence.
+ADAPTIVE=1
+LEGACY=0
 ASSUME_YES=0
+# Optional sampler for adaptive pipeline (sobol|lhs)
+SAMPLER=sobol
+
+# Save original arguments BEFORE parsing (needed for detach mode)
+ORIGINAL_ARGS=("$@")
 
 function usage() {
   cat <<EOF
@@ -51,7 +65,8 @@ Options:
   --use-optuna-best      After running Optuna, extract best trial and write config to experiment folder
   --inject-optuna        Inject best Optuna trial directly into 'config/pipeline_config.yaml' (backup created)
   --final-with-optuna-config Run final selection temporarily using the generated Optuna config
-  --adaptive             Run the adaptive pipeline (exploration default: Sobol; LHS optional) - RECOMMENDED
+  --adaptive             Run the adaptive pipeline (exploration default: Sobol; LHS optional) - RECOMMENDED (DEFAULT)
+  --legacy               Run the legacy coarse/fine/optuna sequence (DEPRECATED)
   --detach               Detach and run in background (writes PID and session log under outputs/experiments)
   --n-trials N           Optuna trials (default: ${N_TRIALS})
   --n-candidates N       Optuna candidates (default: ${N_CANDIDATES})
@@ -73,6 +88,7 @@ while [[ $# -gt 0 ]]; do
     --skip-bootstrap) SKIP_BOOTSTRAP=1; shift ;;
     --skip-final) SKIP_FINAL=1; shift ;;
     --adaptive) ADAPTIVE=1; shift ;;
+    --legacy) LEGACY=1; ADAPTIVE=0; shift ;;
     --use-optuna-best) USE_OPTUNA_BEST=1; shift ;;
     --inject-optuna) USE_OPTUNA_INJECT=1; shift ;;
     --final-with-optuna-config) FINAL_WITH_OPTUNA_CONFIG=1; shift ;;
@@ -82,6 +98,8 @@ while [[ $# -gt 0 ]]; do
     --n-boot) N_BOOT="$2"; shift 2 ;;
     --n-samples) N_SAMPLES="$2"; shift 2 ;;
     --min-distance-km) MIN_DISTANCE_KM="$2"; shift 2 ;;
+    --sampler) SAMPLER="$2"; shift 2 ;;
+    --seed) SEED="$2"; shift 2 ;;
     --yes) ASSUME_YES=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown arg: $1"; usage; exit 1 ;;
@@ -92,8 +110,12 @@ done
 echo "Experiment run: ${TIMESTAMP}"
 echo "Output dir: ${OUT_DIR}"
 echo "Steps: "
-[[ $ADAPTIVE -eq 1 ]] && echo "  - [NEW] Adaptive pipeline (exploration default: Sobol; LHS optional)"
-[[ $ADAPTIVE -eq 0 && $SKIP_COARSE -eq 0 ]] && echo "  - [LEGACY] Coarse sweep (use --adaptive to run adaptive pipeline; sampler default: Sobol)"
+if [[ $LEGACY -eq 1 ]]; then
+  echo "  - [LEGACY MODE] Legacy coarse/fine/optuna sequence (DEPRECATED)"
+  echo "  - Note: modern usage prefers --adaptive (default). See scripts/run_adaptive_pipeline.py"
+else
+  echo "  - [NEW DEFAULT] Adaptive pipeline (exploration default: Sobol; LHS optional)"
+fi
 [[ $SKIP_FINE -eq 0 ]] && echo "  - fine sweep"
 [[ $SKIP_OPTUNA -eq 0 ]] && echo "  - optuna (n_trials=${N_TRIALS})"
 [[ $SKIP_BOOTSTRAP -eq 0 ]] && echo "  - bootstrap (n_boot=${N_BOOT})"
@@ -114,7 +136,17 @@ if [[ "${DETACH:-0}" -eq 1 && -z "${RUN_DETACHED:-}" ]]; then
     EXEC_WRAPPER="./scripts/exec_in_env.sh --env ${ENV_NAME:-dataselector} --"
   fi
   # Re-run this script in background (mark RUN_DETACHED to avoid recursion) using canonical env
-  nohup env RUN_DETACHED=1 bash -lc "$EXEC_WRAPPER \"$0\" $* --yes" > "${LOGFILE}" 2>&1 &
+  # Build properly escaped command string for bash -lc using original args
+  CMD="$0"
+  for arg in "${ORIGINAL_ARGS[@]}"; do
+    CMD="$CMD $(printf '%q' "$arg")"
+  done
+  if [[ -n "$EXEC_WRAPPER" ]]; then
+    CMD="$EXEC_WRAPPER $CMD --yes"
+  else
+    CMD="$CMD --yes"
+  fi
+  nohup env RUN_DETACHED=1 bash -lc "$CMD" > "${LOGFILE}" 2>&1 &
   echo $! > "${PIDFILE}"
   echo "Launched detached process with PID $(cat "${PIDFILE}"). Log: ${LOGFILE}"
   exit 0
@@ -151,10 +183,23 @@ run_step() {
   fi
 }
 
-if [[ $ADAPTIVE -eq 1 ]]; then
-  echo "[$(date -u +%H:%M:%S)] Running ADAPTIVE pipeline (exploration: Sobol (default) -> Fine -> Optuna -> Bootstrap) - NEW PRODUCTION PATH"
-  run_step "adaptive_pipeline" PYTHONPATH=. ./scripts/exec_in_env.sh --env ${ENV_NAME:-dataselector} -- python scripts/run_adaptive_pipeline.py --yes --n-trials ${N_TRIALS} --n-candidates ${N_CANDIDATES} --n-boot ${N_BOOT}
+if [[ $LEGACY -eq 0 && $ADAPTIVE -eq 1 ]]; then
+  echo "[$(date -u +%H:%M:%S)] Running ADAPTIVE pipeline (exploration: Sobol (default) -> Fine -> Optuna -> Bootstrap) - DEFAULT PRODUCTION PATH"
+  # Pass skip flags into the adaptive pipeline when running in adaptive mode
+ADAPTIVE_SKIP_FLAGS=""
+if [[ $SKIP_COARSE -eq 1 ]]; then
+  ADAPTIVE_SKIP_FLAGS+=" --skip-exploration"
+fi
+if [[ $SKIP_FINE -eq 1 ]]; then
+  ADAPTIVE_SKIP_FLAGS+=" --skip-fine"
+fi
+run_step "adaptive_pipeline" PYTHONPATH=. ./scripts/exec_in_env.sh --env ${ENV_NAME:-dataselector} -- python scripts/run_adaptive_pipeline.py --yes --n-trials ${N_TRIALS} --n-candidates ${N_CANDIDATES} --n-boot ${N_BOOT} --seed ${SEED} --sampler ${SAMPLER}${ADAPTIVE_SKIP_FLAGS}
   exit 0
+fi
+
+if [[ $LEGACY -eq 1 ]]; then
+  echo "[$(date -u +%H:%M:%S)] Running LEGACY pipeline (coarse -> fine -> optuna -> bootstrap) (DEPRECATED)"
+  echo "NOTE: This legacy flow is deprecated. For production, use the adaptive pipeline (default)."
 fi
 
 # 1) Legacy Coarse Sweep (deprecated but available for backwards compatibility)
@@ -174,15 +219,22 @@ fi
 
 # 3) Optuna optimization
 if [[ $SKIP_OPTUNA -eq 0 ]]; then
-  run_step "optuna" PYTHONPATH=. ./scripts/exec_in_env.sh --env ${ENV_NAME:-dataselector} -- python scripts/optuna_optimize.py --n-trials ${N_TRIALS} --n-candidates ${N_CANDIDATES} --dim ${DIM} --n-samples ${N_SAMPLES} --min-distance-km ${MIN_DISTANCE_KM}
+  # Only pass --n-samples if user set N_SAMPLES (otherwise leave to adaptive pipeline defaults)
+  SAMPLES_ARG=""
+  if [[ -n "${N_SAMPLES}" ]]; then
+    SAMPLES_ARG="--n-samples ${N_SAMPLES}"
+  fi
+  run_step "optuna" PYTHONPATH=. ./scripts/exec_in_env.sh --env ${ENV_NAME:-dataselector} -- python scripts/optuna_optimize.py --n-trials ${N_TRIALS} --n-candidates ${N_CANDIDATES} --dim ${DIM} ${SAMPLES_ARG} --min-distance-km ${MIN_DISTANCE_KM} --seed ${SEED}
   # copy results into experiment folder
   cp -v outputs/optuna_results.csv "${OUT_DIR}/" || true
   cp -v outputs/optuna_study.pkl "${OUT_DIR}/" 2>/dev/null || true
   cp -v outputs/pipeline_config.optuna.yaml "${OUT_DIR}/" 2>/dev/null || true
   
-  # Analyze Optuna convergence
+  # Analyze Optuna convergence (point to the latest trials.csv if available)
   echo "[$(date -u +%H:%M:%S)] Analyzing Optuna convergence..."
-  run_step "optuna_convergence" PYTHONPATH=. python scripts/analyze_optuna_convergence.py "${OUT_DIR}" --output-dir "${OUT_DIR}" || echo "Warning: Optuna convergence analysis failed (non-critical)"
+  LATEST_TRIALS=$(ls -td outputs/runs/*/results/trials.csv 2>/dev/null | head -n1 || true)
+  TRIALS_ARG="${LATEST_TRIALS:-outputs/optuna_results.csv}"
+  run_step "optuna_convergence" PYTHONPATH=. python scripts/analyze_optuna_convergence.py "${TRIALS_ARG}" --output-dir "${OUT_DIR}" || echo "Warning: Optuna convergence analysis failed (non-critical)"
 fi
 
 # Optionally apply the best Optuna trial to the pipeline config
@@ -223,7 +275,7 @@ if [[ $SKIP_BOOTSTRAP -eq 0 ]]; then
   if [[ ! -f "$PARETO" ]]; then
     echo "Pareto file not found at ${PARETO}. Skipping bootstrap (or run fine sweep first)."; exit 1
   fi
-  run_step "bootstrap" PYTHONPATH=. ./scripts/exec_in_env.sh --env ${ENV_NAME:-dataselector} -- python scripts/bootstrap_pareto_candidates.py --pareto ${PARETO} --n-boot ${N_BOOT} --out ${OUT_DIR}/bootstrap_results.csv --seed 42
+  run_step "bootstrap" PYTHONPATH=. ./scripts/exec_in_env.sh --env ${ENV_NAME:-dataselector} -- python scripts/bootstrap_pareto_candidates.py --pareto ${PARETO} --n-boot ${N_BOOT} --out ${OUT_DIR}/bootstrap_results.csv --seed ${SEED}
   cp -v outputs/fine_sweep/bootstrap_summary.csv "${OUT_DIR}/" 2>/dev/null || true
   
   # Analyze Bootstrap convergence

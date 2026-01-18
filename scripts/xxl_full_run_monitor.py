@@ -22,8 +22,12 @@ from datetime import datetime, timezone
 import glob
 import re
 import shutil
+import signal
 
 ROOT = Path(__file__).resolve().parents[1]
+# Ensure ROOT is in sys.path so we can import scripts modules directly
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 LOG_FILE = ROOT / 'outputs' / 'XXL_FULL_RUN.log'
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 
@@ -32,6 +36,7 @@ MAIN_SCRIPT = ROOT / 'scripts' / 'xxl_KDR146_run_thesis_complete.py'
 # Ensure PYTHONPATH in env
 env = os.environ.copy()
 env['PYTHONPATH'] = str(ROOT)
+env['PYTHONUNBUFFERED'] = '1'  # Force unbuffered output for real-time monitoring
 
 # Create per-run timestamped log file and make `XXL_FULL_RUN.log` point to it (symlink)
 ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
@@ -59,7 +64,8 @@ ACTIVE_LOG = LOG_FILE_TS
 cmd = [sys.executable, str(MAIN_SCRIPT)]
 print(f"Starting full run: {' '.join(cmd)} (log: {ACTIVE_LOG})")
 with open(ACTIVE_LOG, 'ab') as logf:
-    process = subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT, env=env)
+    # start_new_session=True creates a new process group, allowing us to kill the whole tree
+    process = subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT, env=env, start_new_session=True)
 
 start_time = time.time()
 print(f"PID: {process.pid}, writing logs to: {LOG_FILE}")
@@ -154,8 +160,11 @@ try:
             break
 
 except KeyboardInterrupt:
-    print('KeyboardInterrupt received: terminating child process')
-    process.terminate()
+    print('KeyboardInterrupt received: terminating child process group')
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+    except ProcessLookupError:
+        pass
     process.wait(timeout=30)
     ret = process.returncode
 

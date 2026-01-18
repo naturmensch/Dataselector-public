@@ -10,6 +10,8 @@ import argparse
 import pickle
 from pathlib import Path
 
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -23,9 +25,18 @@ def plot_convergence_from_csv(csv_path: Path, output_dir: Path):
         print(f"Warnung: {csv_path} hat keine 'value' Spalte")
         return None
     
+    # Filter out NaN values
+    df = df[df['value'].notna()]
+    
+    if len(df) == 0:
+        print(f"Warnung: {csv_path} hat keine validen Values")
+        return None
+    
     # Sortiere nach trial number falls vorhanden
     if 'number' in df.columns:
         df = df.sort_values('number')
+    elif 'trial_number' in df.columns:
+        df = df.sort_values('trial_number')
     
     best_values = df['value'].values
     cumulative_best = np.maximum.accumulate(best_values)
@@ -215,8 +226,22 @@ def main():
                     results.append(result)
     
     else:
-        # Default: Suche in outputs/
+        # Default: Suche in outputs/...
         print("Suche Optuna-Ergebnisse in outputs/...")
+        
+        # NEW: Search in versioned run directories first
+        runs_dir = Path('outputs/runs')
+        if runs_dir.exists():
+            for run_dir in sorted(runs_dir.glob('*')):
+                if not run_dir.is_dir():
+                    continue
+                trials_csv = run_dir / 'results' / 'trials.csv'
+                if trials_csv.exists():
+                    result = plot_convergence_from_csv(trials_csv, args.output_dir)
+                    if result:
+                        results.append(result)
+        
+        # Fallback: legacy search directories
         search_dirs = [
             Path('outputs/optuna_comparison'),
             Path('outputs/optuna_comparison_v2'),

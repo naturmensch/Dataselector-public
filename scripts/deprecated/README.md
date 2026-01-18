@@ -95,7 +95,7 @@ python scripts/bootstrap_pareto_candidates.py --pareto outputs/fine_sweep/pareto
 
 **Adaptive Pipeline (empfohlen):**
 ```bash
-# Komplette Cascade: LHS → Fine → Optuna → Bootstrap
+# Komplette Cascade: Exploration (Sobol default) → Fine → Optuna → Bootstrap
 python scripts/run_adaptive_pipeline.py --yes
 ```
 
@@ -103,5 +103,5 @@ python scripts/run_adaptive_pipeline.py --yes
 
 ## Hinweise
 - Diese Scripts werden NICHT mehr gewartet
-- Für neue Experimente immer die **LHS-basierte** adaptive Pipeline verwenden
+- Für neue Experimente die adaptive Pipeline verwenden; Standard-Sampler ist jetzt **Sobol** (LHS optional)
 - Bei Fragen zur Migration siehe `docs/REPRODUCIBILITY.md` und `docs/Pipeline_260115.md`

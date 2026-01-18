@@ -36,10 +36,15 @@ def test_lazy_greedy_matches_standard():
     res_std = sel_std.select(features, metadata, spatial_constraint=False)
 
     # Compare diversity scores (should be equal or very close)
-    from src.diversity_selector import DiversitySelector as DS
-
-    ds = DS(n_samples=n_select)
-    score_lazy = ds._calculate_diversity_score(features[res_lazy])
-    score_std = ds._calculate_diversity_score(features[res_std])
+    score_lazy = sel_lazy._calculate_diversity_score(features[res_lazy])
+    score_std = sel_std._calculate_diversity_score(features[res_std])
 
     assert abs(score_lazy - score_std) < 1e-6
+
+
+def test_selector_requires_n_samples():
+    import pytest
+    features = np.random.randn(10, 5)
+    sel = DiversitySelector()
+    with pytest.raises(ValueError):
+        sel.select(features, metadata=None)

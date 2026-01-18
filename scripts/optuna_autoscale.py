@@ -33,7 +33,7 @@ OUT = Path("outputs")
 OUT.mkdir(exist_ok=True)
 
 
-def load_or_create_data(n=500, dim=256, seed=123):
+def load_or_create_data(n=673, dim=256, seed=123):
     features_path = OUT / "features.npy"
     metadata_path = OUT / "metadata.csv"
 
@@ -62,7 +62,7 @@ def clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
 
-def make_objective(features, metadata, n_samples, min_distance_bounds):
+def make_objective(features, metadata, n_samples, min_distance_bounds, pre_selected_names=None, pre_selected_indices=None):
     def objective(trial: optuna.trial.Trial):
         a = trial.suggest_float("a", *min_distance_bounds["a"])
         b = trial.suggest_float("b", *min_distance_bounds["b"])
@@ -85,6 +85,8 @@ def make_objective(features, metadata, n_samples, min_distance_bounds):
             alpha_visual=alpha,
             beta_spatial=beta,
             gamma_temporal=gamma,
+            pre_selected=pre_selected_indices,
+            pre_selected_names=pre_selected_names,
         )
 
         n_selected = len(selected)
@@ -129,7 +131,7 @@ def run_autoscale(
         print(
             f"\n=== Stage {stage_idx+1}/{len(stages_samples)}: n_samples={n_samples} | trials={n_trials_per_stage[stage_idx]} ==="
         )
-        objective = make_objective(features, metadata, n_samples, bounds)
+        objective = make_objective(features, metadata, n_samples, bounds, pre_selected_names=args.pre_names, pre_selected_indices=args.pre_indices)
 
         # Record starting trial count to slice per-stage trials later
         start_trial_count = len(study.trials)
@@ -141,6 +143,8 @@ def run_autoscale(
 
         # Plot per-stage diagnostics
         try:
+            import matplotlib
+            matplotlib.use('Agg')
             import matplotlib.pyplot as plt
             import seaborn as sns
 
@@ -331,10 +335,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--n-trials", type=int, nargs="+", default=[20, 40, 80, 160])
     parser.add_argument("--stages", nargs="+", default=["50", "100", "300", "full"])
-    parser.add_argument("--n-candidates", type=int, default=500)
+    parser.add_argument("--n-candidates", type=int, default=673)
     parser.add_argument("--dim", type=int, default=256)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--patience", type=int, default=2)
+    parser.add_argument("--pre-names", type=str, nargs='*', default=None, help='Optional pre-selected tile names (e.g. Hamburg)')
+    parser.add_argument("--pre-indices", type=int, nargs='*', default=None, help='Optional pre-selected tile indices')
 
     args = parser.parse_args()
 

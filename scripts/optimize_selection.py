@@ -20,7 +20,7 @@ from src.diversity_selector import DiversitySelector
 min_distance_vals = [40.0, 45.0, 50.0]
 temporal_weights = [0.2, 0.35, 0.5]
 # expanded a bit to explore
-n_clusters = [8, 10, 12]
+default_n_clusters = [8, 10, 12]
 
 OUT = Path("outputs")
 OUT.mkdir(exist_ok=True, parents=True)
@@ -46,6 +46,8 @@ def run_grid(
     sample_method: str = "first",
     random_seed: int = 0,
     out_file: str = None,
+    n_samples: int = 40,
+    n_clusters_grid: list = None,
 ):
     """Run the parameter grid; if subset is provided, operate on that subset only."""
     if subset is None:
@@ -66,8 +68,10 @@ def run_grid(
 
     results = []
 
+    clusters_to_test = n_clusters_grid if n_clusters_grid else default_n_clusters
+
     for min_d, tw, nc in itertools.product(
-        min_distance_vals, temporal_weights, n_clusters
+        min_distance_vals, temporal_weights, clusters_to_test
     ):
         run_start = time.perf_counter()
         entry = {
@@ -86,7 +90,7 @@ def run_grid(
             )
 
             # Selection
-            sel = DiversitySelector(n_samples=40)
+            sel = DiversitySelector(n_samples=n_samples)
             print(
                 f"  [DEBUG] Calling select with: temporal_weight={tw}, min_distance_km={min_d}"
             )
@@ -180,6 +184,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--seed", type=int, default=0, help="Random seed for sampling")
     parser.add_argument("--out", type=str, default=None, help="Output CSV file path")
+    parser.add_argument("--n-samples", type=int, default=40, help="Number of samples to select")
+    parser.add_argument("--n-clusters", type=int, nargs="+", default=None, help="List of n_clusters to test (default: 8 10 12)")
     args = parser.parse_args()
 
     df = run_grid(
@@ -187,5 +193,7 @@ if __name__ == "__main__":
         sample_method=args.sample_method,
         random_seed=args.seed,
         out_file=Path(args.out) if args.out else None,
+        n_samples=args.n_samples,
+        n_clusters_grid=args.n_clusters,
     )
     print("\nDone. Results saved.")

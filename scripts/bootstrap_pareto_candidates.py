@@ -71,7 +71,7 @@ def bootstrap_candidate(alpha, beta, gamma, min_d, features, metadata, original_
     return pd.DataFrame(results)
 
 
-def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str = 'bootstrap', n_ensemble_models: int = 5, ensemble_epochs: int = 50):
+def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str = 'bootstrap', n_ensemble_models: int = 5, ensemble_epochs: int = 50, pre_selected_names=None, pre_selected_indices=None):
     pareto = pd.read_csv(pareto_csv)
 
     # load full metadata and features
@@ -105,6 +105,8 @@ def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str
             gamma_temporal=float(gamma),
             spatial_constraint=True,
             min_distance_km=float(min_d),
+            pre_selected=pre_selected_indices,
+            pre_selected_names=pre_selected_names,
         )
         original_sel = list(selected)
 
@@ -216,13 +218,29 @@ def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str
     outdir = Path(output_csv).parent if output_csv is not None else Path(ROOT) / 'outputs' / 'fine_sweep'
     outdir.mkdir(parents=True, exist_ok=True)
     if output_csv is None:
+        # Default legacy path
+        default_dir = Path(ROOT) / 'outputs' / 'fine_sweep'
         if not df_all.empty:
-            df_all.to_csv(Path(ROOT) / 'outputs' / 'fine_sweep' / 'bootstrap_results_full.csv', index=False)
-        df_summary.to_csv(Path(ROOT) / 'outputs' / 'fine_sweep' / 'bootstrap_summary.csv', index=False)
+            df_all.to_csv(default_dir / 'bootstrap_results_full.csv', index=False)
+        df_summary.to_csv(default_dir / 'bootstrap_summary.csv', index=False)
     else:
         if not df_all.empty:
             df_all.to_csv(output_csv, index=False)
         df_summary.to_csv(Path(output_csv).with_name(Path(output_csv).stem + '_summary.csv'), index=False)
+
+    # If attached to an ExperimentManager, persist into the run directory
+    import os
+    exp_dir = os.environ.get('EXPERIMENT_RUN_DIR')
+    if exp_dir:
+        try:
+            from src.experiment_manager import ExperimentManager
+            em = ExperimentManager.from_existing(exp_dir)
+            if not df_all.empty:
+                em.save_results('bootstrap_results_full', df_all, format='csv')
+            em.save_results('bootstrap_summary', df_summary, format='csv')
+            em.mark_stage_complete('bootstrap', summary={'n_candidates': len(df_summary)})
+        except Exception as e:
+            print(f'Warning: could not save bootstrap results to experiment manager: {e}')
 
     print('Bootstrap finished. Results saved.')
 
@@ -236,6 +254,8 @@ if __name__ == '__main__':
     parser.add_argument('--uq-method', choices=['bootstrap', 'ensemble'], default='bootstrap', help='Uncertainty quantification method to use')
     parser.add_argument('--n-ensemble-models', type=int, default=5, help='Number of ensemble members when using ensemble UQ')
     parser.add_argument('--ensemble-epochs', type=int, default=50, help='Epochs per ensemble member when training ensemble UQ')
+    parser.add_argument('--pre-names', type=str, nargs='*', default=None, help='Optional pre-selected tile names (e.g. Hamburg)')
+    parser.add_argument('--pre-indices', type=int, nargs='*', default=None, help='Optional pre-selected tile indices')
     args = parser.parse_args()
 
-    main(args.pareto, n_boot=args.n_boot, output_csv=args.out, random_seed=args.seed, uq_method=args.uq_method, n_ensemble_models=args.n_ensemble_models, ensemble_epochs=args.ensemble_epochs)
+    main(args.pareto, n_boot=args.n_boot, output_csv=args.out, random_seed=args.seed, uq_method=args.uq_method, n_ensemble_models=args.n_ensemble_models, ensemble_epochs=args.ensemble_epochs, pre_selected_names=args.pre_names, pre_selected_indices=args.pre_indices)

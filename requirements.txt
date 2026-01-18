@@ -23,6 +23,7 @@ apricot-select>=0.6.0
 
 # Hyperparameter Optimization
 optuna>=3.0.0
+cmaes>=0.10.0  # Required for CmaEsSampler in Optuna
 
 # Visualization
 matplotlib>=3.7.0

@@ -50,7 +50,7 @@ parser.add_argument('--sampler', choices=['lhs','sobol'], default='sobol',
 parser.add_argument('--optuna-sampler', choices=['tpe','qmc','cmaes'], default='tpe',
                     help='Sampler to use within Optuna optimization (default: tpe)')
 parser.add_argument('--n-trials', type=int, default=200)
-parser.add_argument('--n-candidates', type=int, default=500)
+parser.add_argument('--n-candidates', type=int, default=673)
 parser.add_argument('--n-boot', type=int, default=200)
 parser.add_argument('--fine-max-runs', type=int, default=None, help='Max runs for fine sweep (smoke testing)')
 parser.add_argument('--skip-optuna', action='store_true', help='Skip Optuna stage')
@@ -107,6 +107,12 @@ if args.sampler == 'sobol':
     if adjusted != args.n_lhs:
         print(f"⚠ Using Sobol sampler: rounding n_lhs {args.n_lhs} -> next power of two {adjusted}")
         args.n_lhs = adjusted
+    # Persist and log the final n_lhs value in the ExperimentManager so it is visible in run logs/monitor
+    try:
+        em.save_config('run', {'n_lhs': args.n_lhs, 'sampler': args.sampler})
+        em.log(f"📊 Final adaptive n_lhs set to {args.n_lhs} (sampler={args.sampler}, strategy={args.n_initial_strategy})")
+    except Exception as e:
+        print(f"⚠ Could not persist n_lhs to ExperimentManager: {e}")
 
 # Helper to optionally run shell commands (support --dry-run)
 def run_cmd(cmd: str):
@@ -222,14 +228,14 @@ else:
         else:
             print('=== Phase 3: Optimization (Optuna) ===')
             # Run Optuna with computed n_samples bounds
-            print(f'Running Optuna with n_samples range: {opt_lo}-{opt_hi} and min_distance center {center}km')
+            print(f'Running Optuna with min_distance range: {opt_lo}-{opt_hi} km (center {center}km)')
             optuna_cmd = (
                 f'PYTHONPATH=. python scripts/optuna_optimize.py '
                 f'--n-trials {args.n_trials} '
                 f'--n-candidates {args.n_candidates} '
-                f'--n-samples-min {opt_lo} '
-                f'--n-samples-max {opt_hi} '
-                f'--min-distance-km {center} '
+                f'--min-distance-min {int(opt_lo)} '
+                f'--min-distance-max {int(opt_hi)} '
+                f'--min-distance-km {int(center)} '
                 f'--sampler {args.optuna_sampler} '
                 f'--seed {args.seed}{pre_arg}'
             )

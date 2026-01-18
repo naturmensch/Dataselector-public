@@ -35,6 +35,7 @@ WHITELIST_PATTERNS = {
     ".mypy_cache",
     "archive_local",
     "scripts/deprecated",  # Already archived
+    "outputs/final_selection",  # Never archive final selections
 }
 
 # Files to keep in outputs (recent/important)
@@ -44,6 +45,7 @@ OUTPUTS_KEEP = {
     "coarse_sweep",
     "fine_sweep",
     "feasibility_analysis",
+    "final_selection",
 }
 
 

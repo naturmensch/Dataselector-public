@@ -101,7 +101,19 @@ def main():
         default=MIN_DISTANCE_KM,
         help=f"Min distance constraint in km (default: {MIN_DISTANCE_KM})",
     )
+    parser.add_argument("--pre-names", type=str, nargs="*", default=None, help="Optional pre-selected tile names (e.g. 'Hamburg')")
+    parser.add_argument("--pre-indices", type=int, nargs="*", default=None, help="Optional pre-selected tile indices (zero-based)")
     args = parser.parse_args()
+
+    # Pipeline integration: attach to existing ExperimentManager if EXPERIMENT_RUN_DIR is set
+    import os
+    em = None
+    exp_dir = os.environ.get('EXPERIMENT_RUN_DIR')
+    if exp_dir:
+        from src.experiment_manager import ExperimentManager
+        em = ExperimentManager.from_existing(exp_dir)
+        em.log('Attached to pipeline run (exploration stage)')
+        em.save_config('exploration', {'n_samples': args.n_samples, 'sampler': args.sampler, 'seed': args.seed})
 
     try:
         from src.experiments import ExperimentRunner
@@ -140,6 +152,8 @@ def main():
             batch_size=16,
             min_distance_km=args.min_distance,
             patience=None,  # Kein Early-Stopping, wir wollen die ganze Front sehen
+            pre_selected=args.pre_indices,
+            pre_selected_names=args.pre_names,
         )
     except Exception as e:
         print(f"❌ Fehler beim Ausführen des Weight Sweep: {e}")
@@ -158,8 +172,12 @@ def main():
         )
 
         # Visualisierungen speichern (wichtig für Thesis!)
-        viz_dir = OUTPUT_DIR / "pareto"
-        viz_dir.mkdir(parents=True, exist_ok=True)
+        if em is not None:
+            viz_dir = em.get_path('artifacts') / "pareto"
+            viz_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            viz_dir = OUTPUT_DIR / "pareto"
+            viz_dir.mkdir(parents=True, exist_ok=True)
 
         print(f"Erstelle Visualisierungen in {viz_dir}...")
         visualize_pareto_front(results, pareto_front, output_dir=str(viz_dir))
@@ -167,6 +185,15 @@ def main():
         # Report exportieren
         report_path = viz_dir / "pareto_solutions.csv"
         export_pareto_report(pareto_front, output_path=str(report_path))
+
+        # Save into ExperimentManager if attached
+        try:
+            import pandas as _pd
+            if em is not None:
+                em.save_results('pareto_solutions', _pd.read_csv(report_path), format='csv')
+                em.mark_stage_complete('exploration', summary={'pareto_count': len(pareto_front), 'n_samples': args.n_samples})
+        except Exception as e:
+            print(f"Warning: could not save pareto to experiment manager: {e}")
 
         print(f"\n✅ Phase 1 ABGESCHLOSSEN")
         print(f"📊 Plots: {viz_dir}")

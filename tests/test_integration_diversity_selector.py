@@ -51,26 +51,18 @@ def test_all_three_modes_run():
     metadata = make_metadata(n_candidates)
 
     # Legacy mode
-    sel_legacy = DiversitySelector(
-        n_samples=5, use_multi_criteria=False, use_constraint_integration=False
-    )
+    sel_legacy = DiversitySelector(n_samples=5, use_multi_criteria=False, use_constraint_integration=False)
     res_legacy = sel_legacy.select(features, metadata, spatial_constraint=False)
     assert len(res_legacy) == 5
 
     # Constraint-integrated
-    sel_constraint = DiversitySelector(
-        n_samples=6, use_multi_criteria=False, use_constraint_integration=True
-    )
-    res_constraint = sel_constraint.select(
-        features, metadata, spatial_constraint=True, min_distance_km=1.0
-    )
+    sel_constraint = DiversitySelector(n_samples=6, use_multi_criteria=False, use_constraint_integration=True)
+    res_constraint = sel_constraint.select(features, metadata, spatial_constraint=True, min_distance_km=1.0)
     assert len(res_constraint) == 6
 
     # Multi-criteria
     sel_multi = DiversitySelector(n_samples=7, use_multi_criteria=True)
-    res_multi = sel_multi.select(
-        features, metadata, alpha_visual=0.6, beta_spatial=0.2, gamma_temporal=0.2
-    )
+    res_multi = sel_multi.select(features, metadata, alpha_visual=0.6, beta_spatial=0.2, gamma_temporal=0.2)
     assert len(res_multi) == 7
 
 

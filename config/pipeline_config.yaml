@@ -8,7 +8,7 @@ data:
 
 # Feature Extraction (Deep Learning)
 feature_extraction:
-  model: "resnet50"  # Optionen: 'resnet50', 'dinov2'
+  model: "dinov2"  # Optionen: 'resnet50', 'dinov2'
   batch_size: 8
   crop_size: [2048, 2048]
   device: "auto"  # 'cuda', 'cpu', oder 'auto'
@@ -30,9 +30,9 @@ clustering:
 # Dataset: 673 tiles, 42.8% WWI-clustering (1906-1918), median neighbor distance ~28 km
 # Default: finale Auswahlgröße auf 5% gesetzt (≈34 Samples)
 selection:
-  n_samples: 34  # 5% von 673 (~34) — Faustregel für repräsentative Stichproben
+  n_samples: null  # adaptiv berechnen: kein harter Default. Empfehlenswert via `scripts/run_adaptive_pipeline.py` oder `src.pipeline_utils.compute_adaptive_n_initial`
                  # Änderbar via: python scripts/final_selection.py --n-samples 50
-                 # Wissenschaftliche Begründung: 5-10% Sampling-Rate für statistische Repräsentativität
+                 # Wissenschaftliche Begründung: Pan-Dataset-Adaption statt pauschaler 5%-Faustregel
   metric: "euclidean"
   
   # DEPRECATED: Legacy parameters (use multi-criteria instead)
