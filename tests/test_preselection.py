@@ -6,7 +6,14 @@ from src.io import load_metadata, load_or_extract_features
 from src.spatial_facility_location import haversine_distance
 
 
-def test_preselection_includes_seed(tmp_path):
+def test_preselection_includes_seed(tmp_path, mock_features_path):
+    # Use the mock features path to avoid expensive extraction
+    # Copy mock features to tmp_path so load_or_extract_features finds them
+    import shutil
+    src = mock_features_path / "features.npy"
+    dst = tmp_path / "features.npy"
+    if src.resolve() != dst.resolve():
+        shutil.copy(src, dst)
     meta = load_metadata("data/new_all_tiles.csv")
     features = load_or_extract_features(tmp_path, csv_meta=str("data/new_all_tiles.csv"), cache=True)
 
@@ -31,7 +38,14 @@ def test_preselection_includes_seed(tmp_path):
     assert len(selected) == 5
 
 
-def test_preselection_respects_min_distance(tmp_path):
+def test_preselection_respects_min_distance(tmp_path, mock_features_path):
+    # Use the mock features path to avoid expensive extraction
+    # Copy mock features to tmp_path so load_or_extract_features finds them
+    import shutil
+    src = mock_features_path / "features.npy"
+    dst = tmp_path / "features.npy"
+    if src.resolve() != dst.resolve():
+        shutil.copy(src, dst)
     meta = load_metadata("data/new_all_tiles.csv")
     features = load_or_extract_features(tmp_path, csv_meta=str("data/new_all_tiles.csv"), cache=True)
 
