@@ -69,14 +69,37 @@ if LOG_FILE.exists():
 else:
     report_lines.append('Log file not found')
 
-# Write report (timestamped)
+# Write report (timestamped) into monitor_reports dir
 report_ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
 if latest_xxl:
-    report_path = latest_xxl / f'raptor_bericht_{report_ts}.md'
-    report_latest = latest_xxl / 'raptor_bericht.md'
+    reports_dir = latest_xxl / 'monitor_reports'
 else:
-    report_path = ROOT / 'outputs' / f'raptor_bericht_{report_ts}.md'
-    report_latest = ROOT / 'outputs' / 'raptor_bericht.md'
-report_path.write_text('\n'.join(report_lines))
-report_latest.write_text('\n'.join(report_lines))
-print(f'Wrote report to: {report_path} (latest copy: {report_latest})')
+    reports_dir = ROOT / 'outputs' / 'monitor_reports'
+reports_dir.mkdir(parents=True, exist_ok=True)
+
+report_md = reports_dir / f'monitor_report_{report_ts}.md'
+report_meta = reports_dir / f'monitor_meta_{report_ts}.json'
+report_latest_md = reports_dir / 'monitor_report.md'
+report_latest_meta = reports_dir / 'monitor_meta.json'
+
+report_md.write_text('\n'.join(report_lines))
+try:
+    report_meta.write_text(json.dumps({
+        'generated_at': datetime.now(timezone.utc).isoformat(),
+        'observed_phase_events': phase_events,
+        'xxl_run_dir': str(latest_xxl) if latest_xxl else None,
+    }, indent=2))
+except Exception:
+    pass
+
+report_latest_md.write_text('\n'.join(report_lines))
+try:
+    report_latest_meta.write_text(json.dumps({
+        'generated_at': datetime.now(timezone.utc).isoformat(),
+        'observed_phase_events': phase_events,
+        'xxl_run_dir': str(latest_xxl) if latest_xxl else None,
+    }, indent=2))
+except Exception:
+    pass
+
+print(f'Wrote report to: {report_md} (latest copies: {report_latest_md}, {report_latest_meta})')
