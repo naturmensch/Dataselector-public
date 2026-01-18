@@ -50,7 +50,7 @@ parser.add_argument('--sampler', choices=['lhs','sobol'], default='sobol',
 parser.add_argument('--optuna-sampler', choices=['tpe','qmc','cmaes'], default='tpe',
                     help='Sampler to use within Optuna optimization (default: tpe)')
 parser.add_argument('--n-trials', type=int, default=200)
-parser.add_argument('--n-candidates', type=int, default=673)
+parser.add_argument('--n-candidates', type=int, default=None, help='Number of candidates (default: full dataset size)')
 parser.add_argument('--n-boot', type=int, default=200)
 parser.add_argument('--fine-max-runs', type=int, default=None, help='Max runs for fine sweep (smoke testing)')
 parser.add_argument('--skip-optuna', action='store_true', help='Skip Optuna stage')
@@ -95,6 +95,15 @@ def _next_power_of_two(x: int) -> int:
         p <<= 1
     return p
 
+# Resolve n_candidates dynamically if not set
+if args.n_candidates is None:
+    if n_tiles is not None:
+        args.n_candidates = n_tiles
+        print(f"📊 Using full dataset size for n_candidates: {args.n_candidates}")
+    else:
+        args.n_candidates = 673  # Fallback if metadata read failed
+        print(f"⚠️  Metadata not found; defaulting n_candidates to {args.n_candidates}")
+
 if args.n_lhs is None:
     args.n_lhs = compute_adaptive_n_initial(args.n_dimensions, n_tiles=n_tiles, strategy=args.n_initial_strategy)
     print(f"📊 Adaptive n_lhs: {args.n_lhs} (strategy={args.n_initial_strategy})")
@@ -109,15 +118,14 @@ if args.sampler == 'sobol':
         args.n_lhs = adjusted
     # Persist and log the final n_lhs value in the ExperimentManager so it is visible in run logs/monitor
     try:
-        em.save_config('run', {'n_lhs': args.n_lhs, 'sampler': args.sampler})
-        em.log(f"📊 Final adaptive n_lhs set to {args.n_lhs} (sampler={args.sampler}, strategy={args.n_initial_strategy})")
-    except Exception as e:
-        print(f"⚠ Could not persist n_lhs to ExperimentManager: {e}")
-
-# Helper to optionally run shell commands (support --dry-run)
-def run_cmd(cmd: str):
-    print(f"CMD: {cmd}")
-    if not args.dry_run:
+            # Merge important run-level fields to avoid overwriting seed or other metadata
+            em.save_config('run', {
+                'n_lhs': args.n_lhs,
+                'sampler': args.sampler,
+                'n_trials': args.n_trials,
+                'n_candidates': args.n_candidates,
+                'seed': args.seed,
+            })
         # Use exec_in_env wrapper so the same command runs inside the canonical conda env if present
         wrapper = Path(__file__).resolve().parents[1] / 'scripts' / 'exec_in_env.sh'
         if wrapper.exists():
