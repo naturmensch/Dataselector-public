@@ -170,6 +170,64 @@ def test_phase2_pass_params_false(monkeypatch):
     assert '--n-candidates' not in captured['cmd']
 
 
+# New tests for caching, archive fallback, and NaN handling
+
+def test_validate_convergence_uses_cache(tmp_path, monkeypatch):
+    # Prepare a cached baseline file
+    outputs = tmp_path / 'outputs'
+    outputs.mkdir()
+    baseline = {
+        'n_seeds_analyzed': 3,
+        'convergence_99_trials_median': 100,
+        'convergence_99_trials_min': 90,
+        'convergence_99_trials_max': 110,
+        'convergence_99_trials_all': [95, 100, 105],
+        'generated_at': '2026-01-01T00:00:00Z'
+    }
+    (outputs / 'convergence_baseline.json').write_text(json.dumps(baseline))
+
+    # Call function - should return cached data without error
+    result = _validate_convergence_from_validation_data(tmp_path)
+    assert result is not None
+    assert result['n_seeds_analyzed'] == 3
+    assert result['convergence_99_trials_median'] == 100
+
+
+def test_validate_convergence_falls_back_to_archive_runs(tmp_path):
+    # Create mock runs inside archive_local/old_runs
+    for seed in range(42, 45):
+        run_dir = tmp_path / 'archive_local' / 'old_runs' / f'20260117_hamburg_cmaes_500trials_s{seed}'
+        results_dir = run_dir / 'results'
+        results_dir.mkdir(parents=True)
+        # simple trials: converge at trial 50
+        mock_data = {'trial_number': list(range(200)), 'state': ['TrialState.COMPLETE']*200, 'value': [float(i <= 50 and i or 50.0) for i in range(200)]}
+        df = pd.DataFrame(mock_data)
+        (results_dir / 'trials.csv').write_text(df.to_csv(index=False))
+
+    result = _validate_convergence_from_validation_data(tmp_path)
+    assert result is not None
+    assert result['n_seeds_analyzed'] >= 3
+    assert result['convergence_99_trials_median'] <= 60
+
+
+def test_validate_convergence_ignores_nan_values(tmp_path):
+    # Create runs where some values are NaN but others valid
+    for seed in range(42, 45):
+        run_dir = tmp_path / 'outputs' / 'runs' / f'20260117_hamburg_cmaes_500trials_s{seed}'
+        results_dir = run_dir / 'results'
+        results_dir.mkdir(parents=True)
+        values = [np.nan]*10 + [1.0]*490
+        mock_data = {'trial_number': list(range(500)), 'state': ['TrialState.COMPLETE']*500, 'value': values}
+        df = pd.DataFrame(mock_data)
+        (results_dir / 'trials.csv').write_text(df.to_csv(index=False))
+
+    result = _validate_convergence_from_validation_data(tmp_path)
+    assert result is not None
+    assert result['n_seeds_analyzed'] >= 3
+    # median should be small since valid values mostly at end
+    assert result['convergence_99_trials_median'] < 500
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
 
