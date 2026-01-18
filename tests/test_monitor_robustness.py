@@ -169,3 +169,57 @@ def test_monitor_log_truncation_handling(monkeypatch, tmp_path):
             
             # Should not raise exception
             monitor.main()
+
+
+def test_monitor_config_validation(monkeypatch, tmp_path):
+    """Test that monitor detects config issues in the discovered run."""
+    monkeypatch.setattr(sys, 'argv', ['monitor.py', '--poll-interval', '0'])
+    mock_popen = MagicMock()
+    mock_popen.pid = 7777
+    mock_popen.poll.side_effect = [None, 0]
+
+    run_dir = tmp_path / "outputs" / "runs" / "hamburg_xxl_final"
+    cfg_dir = run_dir / 'config'
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    # Write a config that intentionally mismatches expected values
+    cfg = {
+        'sampler': 'tpe',
+        'n_trials': 200,
+        'n_candidates': 500
+    }
+    import yaml
+    (cfg_dir / 'config_optuna.yaml').write_text(yaml.safe_dump(cfg))
+
+    # Create a minimal trials.csv so detection logic sees it
+    trials_dir = run_dir / 'results'
+    trials_dir.mkdir(parents=True, exist_ok=True)
+    (trials_dir / 'trials.csv').write_text('trial_number,value,state\n1,0.1,TrialState.COMPLETE')
+
+    with patch('subprocess.Popen', return_value=mock_popen), \
+         patch('time.sleep'), \
+         patch('glob.glob', return_value=[str(run_dir)]), \
+         patch('scripts.xxl_full_run_monitor.datetime') as mock_dt, \
+         patch('os.getpgid', return_value=7777):
+
+        mock_dt.now.return_value.strftime.return_value = "TEST_TS"
+        mock_dt.now.return_value.isoformat.return_value = "ISO"
+        mock_dt.fromtimestamp.return_value.isoformat.return_value = "ISO"
+
+        monkeypatch.setattr(monitor, 'LOG_FILE', tmp_path / 'XXL_FULL_RUN.log')
+        monkeypatch.setattr(monitor, 'ROOT', tmp_path)
+
+        monitor.main()
+
+        # monitor writes into the run folder's monitor_reports if latest_xxl was found
+        run_reports_dir = run_dir / 'monitor_reports'
+        out_reports_dir = tmp_path / 'outputs' / 'monitor_reports'
+        if (run_reports_dir / 'monitor_meta_TEST_TS.json').exists():
+            meta_file = run_reports_dir / 'monitor_meta_TEST_TS.json'
+        else:
+            meta_file = out_reports_dir / 'monitor_meta_TEST_TS.json'
+        assert meta_file.exists()
+        meta = json.loads(meta_file.read_text())
+        assert 'config_issues' in meta
+        assert any('unexpected sampler' in s for s in meta['config_issues'])
+        assert any('n_trials too small' in s for s in meta['config_issues'])
+        assert any('n_candidates mismatch' in s for s in meta['config_issues'])

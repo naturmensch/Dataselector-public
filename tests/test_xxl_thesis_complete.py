@@ -58,6 +58,40 @@ def test_extract_statistics_with_valid_data(tmp_path):
     assert saved['best_value'] == 77.8, "Saved JSON should match"
 
 
+def test_extract_statistics_includes_config_if_present(tmp_path):
+    """Test that extraction reads config_optuna.yaml and includes configured params."""
+    run_dir = tmp_path / "outputs" / "runs" / "20260118_T120000_hamburg_xxl_final"
+    results_dir = run_dir / "results"
+    results_dir.mkdir(parents=True)
+    # create trials.csv
+    mock_data = {
+        'trial_number': [0, 1],
+        'state': ['TrialState.COMPLETE', 'TrialState.COMPLETE'],
+        'value': [1.0, 2.0],
+        'a': [0.1, 0.2],
+        'b': [0.1, 0.2],
+        'c': [0.1, 0.2],
+        'min_distance_km': [10, 10],
+        'n_samples': [30, 30],
+    }
+    df = pd.DataFrame(mock_data)
+    trials_csv = results_dir / "trials.csv"
+    df.to_csv(trials_csv, index=False)
+
+    # Create config file
+    cfg_dir = run_dir / 'config'
+    cfg_dir.mkdir()
+    import yaml
+    cfg = {'sampler': 'cmaes', 'n_trials': 500, 'n_candidates': 673}
+    (cfg_dir / 'config_optuna.yaml').write_text(yaml.safe_dump(cfg))
+
+    result = _extract_xxl_final_statistics(tmp_path)
+    assert result is not None
+    assert result.get('configured_sampler') == 'cmaes'
+    assert result.get('configured_n_trials') == 500
+    assert result.get('configured_n_candidates') == 673
+
+
 def test_extract_statistics_missing_run(tmp_path):
     """Test extraction fails gracefully when run directory missing."""
     # No run directory created

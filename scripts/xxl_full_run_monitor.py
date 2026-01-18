@@ -94,9 +94,15 @@ def main():
     pid_file = LOG_FILE_TS.with_suffix('.pid')
     pgid = None
     try:
-        # Use getpgid if available, otherwise just PID
-        pgid = os.getpgid(process.pid) if hasattr(os, 'getpgid') else process.pid
-        pid_file.write_text(f"PID={process.pid}\nPGID={pgid}\n")
+        # Use getpgid if available, otherwise just use PID as best-effort
+        try:
+            pgid = os.getpgid(process.pid) if hasattr(os, 'getpgid') else process.pid
+        except Exception:
+            pgid = None
+        # write file with available information
+        pid_text = f"PID={process.pid}\n"
+        pid_text += f"PGID={pgid}\n" if pgid is not None else "PGID=N/A\n"
+        pid_file.write_text(pid_text)
     except Exception as e:
         print(f"Warning: could not write PID file: {e}")
 
@@ -205,10 +211,27 @@ def main():
         # Robust shutdown sequence: SIGTERM -> wait -> SIGKILL
         try:
             if start_new_session:
-                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+                # Prefer using the previously-determined PGID, but fall back to querying
+                target_pgid = pgid
+                if target_pgid is None:
+                    try:
+                        target_pgid = os.getpgid(process.pid)
+                    except Exception:
+                        target_pgid = None
+                if target_pgid is not None:
+                    try:
+                        os.killpg(int(target_pgid), signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+                else:
+                    # Fallback to terminating the single process
+                    try:
+                        process.terminate()
+                    except Exception:
+                        pass
             else:
                 process.terminate()
-        except ProcessLookupError:
+        except Exception:
             pass
         
         try:
@@ -217,10 +240,25 @@ def main():
             print("Timeout expired, forcing kill (SIGKILL)...")
             try:
                 if start_new_session:
-                    os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                    target_pgid = pgid
+                    if target_pgid is None:
+                        try:
+                            target_pgid = os.getpgid(process.pid)
+                        except Exception:
+                            target_pgid = None
+                    if target_pgid is not None:
+                        try:
+                            os.killpg(int(target_pgid), signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                    else:
+                        try:
+                            process.kill()
+                        except Exception:
+                            pass
                 else:
                     process.kill()
-            except ProcessLookupError:
+            except Exception:
                 pass
         ret = process.returncode
 
@@ -294,6 +332,40 @@ def main():
         report_lines.append('\n## Convergence baseline analysis')
         report_lines.append(f"- Error while computing baseline: {e}")
 
+    # Basic config validation for the discovered XXL run (if any)
+    config_issues = []
+    if latest_xxl:
+        cfg_path = latest_xxl / 'config' / 'config_optuna.yaml'
+        if cfg_path.exists():
+            try:
+                import yaml
+                cfg = yaml.safe_load(cfg_path.read_text()) or {}
+                sampler = cfg.get('sampler')
+                n_trials_cfg = cfg.get('n_trials')
+                n_candidates_cfg = cfg.get('n_candidates')
+
+                if sampler and str(sampler).lower() != 'cmaes':
+                    config_issues.append(f"unexpected sampler: {sampler}")
+
+                try:
+                    if n_trials_cfg is not None and int(n_trials_cfg) < 400:
+                        config_issues.append(f"n_trials too small: {n_trials_cfg}")
+                except Exception:
+                    config_issues.append(f"n_trials not parseable: {n_trials_cfg}")
+
+                try:
+                    if n_candidates_cfg is not None and int(n_candidates_cfg) != 673:
+                        config_issues.append(f"n_candidates mismatch: {n_candidates_cfg}")
+                except Exception:
+                    config_issues.append(f"n_candidates not parseable: {n_candidates_cfg}")
+            except Exception as e:
+                config_issues.append(f"failed to parse config: {e}")
+
+    if config_issues:
+        report_lines.append('\n## Configuration issues detected')
+        for issue in config_issues:
+            report_lines.append(f"- {issue}")
+
     # Add section with log excerpts
     report_lines.append('\n## Log excerpts (last 500 lines)')
     try:
@@ -324,14 +396,15 @@ def main():
     # Coerce meta values to basic types for safe JSON serialization
     meta = {
         'generated_at': datetime.now(timezone.utc).isoformat(),
-        'pid': int(process.pid) if hasattr(process, '__dict__') and isinstance(getattr(process, 'pid', None), int) else (int(process.pid) if hasattr(process.pid, '__int__') else str(process.pid)),
-        'pgid': (int(pgid) if isinstance(pgid, int) else (int(pgid) if hasattr(pgid, '__int__') else (str(pgid) if pgid is not None else None))),
+        'pid': int(process.pid) if getattr(process, 'pid', None) is not None else None,
+        'pgid': int(pgid) if isinstance(pgid, int) else None,
         'start_time': datetime.fromtimestamp(start_time, timezone.utc).isoformat(),
         'end_time': datetime.fromtimestamp(end_time, timezone.utc).isoformat(),
-        'elapsed_sec': float(elapsed) if elapsed is not None else None,
+        'elapsed_sec': float(elapsed),
         'exit_code': int(exit_code) if exit_code is not None else None,
         'observed_phase_events': [str(e) for e in phase_events],
         'xxl_run_dir': str(latest_xxl) if latest_xxl else None,
+        'config_issues': config_issues if config_issues else [],
     }
     try:
         report_meta.write_text(json.dumps(meta, indent=2))

@@ -30,6 +30,7 @@ from datetime import datetime, timezone
 import time
 import pandas as pd
 import numpy as np
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -92,6 +93,33 @@ def _validate_convergence_from_validation_data(root: Path) -> dict | None:
         
         for run_dir in hamburg_runs:
             try:
+                # Validate configuration consistency (n_candidates == 673)
+                config_path = run_dir / 'config' / 'config_optuna.yaml'
+                if config_path.exists():
+                    try:
+                        with open(config_path) as f:
+                            run_cfg = yaml.safe_load(f)
+                            
+                            # 1. Check n_candidates (Must match full dataset)
+                            run_nc = run_cfg.get('n_candidates')
+                            if run_nc is not None and int(run_nc) != 673:
+                                log(f"Skipping validation run {run_dir.name}: n_candidates={run_nc} (expected 673)", "WARN")
+                                continue
+                            
+                            # 2. Check sampler (Must be CMA-ES)
+                            run_sampler = run_cfg.get('sampler')
+                            if run_sampler is not None and str(run_sampler).lower() != 'cmaes':
+                                log(f"Skipping validation run {run_dir.name}: sampler={run_sampler} (expected cmaes)", "WARN")
+                                continue
+
+                            # 3. Check n_trials (Must be sufficient for convergence analysis)
+                            run_nt = run_cfg.get('n_trials')
+                            if run_nt is not None and int(run_nt) < 500:
+                                log(f"Skipping validation run {run_dir.name}: n_trials={run_nt} (expected >= 500)", "WARN")
+                                continue
+                    except Exception:
+                        pass  # Ignore config errors, rely on trials.csv check
+
                 trials_csv = run_dir / 'results' / 'trials.csv'
                 if not trials_csv.exists():
                     continue
@@ -246,6 +274,18 @@ def _extract_xxl_final_statistics(root: Path) -> dict | None:
             'std': float(df['value'].std()),
             'timestamp': datetime.now(timezone.utc).isoformat(),
         }
+
+        # Attempt to read run configuration (if present) and include actual used parameters
+        cfg_path = xxl_run / 'config' / 'config_optuna.yaml'
+        try:
+            if cfg_path.exists():
+                import yaml
+                cfg = yaml.safe_load(cfg_path.read_text()) or {}
+                final_selection['configured_sampler'] = cfg.get('sampler')
+                final_selection['configured_n_trials'] = int(cfg.get('n_trials')) if cfg.get('n_trials') is not None else None
+                final_selection['configured_n_candidates'] = int(cfg.get('n_candidates')) if cfg.get('n_candidates') is not None else None
+        except Exception as e:
+            log(f"Warning: could not read run config: {e}", "WARN")
         
         # Save final selection (timestamped + latest copy)
         ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
