@@ -335,6 +335,12 @@ def run_optuna(
                 "sampler": sampler_name,
             }
         )
+        # Export run dir to environment so downstream modules (e.g., clustering) can persist their config
+        try:
+            import os as _os
+            _os.environ['EXPERIMENT_RUN_DIR'] = str(em.run_dir)
+        except Exception:
+            pass
     
     em.log(f"Loading features and metadata (n_candidates={n_candidates}, dim={dim})")
     features, metadata = load_or_create_data(
@@ -477,55 +483,68 @@ def run_optuna(
     trial_buffer.flush_to_csv()
     trial_writer.close()
     em.log(f"All {len(study.trials)} trials saved to {trials_csv_path}")
-    
-    # Save best trial
-    try:
-        best = study.best_trial
-        best_dict = {
-            "trial_number": best.number,
-            "value": best.value,
-            "a": best.params.get("a"),
-            "b": best.params.get("b"),
-            "c": best.params.get("c"),
-            "min_distance_km": best.params.get("min_distance_km"),
-            "n_samples": best.params.get("n_samples"),
-            "datetime": best.datetime_complete.isoformat() if best.datetime_complete else None,
-        }
-        em.save_results("best_trial", best_dict, format="json")
-        
-        # Extract weights
-        if all(k in best.params for k in ["a", "b", "c"]):
-            total = best.params["a"] + best.params["b"] + best.params["c"]
-            alpha = float(best.params["a"] / total)
-            beta = float(best.params["b"] / total)
-            gamma = float(best.params["c"] / total)
-        else:
-            alpha = beta = gamma = None
-        
-        # Save best config
-        best_config = {
-            "selection": {
-                "alpha_visual": alpha,
-                "beta_spatial": beta,
-                "gamma_temporal": gamma,
-                "min_distance_km": int(best.params.get("min_distance_km", min_distance_km)),
-                "n_samples": int(best.params.get("n_samples", n_samples or 34)),
-                "pre_selected_names": pre_selected_names,
-                "pre_selected_indices": pre_selected_indices,
+
+    # Determine if there are any valid completed trials with numeric values
+    import math
+    valid_values = [t.value for t in study.trials if t.value is not None and not (isinstance(t.value, float) and math.isnan(t.value))]
+
+    # Save best trial only if we have valid values
+    if len(valid_values) == 0:
+        em.log("No valid completed trials found; skipping best trial extraction.", level="warning")
+        best_value = None
+        best_trial_number = None
+    else:
+        try:
+            best = study.best_trial
+            best_dict = {
+                "trial_number": best.number,
+                "value": best.value,
+                "a": best.params.get("a"),
+                "b": best.params.get("b"),
+                "c": best.params.get("c"),
+                "min_distance_km": best.params.get("min_distance_km"),
+                "n_samples": best.params.get("n_samples"),
+                "datetime": best.datetime_complete.isoformat() if best.datetime_complete else None,
             }
-        }
-        em.save_config("best_selection", best_config)
-        em.log(f"Best trial: #{best.number}, value={best.value:.4f}")
-    except Exception as e:
-        em.log(f"Error saving best trial: {e}", level="error")
-    
+            em.save_results("best_trial", best_dict, format="json")
+
+            # Extract weights
+            if all(k in best.params for k in ["a", "b", "c"]):
+                total = best.params["a"] + best.params["b"] + best.params["c"]
+                alpha = float(best.params["a"] / total)
+                beta = float(best.params["b"] / total)
+                gamma = float(best.params["c"] / total)
+            else:
+                alpha = beta = gamma = None
+
+            # Save best config
+            best_config = {
+                "selection": {
+                    "alpha_visual": alpha,
+                    "beta_spatial": beta,
+                    "gamma_temporal": gamma,
+                    "min_distance_km": int(best.params.get("min_distance_km", min_distance_km)),
+                    "n_samples": int(best.params.get("n_samples", n_samples or 34)),
+                    "pre_selected_names": pre_selected_names,
+                    "pre_selected_indices": pre_selected_indices,
+                }
+            }
+            em.save_config("best_selection", best_config)
+            em.log(f"Best trial: #{best.number}, value={best.value:.4f}")
+            best_value = best.value
+            best_trial_number = best.number
+        except Exception as e:
+            em.log(f"Error saving best trial: {e}", level="error")
+            best_value = None
+            best_trial_number = None
+
     # Mark stage complete
     em.mark_stage_complete(
         "optuna",
         summary={
             "n_trials_completed": len(study.trials),
-            "best_value": study.best_value,
-            "best_trial_number": study.best_trial.number if study.best_trial else None,
+            "best_value": best_value,
+            "best_trial_number": best_trial_number,
         }
     )
     
