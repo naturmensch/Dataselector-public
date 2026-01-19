@@ -45,7 +45,7 @@ def run_single_optuna(sampler: str, seed: int, n_trials: int, n_candidates: int,
     exp_name = f"{dataset_prefix}{sampler}_{n_trials}trials_s{seed}"
     cmd = [
         sys.executable,
-        'scripts/optuna_optimize.py',
+        str(ROOT / 'scripts' / 'optuna_optimize.py'),
         '--n-trials', str(n_trials),
         '--n-candidates', str(n_candidates),
         '--n-samples-min', '30',
@@ -65,7 +65,7 @@ def run_single_optuna(sampler: str, seed: int, n_trials: int, n_candidates: int,
         raise RuntimeError(f"Run failed for {sampler} seed {seed}")
 
     # Find latest run dir
-    run_dirs = sorted(Path('outputs/runs').glob(f'*{exp_name}'))
+    run_dirs = sorted((ROOT / 'outputs' / 'runs').glob(f'*{exp_name}'))
     if not run_dirs:
         out = proc.stdout or ""
         err = proc.stderr or ""
@@ -76,6 +76,13 @@ def run_single_optuna(sampler: str, seed: int, n_trials: int, n_candidates: int,
         raise FileNotFoundError(msg)
     run_dir = run_dirs[-1]
     trials_csv = run_dir / 'results' / 'trials.csv'
+
+    # Retry loop for output integrity (filesystem latency)
+    for _ in range(5):
+        if trials_csv.exists() and trials_csv.stat().st_size > 0:
+            break
+        time.sleep(1)
+
     if not trials_csv.exists():
         raise FileNotFoundError(f"trials.csv missing in {run_dir}")
 
@@ -83,7 +90,7 @@ def run_single_optuna(sampler: str, seed: int, n_trials: int, n_candidates: int,
     df = df[df['value'].notna()]
     best_val = float(df['value'].max()) if len(df) > 0 else float('nan')
     best_trial = int(df.loc[df['value'].idxmax(), 'trial_number']) if len(df) > 0 else -1
-    cumulative_best = df['value'].expanding().max() if len(df) > 0 else pd.Series([])
+    cumulative_best = df['value'].expanding().max() if len(df) > 0 else pd.Series(dtype=float)
     threshold_idx = (cumulative_best >= (best_val * 0.99)).idxmax() if (len(df) > 0 and (cumulative_best >= (best_val*0.99)).any()) else (len(df) - 1)
 
     return {
@@ -163,7 +170,7 @@ def compare_and_analyze(results_df: pd.DataFrame, out_dir: Path):
     # Plots: boxplot of best values
     fig, ax = plt.subplots(figsize=(8, 6))
     data = [grouped[s] for s in samplers]
-    ax.boxplot(data, labels=[s.upper() for s in samplers], patch_artist=True)
+    ax.boxplot(data, tick_labels=[s.upper() for s in samplers], patch_artist=True)
     ax.set_title('Best Value Distribution per Sampler (across seeds)')
     ax.set_ylabel('Objective Value')
 
@@ -243,7 +250,7 @@ def main():
     if args.output:
         global_out_dir = Path(args.output)
     else:
-        global_out_dir = Path('outputs') / 'runs' / f'sampler_multi_{timestamp}'
+        global_out_dir = ROOT / 'outputs' / 'runs' / f'sampler_multi_{timestamp}'
     global_out_dir.mkdir(parents=True, exist_ok=True)
 
     all_results = []

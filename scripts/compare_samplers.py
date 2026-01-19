@@ -18,6 +18,10 @@ import argparse
 import sys
 from pathlib import Path
 from datetime import datetime
+import multiprocessing
+import logging
+import pickle
+import time
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
@@ -29,6 +33,76 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='[%(asctime)s] %(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
+
+from typing import Optional
+
+def run_single_sampler(sampler: str, n_trials: int, n_candidates: int, seed: int,
+                       preselection_flag: str, exp_description: str) -> Optional[str]:
+    """Run a single sampler optimization (returns run_dir or None).
+    
+    This function is defined at module level to be picklable for multiprocessing.
+    """
+    import subprocess
+    
+    exp_name = f"{sampler}_{n_trials}trials"
+    logger.info(f"Starting optimization for {sampler.upper()}...")
+    
+    cmd = [
+        sys.executable,
+        str(ROOT / 'scripts' / 'optuna_optimize.py'),
+        '--n-trials', str(n_trials),
+        '--n-candidates', str(n_candidates),
+        '--n-samples-min', '30',
+        '--n-samples-max', '50',
+        '--sampler', sampler,
+        '--seed', str(seed),
+        '--exp-name', exp_name,
+        '--exp-desc', f"{exp_description} ({sampler})",
+    ]
+    
+    if preselection_flag:
+        cmd.append(preselection_flag)
+    
+    try:
+        # Run optimization, capturing output to avoid interleaving
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            logger.error(f"Sampler {sampler} failed:\n{result.stderr}")
+            return None
+        
+        # Find latest run dir
+        run_dirs = sorted((ROOT / 'outputs' / 'runs').glob(f'*{exp_name}'))
+        if not run_dirs:
+            logger.warning(f"Could not find run directory for {sampler}")
+            return None
+        
+        run_dir = run_dirs[-1]
+        trials_csv = run_dir / 'results' / 'trials.csv'
+        
+        # Verify output integrity with a short retry loop to avoid races on shared FS
+        n_retries = 3
+        for attempt in range(n_retries):
+            if trials_csv.exists() and trials_csv.stat().st_size >= 10:
+                break
+            if attempt < n_retries - 1:
+                logger.info(f"Waiting for trials.csv for {sampler} (attempt {attempt+1}/{n_retries})")
+                time.sleep(0.5)
+        else:
+            if not trials_csv.exists():
+                logger.error(f"Run {sampler} finished but {trials_csv} is missing after {n_retries} retries.")
+            else:
+                logger.error(f"Run {sampler} finished but {trials_csv} seems empty/corrupt after {n_retries} retries.")
+            return None
+        
+        return str(run_dir)
+        
+    except Exception as e:
+        logger.error(f"Exception running {sampler}: {e}")
+        return None
 
 def run_sampler_comparison(
     samplers=['qmc', 'tpe', 'cmaes'],
@@ -39,54 +113,49 @@ def run_sampler_comparison(
     exp_description="Sampler comparison study"
 ):
     """Run Optuna optimization with different samplers and compare results."""
-    import subprocess
     
     timestamp = datetime.now().strftime("%Y%m%d_T%H%M%S")
-    base_run = Path('outputs') / 'runs' / f'sampler_comparison_{timestamp}'
+    base_run = ROOT / 'outputs' / 'runs' / f'sampler_comparison_{timestamp}'
     base_run.mkdir(parents=True, exist_ok=True)
     
     results = []
     
-    for sampler in samplers:
-        print(f"\n{'='*70}")
-        print(f"Running optimization with {sampler.upper()} sampler")
-        print(f"{'='*70}\n")
+    # Prepare arguments for workers
+    tasks = [
+        (sampler, n_trials, n_candidates, seed, preselection_flag, exp_description)
+        for sampler in samplers
+    ]
+    
+    run_dirs_str = []
+    
+    # Execute runs (Parallel with Fallback)
+    try:
+        # Prefer 'fork' on Linux/Mac for speed/compatibility, default elsewhere
+        ctx = multiprocessing.get_context("fork") if "fork" in multiprocessing.get_all_start_methods() else multiprocessing.get_context()
+        try:
+            # Prefer an integer number of CPUs; ctx.cpu_count() may be mocked or
+            # return non-int values (e.g., MagicMock in tests), so cast defensively.
+            n_cpus = int(ctx.cpu_count())
+        except Exception:
+            # If context does not provide cpu_count, default to conservative 1
+            n_cpus = 1
+        n_procs = min(len(samplers), max(1, n_cpus))
+        logger.info(f"Running comparison with {n_procs} processes...")
         
-        exp_name = f"{sampler}_{n_trials}trials"
-        
-        cmd = [
-            sys.executable,
-            'scripts/optuna_optimize.py',
-            '--n-trials', str(n_trials),
-            '--n-candidates', str(n_candidates),
-            '--n-samples-min', '30',
-            '--n-samples-max', '50',
-            '--sampler', sampler,
-            '--seed', str(seed),
-            '--exp-name', exp_name,
-            '--exp-desc', f"{exp_description} ({sampler})",
-        ]
-        
-        if preselection_flag:
-            cmd.append(preselection_flag)
-        
-        # Run optimization
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        
-        if result.returncode != 0:
-            print(f"ERROR: {sampler} run failed!")
-            print(result.stderr)
+        with ctx.Pool(processes=n_procs) as pool:
+            run_dirs_str = pool.starmap(run_single_sampler, tasks)
+            
+    except (OSError, pickle.PicklingError, ValueError, Exception) as e:
+        logger.warning(f"Parallel execution failed ({e}). Falling back to serial execution.")
+        run_dirs_str = [run_single_sampler(*t) for t in tasks]
+
+    # Analyze results
+    for i, run_dir_s in enumerate(run_dirs_str):
+        sampler = samplers[i]
+        if not run_dir_s:
             continue
         
-        print(result.stdout)
-        
-        # Load results
-        run_dirs = sorted(Path('outputs/runs').glob(f'*{exp_name}'))
-        if not run_dirs:
-            print(f"WARNING: Could not find run directory for {sampler}")
-            continue
-        
-        run_dir = run_dirs[-1]
+        run_dir = Path(run_dir_s)
         trials_csv = run_dir / 'results' / 'trials.csv'
         
         if trials_csv.exists():
@@ -116,20 +185,17 @@ def run_sampler_comparison(
                     'run_dir': str(run_dir),
                 })
                 
-                print(f"\n✓ {sampler.upper()} Results:")
-                print(f"  Best value: {best_value:.4f} (trial {best_trial_num})")
-                print(f"  Mean ± std: {mean_value:.4f} ± {std_value:.4f}")
-                print(f"  Convergence: trial {conv_idx} ({conv_idx/len(df)*100:.1f}%)")
+                logger.info(f"✓ {sampler.upper()} Results: Best={best_value:.4f} (Trial {best_trial_num}), Conv={conv_idx}")
     
     if not results:
-        print("\nERROR: No results collected!")
+        logger.error("No results collected!")
         return 1
     
     # Save comparison summary
     df_results = pd.DataFrame(results)
     summary_file = base_run / 'comparison_summary.csv'
     df_results.to_csv(summary_file, index=False)
-    print(f"\n✓ Saved comparison summary: {summary_file}")
+    logger.info(f"Saved comparison summary: {summary_file}")
     
     # Create comparison plots
     create_comparison_plots(df_results, results, base_run)
@@ -202,7 +268,8 @@ def create_comparison_plots(df_summary, results, output_dir):
         data_for_box.append(df['value'].values)
         labels_for_box.append(sampler.upper())
     
-    bp = ax.boxplot(data_for_box, labels=labels_for_box, patch_artist=True)
+    # Use tick_labels instead of labels to avoid Matplotlib warning
+    bp = ax.boxplot(data_for_box, tick_labels=labels_for_box, patch_artist=True)
     for patch in bp['boxes']:
         patch.set_facecolor('#3498db')
         patch.set_alpha(0.6)
