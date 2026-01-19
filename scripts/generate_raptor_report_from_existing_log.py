@@ -15,8 +15,9 @@ else:
     LOG_FILE = LOG_DIR / 'XXL_FULL_RUN.log'
 
 # Find latest XXL run dir
-xxl_dirs = sorted(glob.glob(str(ROOT / 'outputs' / 'runs' / '*hamburg_xxl_final*')))
-latest_xxl = Path(xxl_dirs[-1]) if xxl_dirs else None
+runs_root = ROOT / 'outputs' / 'runs'
+xxl_dirs = sorted([p for p in runs_root.iterdir() if p.is_dir() and 'hamburg' in p.name.lower() and 'xxl' in p.name.lower()]) if runs_root.exists() else []
+latest_xxl = xxl_dirs[-1] if xxl_dirs else None
 
 # Try load final selection
 final_selection_file = ROOT / 'outputs' / 'THESIS_FINAL_SELECTION_XXL.json'

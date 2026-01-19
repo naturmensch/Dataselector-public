@@ -12,7 +12,7 @@ import sys
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from scripts.xxl_KDR146_run_thesis_complete import _extract_xxl_final_statistics, _validate_convergence_from_validation_data, run_cmd_with_retry, phase_1_xxl_hamburg, phase_2_reproducibility
+from scripts.xxl_KDR146_run_thesis_complete import _extract_xxl_final_statistics, _validate_convergence_from_validation_data, run_cmd_with_retry, phase_1_xxl_hamburg, phase_2_reproducibility, _find_xxl_runs
 
 
 def test_extract_statistics_with_valid_data(tmp_path):
@@ -238,6 +238,59 @@ def test_validate_convergence_uses_cache(tmp_path, monkeypatch):
 
 
 def test_validate_convergence_falls_back_to_archive_runs(tmp_path):
+    # Create mock runs inside archive_local/old_runs
+    for seed in range(42, 45):
+        run_dir = tmp_path / 'archive_local' / 'old_runs' / f'20260117_hamburg_cmaes_500trials_s{seed}'
+        results_dir = run_dir / 'results'
+        results_dir.mkdir(parents=True)
+        # simple trials: converge at trial 50
+        mock_data = {'trial_number': list(range(200)), 'state': ['TrialState.COMPLETE']*200, 'value': [float(i <= 50 and i or 50.0) for i in range(200)]}
+        df = pd.DataFrame(mock_data)
+        (results_dir / 'trials.csv').write_text(df.to_csv(index=False))
+
+    result = _validate_convergence_from_validation_data(tmp_path)
+    assert result is not None
+    assert result['n_seeds_analyzed'] >= 3
+    assert result['convergence_99_trials_median'] <= 60
+
+
+def test_extract_statistics_with_thesis_named_run(tmp_path):
+    """Ensure extraction also works with run directories like 'thesis_xxl_hamburg_final'."""
+    run_dir = tmp_path / "outputs" / "runs" / "20260119_T124819_thesis_xxl_hamburg_final"
+    results_dir = run_dir / "results"
+    results_dir.mkdir(parents=True)
+
+    # Create mock trials.csv
+    mock_data = {
+        'trial_number': [0, 1, 2],
+        'state': ['TrialState.COMPLETE'] * 3,
+        'value': [10.0, 12.5, 11.0],
+        'a': [0.55, 0.60, 0.58],
+        'b': [0.10, 0.12, 0.09],
+        'c': [0.35, 0.28, 0.33],
+        'min_distance_km': [40.0, 42.0, 38.0],
+        'n_samples': [34, 35, 33],
+    }
+    df = pd.DataFrame(mock_data)
+    trials_csv = results_dir / "trials.csv"
+    df.to_csv(trials_csv, index=False)
+
+    result = _extract_xxl_final_statistics(tmp_path)
+    assert result is not None
+    assert result['best_value'] == 12.5
+    assert result['best_trial'] == 1
+
+
+def test_find_xxl_runs_detects_various_names(tmp_path):
+    """Helper should find runs with different naming conventions."""
+    p1 = tmp_path / "outputs" / "runs" / "20260118_T120000_hamburg_xxl_final"
+    p2 = tmp_path / "outputs" / "runs" / "20260119_T124819_thesis_xxl_hamburg_final"
+    p1.mkdir(parents=True)
+    p2.mkdir(parents=True)
+
+    found = _find_xxl_runs(tmp_path)
+    assert p1 in found and p2 in found
+
     # Create mock runs inside archive_local/old_runs
     for seed in range(42, 45):
         run_dir = tmp_path / 'archive_local' / 'old_runs' / f'20260117_hamburg_cmaes_500trials_s{seed}'

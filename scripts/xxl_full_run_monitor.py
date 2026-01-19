@@ -315,10 +315,11 @@ def main():
                             _monitor_log('OBSERVED: PHASE 4 COMPLETE', ACTIVE_LOG)
                         continue
 
-            # Detect creation of XXXL run folder
-            xxl_dirs = sorted(glob.glob(str(ROOT / 'outputs' / 'runs' / '*hamburg_xxl_final*')))
+            # Detect creation of XXL run folder
+            runs_root = ROOT / 'outputs' / 'runs'
+            xxl_dirs = sorted([p for p in runs_root.iterdir() if p.is_dir() and 'hamburg' in p.name.lower() and 'xxl' in p.name.lower()]) if runs_root.exists() else []
             if xxl_dirs:
-                latest_xxl = Path(xxl_dirs[-1])
+                latest_xxl = xxl_dirs[-1]
                 trials_csv = latest_xxl / 'results' / 'trials.csv'
                 
                 if trials_csv.exists() and trials_csv.stat().st_size > 0:
@@ -422,9 +423,10 @@ def main():
 
 
     # Find latest XXL run dir
-    xxl_dirs = sorted(glob.glob(str(ROOT / 'outputs' / 'runs' / '*hamburg_xxl_final*')))
+    runs_root = ROOT / 'outputs' / 'runs'
+    xxl_dirs = sorted([p for p in runs_root.iterdir() if p.is_dir() and 'hamburg' in p.name.lower() and 'xxl' in p.name.lower()]) if runs_root.exists() else []
     if xxl_dirs:
-        latest_xxl = Path(xxl_dirs[-1])
+        latest_xxl = xxl_dirs[-1]
     else:
         latest_xxl = None
 

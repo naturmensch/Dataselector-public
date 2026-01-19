@@ -39,6 +39,21 @@ def log(msg: str, level: str = "INFO") -> None:
     ts = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
     print(f"[{ts}] [{level}] {msg}")
 
+
+def _find_xxl_runs(root: Path) -> list[Path]:
+    """Find XXL Hamburg run directories robustly.
+
+    A run directory is considered an "XXL Hamburg" run when its name
+    contains both "hamburg" and "xxl" (case-insensitive). This is
+    tolerant to different naming conventions like
+    `thesis_xxl_hamburg_final` or `20260118_T120000_hamburg_xxl_final`.
+    """
+    runs_dir = root / 'outputs' / 'runs'
+    if not runs_dir.exists():
+        return []
+    return sorted([p for p in runs_dir.iterdir() if p.is_dir() and 'hamburg' in p.name.lower() and 'xxl' in p.name.lower()])
+
+
 def _validate_convergence_from_validation_data(root: Path) -> dict | None:
     """Analyze convergence from 10-seed Hamburg validation runs (the actual baseline).
     
@@ -227,12 +242,12 @@ def _extract_xxl_final_statistics(root: Path) -> dict | None:
     """
     try:
         # Find XXL Hamburg run
-        xxl_runs = list(root.glob('outputs/runs/*hamburg_xxl_final*'))
+        xxl_runs = _find_xxl_runs(root)
         if not xxl_runs:
             log("ERROR: XXL Hamburg run not found", "ERROR")
             return None
         
-        xxl_run = sorted(xxl_runs)[-1]
+        xxl_run = xxl_runs[-1]
         log(f"Found XXL run: {xxl_run.name}")
         
         # Load trials
