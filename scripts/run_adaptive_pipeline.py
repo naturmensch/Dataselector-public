@@ -82,7 +82,7 @@ def main():
     parser.add_argument('--optuna-sampler', choices=['tpe','qmc','cmaes'], default='tpe',
                         help='Sampler to use within Optuna optimization (default: tpe)')
     parser.add_argument('--n-trials', type=int, default=200)
-    parser.add_argument('--n-samples', type=int, default=34, help='Target number of samples (default: 34)')
+    parser.add_argument('--n-samples', type=int, default=None, help='Target number of final samples (overrides adaptive heuristic)')
     parser.add_argument('--n-candidates', type=int, default=None, help='Number of candidates (default: full dataset size)')
     parser.add_argument('--n-boot', type=int, default=200)
     parser.add_argument('--fine-max-runs', type=int, default=None, help='Max runs for fine sweep (smoke testing)')

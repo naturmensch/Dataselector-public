@@ -149,7 +149,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--min-dist", type=int, nargs="+", default=[25, 50, 75])
     parser.add_argument("--seeds", type=int, nargs="+", default=[42, 43, 44, 45, 46])
-    parser.add_argument("--n-samples", type=int, default=34)
+    parser.add_argument("--n-samples", type=int, default=None, help='Target number of final samples (overrides config.selection.n_samples when provided)')
     parser.add_argument("--pre-names", type=str, nargs="*", default=None)
     parser.add_argument("--pre-indices", type=int, nargs="*", default=None)
     args = parser.parse_args()

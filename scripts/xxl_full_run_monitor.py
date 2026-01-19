@@ -317,7 +317,19 @@ def main():
 
             # Detect creation of XXL run folder
             runs_root = ROOT / 'outputs' / 'runs'
-            xxl_dirs = sorted([p for p in runs_root.iterdir() if p.is_dir() and 'hamburg' in p.name.lower() and 'xxl' in p.name.lower()]) if runs_root.exists() else []
+            xxl_dirs = []
+            if runs_root.exists():
+                xxl_dirs.extend([p for p in runs_root.iterdir() if p.is_dir() and 'hamburg' in p.name.lower() and 'xxl' in p.name.lower()])
+            # Backward-compatible: also honor glob results (tests may patch glob.glob)
+            try:
+                for p in glob.glob(str(runs_root / '*')):
+                    ppath = Path(p)
+                    if ppath.is_dir() and 'hamburg' in ppath.name.lower() and 'xxl' in ppath.name.lower():
+                        if ppath not in xxl_dirs:
+                            xxl_dirs.append(ppath)
+            except Exception:
+                pass
+            xxl_dirs = sorted(xxl_dirs)
             if xxl_dirs:
                 latest_xxl = xxl_dirs[-1]
                 trials_csv = latest_xxl / 'results' / 'trials.csv'

@@ -28,11 +28,11 @@ clustering:
 # Diversity Selection (Multi-Criteria Facility Location)
 # Updated: 2026-01-15 based on Optuna optimization and Fine Sweep validation
 # Dataset: 673 tiles, 42.8% WWI-clustering (1906-1918), median neighbor distance ~28 km
-# Default: finale Auswahlgröße auf 5% gesetzt (≈34 Samples)
+# Default: historically set to 5% (≈34 Samples) — changed so no hard default is enforced
 selection:
-  n_samples: null  # adaptiv berechnen: kein harter Default. Empfehlenswert via `scripts/run_adaptive_pipeline.py` oder `src.pipeline_utils.compute_adaptive_n_initial`
-                 # Änderbar via: python scripts/final_selection.py --n-samples 50
-                 # Wissenschaftliche Begründung: Pan-Dataset-Adaption statt pauschaler 5%-Faustregel
+  n_samples: null  # If null, n_samples is computed adaptively via `src.pipeline_utils.compute_adaptive_n_initial` or set persistently here to an int.
+                 # Recommended: set persistently in this config (e.g. n_samples: 50) or override on the CLI with `--n-samples` when invoking pipeline
+                 # Rationale: prefer dataset-adaptive selection rather than a fixed 5% heuristic
   metric: "euclidean"
   
   # DEPRECATED: Legacy parameters (use multi-criteria instead)
