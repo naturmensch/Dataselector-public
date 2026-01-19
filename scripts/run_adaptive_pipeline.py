@@ -50,6 +50,7 @@ parser.add_argument('--sampler', choices=['lhs','sobol'], default='sobol',
 parser.add_argument('--optuna-sampler', choices=['tpe','qmc','cmaes'], default='tpe',
                     help='Sampler to use within Optuna optimization (default: tpe)')
 parser.add_argument('--n-trials', type=int, default=200)
+parser.add_argument('--n-samples', type=int, default=34, help='Target number of samples (default: 34)')
 parser.add_argument('--n-candidates', type=int, default=None, help='Number of candidates (default: full dataset size)')
 parser.add_argument('--n-boot', type=int, default=200)
 parser.add_argument('--fine-max-runs', type=int, default=None, help='Max runs for fine sweep (smoke testing)')
@@ -248,6 +249,7 @@ else:
             optuna_cmd = (
                 f'PYTHONPATH=. python scripts/optuna_optimize.py '
                 f'--n-trials {args.n_trials} '
+                f'--n-samples {args.n_samples} '
                 f'--n-candidates {args.n_candidates} '
                 f'--min-distance-min {int(opt_lo)} '
                 f'--min-distance-max {int(opt_hi)} '

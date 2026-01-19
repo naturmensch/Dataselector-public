@@ -409,8 +409,8 @@ def run_optuna(
     has_range = (n_samples_min is not None) and (n_samples_max is not None)
     if has_fixed and has_range:
         raise ValueError("Specify either --n-samples OR the range --n-samples-min/--n-samples-max, not both.")
-    if not has_fixed and not has_range:
-        raise ValueError("Specify either --n-samples OR both --n-samples-min/--n-samples-max.")
+    # Relaxed validation: if neither is specified, objective_factory will use a heuristic default.
+    # if not has_fixed and not has_range: ...
     
     # Create objective factory
     objective = objective_factory(
