@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate raptor_bericht.md from existing XXL_FULL_RUN.log without starting a run."""
+"""Generate monitor_report.md from existing XXL_FULL_RUN.log without starting a run."""
 from pathlib import Path
 import json
 from datetime import datetime, timezone
@@ -40,7 +40,7 @@ if LOG_FILE.exists():
         phase_events.append('PHASE 4 COMPLETE')
 
 report_lines = []
-report_lines.append(f"# Raptor Bericht — XXL Full Run\n")
+report_lines.append(f"# Monitor Bericht — XXL Full Run\n")
 report_lines.append(f"**Generated**: {datetime.now(timezone.utc).isoformat()}Z")
 report_lines.append('\n## Observed phase events')
 for e in phase_events:

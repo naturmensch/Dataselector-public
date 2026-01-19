@@ -4,7 +4,7 @@
 This script launches `scripts/xxl_KDR146_run_thesis_complete.py` as a subprocess,
 streams stdout/stderr to `outputs/XXL_FULL_RUN.log`, monitors progress by
 inspecting the log and `outputs/runs/` for the final XXL run directory, and
-writes a scientific report `raptor_bericht.md` inside the discovered run dir
+writes a monitor report `monitor_report.md` inside the discovered run dir
 when the run finishes (success or failure).
 
 Usage:
@@ -439,7 +439,7 @@ def main():
 
     # Collect some metrics
     report_lines = []
-    report_lines.append(f"# Raptor Bericht — XXL Full Run\n")
+    report_lines.append(f"# Monitor Bericht — XXL Full Run\n")
     report_lines.append(f"**Run started**: {datetime.fromtimestamp(start_time, timezone.utc).isoformat()}Z")
     report_lines.append(f"**Run finished**: {datetime.fromtimestamp(end_time, timezone.utc).isoformat()}Z")
     report_lines.append(f"**Elapsed (s)**: {elapsed:.1f}")
