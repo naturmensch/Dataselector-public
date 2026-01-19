@@ -282,6 +282,7 @@ def run_optuna(
     pre_selected_indices: Optional[List[int]] = None,
     exp_name: str = "optuna",
     exp_description: str = "",
+    storage: Optional[str] = None,
 ):
     """Run Optuna optimization with professional experiment management.
     
@@ -299,6 +300,7 @@ def run_optuna(
         pre_selected_indices: List of tile indices to preselect
         exp_name: Experiment identifier for versioning
         exp_description: Human-readable description
+        storage: Optuna storage URL (e.g. sqlite:///...). If None, defaults to sqlite in run dir.
     """
     # Initialize or attach to an experiment manager
     import os
@@ -400,9 +402,15 @@ def run_optuna(
     
     em.log(f"Initialized incremental trial writer: {trials_csv_path}")
     
+    # Determine storage URL if not provided
+    if storage is None:
+        db_path = em.run_dir / "optuna_study.db"
+        storage = f"sqlite:///{db_path}"
+        em.log(f"Using persistent storage: {storage}")
+
     # Create Optuna study
     sampler = get_optuna_sampler(sampler_name, seed=seed)
-    study = optuna.create_study(direction="maximize", study_name=study_name, sampler=sampler)
+    study = optuna.create_study(direction="maximize", study_name=study_name, sampler=sampler, storage=storage, load_if_exists=True)
     
     # Validate n_samples configuration
     has_fixed = n_samples is not None
@@ -549,6 +557,7 @@ if __name__ == "__main__":
     parser.add_argument("--exp-desc", type=str, default="", help="Experiment description")
     parser.add_argument("--hamburg", action="store_true", help="Convenience flag: pre-select Hamburg")
     parser.add_argument("--KDR146", action="store_true", help="Convenience flag: pre-select KDR_146")
+    parser.add_argument("--optuna-storage", type=str, default=None, help="Optuna storage URL (e.g. sqlite:///path/to/db). Defaults to sqlite in run dir.")
 
     args = parser.parse_args()
 
@@ -577,4 +586,5 @@ if __name__ == "__main__":
         pre_selected_indices=args.pre_indices,
         exp_name=args.exp_name,
         exp_description=args.exp_desc,
+        storage=args.optuna_storage,
     )
