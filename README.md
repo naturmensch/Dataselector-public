@@ -167,6 +167,7 @@ python scripts/run_adaptive_pipeline.py --yes
 - `--n-lhs`: Anzahl LHS-Samples (Standard: adaptiv, min. 27)
 - `--fine-max-runs`: Fine Grid Runs (Standard: 100)
 - `--n-trials`: Optuna Trials (Standard: 200)
+- `--n-samples`: Target number of final samples (overrides `config.selection.n_samples`; if omitted uses adaptive heuristic)
 - `--n-boot`: Bootstrap Resamples (Standard: 200)
 - `--skip-optuna`: Überspringt Optuna-Phase
 - `--skip-bootstrap-injection`: Überspringt Bootstrap-Injection

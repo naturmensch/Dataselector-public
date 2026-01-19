@@ -1,5 +1,11 @@
 # Changelog
 
+## [2026-01-19] - Configuration: persistent `n_samples`, tests & monitor robustness
+- Removed hard-coded CLI default `34` for `--n-samples`. The selection size is now **config-driven** (set `selection.n_samples` in `config/pipeline_config.yaml`) or can be overridden on the CLI with `--n-samples`.
+- Added unit test `tests/test_run_adaptive_default_n_samples.py` to ensure help text and behavior remain consistent.
+- Fixed monitor run detection to be more robust across environments (improved handling of `outputs/runs/` discovery).
+- Added optional helper `scripts/merge_xxl_logs.py` for post-hoc consolidation/annotation of run logs (intentionally **not** integrated automatically into the monitor).
+
 ## [2026-01-16] - Run orchestration: detach flag
 - Added `--detach` flag to `scripts/run_full_experiment.sh` to start experiments detached; writes PID and session log into `outputs/experiments/`.
 - Added test `tests/test_run_full_experiment_detach.py` to verify detach behavior.
