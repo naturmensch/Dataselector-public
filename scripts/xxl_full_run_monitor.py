@@ -550,7 +550,26 @@ def _resume_run(run_selector: str, active_log: Path, force: bool = False, dry_ru
 
     # Finalize phase: check for final selection JSON
     final_selection_global = ROOT / 'outputs' / 'THESIS_FINAL_SELECTION_XXL.json'
-    if not final_selection_global.exists():
+    need_finalize = True
+    if final_selection_global.exists():
+        try:
+            sel = json.loads(final_selection_global.read_text())
+            sel_run = sel.get('run_id')
+            # If the global final selection belongs to this run, we can skip finalization
+            if sel_run and str(sel_run) == run_dir.name:
+                need_finalize = False
+                _monitor_log(f"Global final selection already exists for this run ({sel_run}); skipping finalize.", active_log)
+            # If sel_run contains the run_dir.name as substring (tolerant matching), also skip
+            elif sel_run and run_dir.name in str(sel_run):
+                need_finalize = False
+                _monitor_log(f"Global final selection corresponds to this run ({sel_run}); skipping finalize.", active_log)
+            else:
+                _monitor_log(f"Global final selection exists for different run ({sel_run}); will finalize current run.", active_log)
+        except Exception:
+            _monitor_log("Could not parse global final selection; scheduling finalize for current run.", active_log)
+            need_finalize = True
+
+    if need_finalize:
         finalize_cmd = (
             f"{sys.executable} -c \"from pathlib import Path; from scripts.xxl_KDR146_run_thesis_complete import _extract_xxl_final_statistics;"
             f" import sys; rc=_extract_xxl_final_statistics(Path('.')); sys.exit(0 if rc else 1)\""
