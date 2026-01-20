@@ -22,7 +22,8 @@ def test_optuna_storage_creation(tmp_path):
     # Run optuna_optimize.py with small trials
     cmd = [
         sys.executable,
-        "scripts/optuna_optimize.py",
+        "-m",
+        "scripts.optuna_optimize",
         "--n-trials", "2",
         "--n-candidates", "10",
         "--dim", "4",
@@ -68,7 +69,8 @@ def test_import_script(tmp_path):
     
     cmd = [
         sys.executable,
-        "scripts/import_trials_csv_to_optuna.py",
+        "-m",
+        "scripts.import_trials_csv_to_optuna",
         "--csv", str(csv_path),
         "--storage", storage,
         "--study-name", "test_import"

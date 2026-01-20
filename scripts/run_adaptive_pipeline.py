@@ -207,7 +207,7 @@ def main():
         # Log preselection choices for this run
         print(f"Using pre-selected names: {pre_names if pre_names else None}, pre-selected indices: {pre_indices if pre_indices else None}")
 
-        lhs_cmd = f'PYTHONPATH=. python scripts/tune_weights_and_run.py --n-samples {args.n_lhs} --seed {args.seed} --sampler {args.sampler}{pre_arg}'
+        lhs_cmd = f'PYTHONPATH=. python -m scripts.tune_weights_and_run --n-samples {args.n_lhs} --seed {args.seed} --sampler {args.sampler}{pre_arg}'
         # Run through wrapper when available to ensure canonical env usage
         run_cmd_safe(lhs_cmd)
 
@@ -238,7 +238,7 @@ def main():
         print('Skipping fine sweep execution (--skip-fine)')
     else:
         print('=== Phase 2: Fine Sweep (Adaptive Bounds) ===')
-        fine_cmd = f'PYTHONPATH=. python scripts/run_fine_sweep.py --min-distances "{min_distances_arg}"{pre_arg}'
+        fine_cmd = f'PYTHONPATH=. python -m scripts.run_fine_sweep --min-distances "{min_distances_arg}"{pre_arg}'
         if args.fine_max_runs:
             fine_cmd += f' --max-runs {args.fine_max_runs}'
         run_cmd_safe(fine_cmd)
@@ -295,7 +295,7 @@ def main():
 
                 # Build command
                 optuna_cmd = (
-                    f'PYTHONPATH=. python scripts/optuna_optimize.py '
+                    f'PYTHONPATH=. python -m scripts.optuna_optimize '
                     f'--n-trials {args.n_trials} '
                     f'--n-candidates {args.n_candidates} '
                     f'--min-distance-min {int(opt_lo)} '
@@ -323,16 +323,19 @@ def main():
 
                 # 6) Analyze Optuna convergence (ensure trials exist)
                 trials_path = Path(em.run_dir) / 'results' / 'trials.csv'
-                if not trials_path.exists() or trials_path.stat().st_size < 10:
-                    msg = f"Optuna run did not produce valid trials.csv at {trials_path}"
-                    if args.continue_on_analysis_failure:
-                        print('WARNING:', msg)
-                    else:
-                        print('ERROR:', msg)
-                        raise SystemExit(1)
+                if args.dry_run:
+                    print('Dry-run: skipping Optuna results existence check and convergence analysis')
+                else:
+                    if not trials_path.exists() or trials_path.stat().st_size < 10:
+                        msg = f"Optuna run did not produce valid trials.csv at {trials_path}"
+                        if args.continue_on_analysis_failure:
+                            print('WARNING:', msg)
+                        else:
+                            print('ERROR:', msg)
+                            raise SystemExit(1)
 
-                # If we reach here, run the convergence analysis
-                run_cmd(f'python scripts/analyze_optuna_convergence.py "{trials_path}" --output-dir "{em.run_dir}/reports"')
+                    # If we reach here, run the convergence analysis
+                    run_cmd(f'python -m scripts.analyze_optuna_convergence "{trials_path}" --output-dir "{em.run_dir}/reports"')
         except Exception as e:
             print('Warning while running Optuna or analysis. Proceeding to Bootstrap stage. Error:')
             print(repr(e))
@@ -342,13 +345,13 @@ def main():
     bootstrap_out = Path(em.run_dir) / 'results' / 'bootstrap_results.csv'
     bootstrap_out.parent.mkdir(parents=True, exist_ok=True)
     bootstrap_summary = bootstrap_out.with_name(bootstrap_out.stem + '_summary.csv')
-    run_cmd_safe(f'PYTHONPATH=. python scripts/bootstrap_pareto_candidates.py --pareto {pareto_fine} --n-boot {args.n_boot} --out {bootstrap_out} --seed {args.seed}{pre_arg}')
+    run_cmd_safe(f'PYTHONPATH=. python -m scripts.bootstrap_pareto_candidates --pareto {pareto_fine} --n-boot {args.n_boot} --out {bootstrap_out} --seed {args.seed}{pre_arg}')
 
     # 8) Apply Bootstrap Best (optional)
     if not args.skip_bootstrap_injection and bootstrap_summary.exists():
         print('=== Applying Bootstrap Best ===')
         try:
-            run_cmd(f'PYTHONPATH=. python scripts/apply_bootstrap_best.py --bootstrap-summary {bootstrap_summary} --write-config outputs/pipeline_config.bootstrap.yaml')
+            run_cmd(f'PYTHONPATH=. python -m scripts.apply_bootstrap_best --bootstrap-summary {bootstrap_summary} --write-config outputs/pipeline_config.bootstrap.yaml')
             print(f'✓ Bootstrap-best config written to outputs/pipeline_config.bootstrap.yaml')
         except Exception as e:
             print(f'Warning: Bootstrap-best application failed: {e}')
@@ -374,7 +377,7 @@ def main():
         report_dir.mkdir(parents=True, exist_ok=True)
         (report_dir / 'run_info.txt').write_text(f'Adaptive pipeline run completed: sampler={args.sampler} n_lhs={args.n_lhs} at {datetime.utcnow().isoformat()}Z\n')
         print(f'Generating experiment report in: {report_dir}')
-        run_cmd(f'PYTHONPATH=. python scripts/generate_experiment_report.py --outdir "{report_dir}"')
+        run_cmd(f'PYTHONPATH=. python -m scripts.generate_experiment_report --outdir "{report_dir}"')
         print(f'Report written: {report_dir / "experiment_report.md"}')
     except Exception as e:
         print(f'Warning: automatic report generation failed: {e}')

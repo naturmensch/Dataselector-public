@@ -25,6 +25,7 @@ import re
 import shutil
 import signal
 from collections import deque
+from typing import Optional
 
 ROOT = Path(__file__).resolve().parents[1]
 # Ensure ROOT is in sys.path so we can import scripts modules directly
@@ -127,6 +128,434 @@ def run_hook(name: str, cmd_str: str, base_log_dir: Path, active_log: Path, time
         
     return meta
 
+
+def _reconstruct_trials_from_db(run_dir: Path, active_log: Path, study_name: Optional[str] = None) -> bool:
+    """Attempt to reconstruct results/trials.csv from optuna_study.db in run_dir.
+
+    Returns True on success, False otherwise. Logs progress to active_log.
+    """
+    _monitor_log("Starting trials.csv reconstruction from optuna_study.db...", active_log)
+
+    # Prefer canonical DB filename, but allow backups like optuna_study.db.bak_*
+    db_path = run_dir / 'optuna_study.db'
+    if not db_path.exists():
+        candidates = list(run_dir.glob('optuna_study.db*'))
+        if candidates:
+            # Pick the most recently modified candidate
+            db_path = max(candidates, key=lambda p: p.stat().st_mtime)
+            _monitor_log(f"Using DB candidate for reconstruction: {db_path}", active_log)
+        else:
+            _monitor_log("No optuna_study.db found; skipping reconstruction.", active_log)
+            return False
+
+    try:
+        import sqlite3
+        import optuna
+        import pandas as pd
+    except Exception as e:
+        _monitor_log(f"Required packages for reconstruction missing: {e}", active_log)
+        return False
+
+    # Quick DB integrity check
+    try:
+        conn = sqlite3.connect(str(db_path))
+        cur = conn.cursor()
+        res = cur.execute("PRAGMA integrity_check;").fetchone()
+        conn.close()
+        if not res or (isinstance(res, tuple) and res[0] != 'ok'):
+            _monitor_log(f"SQLite integrity_check failed: {res}", active_log)
+            return False
+    except Exception as e:
+        _monitor_log(f"Could not run integrity_check on DB: {e}", active_log)
+        return False
+
+    # Determine study_name if not provided
+    if study_name is None:
+        cfg_path = run_dir / 'config' / 'config_optuna.yaml'
+        try:
+            if cfg_path.exists():
+                import yaml
+                cfg = yaml.safe_load(cfg_path.read_text()) or {}
+                study_name = cfg.get('study_name') or cfg.get('optuna', {}).get('study_name')
+        except Exception:
+            pass
+
+    # If still not found, attempt to inspect the sqlite DB for a single study
+    if not study_name:
+        try:
+            conn = sqlite3.connect(str(db_path))
+            cur = conn.cursor()
+            cur.execute("SELECT study_name FROM studies;")
+            rows = cur.fetchall()
+            conn.close()
+            names = [r[0] for r in rows]
+            if len(names) == 1:
+                study_name = names[0]
+                _monitor_log(f"Auto-detected study name: {study_name}", active_log)
+            else:
+                _monitor_log(f"Multiple or no studies found in DB: {names}; falling back to default 'kdr100_opt'", active_log)
+                study_name = 'kdr100_opt'
+        except Exception:
+            study_name = 'kdr100_opt'
+
+    try:
+        study = optuna.load_study(study_name=study_name, storage=f"sqlite:///{db_path}")
+    except Exception as e:
+        _monitor_log(f"Failed to load optuna study from DB: {e}", active_log)
+        return False
+
+    # Extract trials
+    rows = []
+    for t in study.trials:
+        rows.append({
+            "trial_number": t.number,
+            "datetime_start": t.datetime_start.isoformat() if getattr(t, 'datetime_start', None) else None,
+            "datetime_complete": t.datetime_complete.isoformat() if getattr(t, 'datetime_complete', None) else None,
+            "duration_sec": t.duration.total_seconds() if getattr(t, 'duration', None) else None,
+            "value": t.value,
+            "a": t.params.get('a') if getattr(t, 'params', None) else None,
+            "b": t.params.get('b') if getattr(t, 'params', None) else None,
+            "c": t.params.get('c') if getattr(t, 'params', None) else None,
+            "min_distance_km": t.params.get('min_distance_km') if getattr(t, 'params', None) else None,
+            "n_samples": t.params.get('n_samples') if getattr(t, 'params', None) else None,
+            "state": str(t.state),
+        })
+
+    df = pd.DataFrame(rows).sort_values('trial_number')
+
+    out = run_dir / 'results' / 'trials.csv'
+    out.parent.mkdir(parents=True, exist_ok=True)
+    tmp = out.with_suffix('.tmp')
+
+    try:
+        df.to_csv(tmp, index=False)
+        # Backup existing file if present
+        if out.exists():
+            ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+            bak = out.with_suffix(f'.bak_reconstruct_{ts}.csv')
+            try:
+                out.replace(bak)
+            except Exception:
+                try:
+                    out.rename(bak)
+                except Exception:
+                    pass
+        # Atomic replace
+        os.replace(str(tmp), str(out))
+
+        # Write provenance meta
+        meta = {
+            'reconstructed_at': datetime.now(timezone.utc).isoformat(),
+            'source_db': str(db_path),
+            'n_trials': len(df),
+            'best_value': float(df['value'].max()) if not df['value'].isnull().all() else None,
+            'study_name': study_name,
+            'optuna_version': getattr(optuna, '__version__', None),
+        }
+        meta_file = out.with_name('trials_reconstruct_meta.json')
+        try:
+            meta_file.write_text(json.dumps(meta, indent=2))
+        except Exception:
+            pass
+
+        _monitor_log(f"Successfully reconstructed trials.csv ({len(df)} rows)", active_log)
+        return True
+    except Exception as e:
+        _monitor_log(f"Failed to write reconstructed CSV: {e}", active_log)
+        try:
+            tmp.unlink()
+        except Exception:
+            pass
+        return False
+
+
+def _resume_run(run_selector: str, active_log: Path, force: bool = False, dry_run: bool = False) -> dict:
+    """Attempt to safely resume a previous run identified by "last" or run name.
+
+    Behavior:
+      - Performs DB integrity checks and makes a DB backup before any modifications.
+      - Computes remaining Optuna trials (counts only COMPLETE trials) and will resume
+        Optuna by invoking `scripts/optuna_optimize.py --n-trials <remaining>` when
+        trials remain.
+      - If Optuna is already complete, the monitor will inspect downstream pipeline
+        artifacts (reproducibility runs, THESIS_FINAL_SELECTION_XXL.json) and will
+        sequentially run missing phases (e.g., reproducibility, finalization) so
+        the *original* full run can be completed. Each phase is executed via
+        `run_hook` (logs written to `run_dir/logs`) and recorded in
+        `results/resume_meta.json` under the `phases` field.
+      - `--dry-run-restart` shows planned actions without modifying artifacts.
+
+    Returns a metadata dict with outcome and details.
+    """
+    _monitor_log(f"Resume requested for: {run_selector}", active_log)
+    runs_root = ROOT / 'outputs' / 'runs'
+    if not runs_root.exists():
+        _monitor_log("No runs directory found; nothing to resume.", active_log)
+        return {'ok': False, 'reason': 'no_runs_dir'}
+
+    # Resolve run_dir
+    if run_selector == 'last':
+        xxl_dirs = sorted([p for p in runs_root.iterdir() if p.is_dir() and 'hamburg' in p.name.lower() and 'xxl' in p.name.lower()])
+        if not xxl_dirs:
+            _monitor_log("No previous XXL run found to restart.", active_log)
+            return {'ok': False, 'reason': 'no_run_found'}
+        run_dir = xxl_dirs[-1]
+    else:
+        run_dir = runs_root / run_selector
+        if not run_dir.exists():
+            # try fuzzy match
+            candidates = [p for p in runs_root.iterdir() if run_selector in p.name]
+            if candidates:
+                run_dir = sorted(candidates)[-1]
+            else:
+                _monitor_log(f"Specified run dir not found: {run_selector}", active_log)
+                return {'ok': False, 'reason': 'not_found'}
+
+    _monitor_log(f"Resolved run dir: {run_dir}", active_log)
+
+    # Check manifest status
+    manifest = run_dir / 'manifest.json'
+    if manifest.exists():
+        try:
+            m = json.loads(manifest.read_text())
+            status = m.get('status')
+            if status == 'complete':
+                _monitor_log('Run already marked complete; nothing to resume.', active_log)
+                return {'ok': False, 'reason': 'already_complete'}
+        except Exception:
+            pass
+
+    # Load configured n_trials
+    cfg_path = run_dir / 'config' / 'config_optuna.yaml'
+    configured_n = None
+    try:
+        if cfg_path.exists():
+            import yaml
+            cfg = yaml.safe_load(cfg_path.read_text()) or {}
+            configured_n = cfg.get('n_trials') or cfg.get('optuna', {}).get('n_trials')
+            if configured_n is not None:
+                configured_n = int(configured_n)
+    except Exception:
+        configured_n = None
+
+    # Locate DB
+    db_path = run_dir / 'optuna_study.db'
+    if not db_path.exists():
+        candidates = list(run_dir.glob('optuna_study.db*'))
+        if candidates:
+            db_path = max(candidates, key=lambda p: p.stat().st_mtime)
+            _monitor_log(f"Using DB candidate for resume: {db_path}", active_log)
+        else:
+            _monitor_log('No optuna_study.db found; cannot resume.', active_log)
+            return {'ok': False, 'reason': 'no_db'}
+
+    # Quick integrity check
+    try:
+        import sqlite3
+        conn = sqlite3.connect(str(db_path))
+        cur = conn.cursor()
+        res = cur.execute('PRAGMA integrity_check;').fetchone()
+        conn.close()
+        if not res or (isinstance(res, tuple) and res[0] != 'ok'):
+            _monitor_log(f"SQLite integrity_check failed: {res}", active_log)
+            return {'ok': False, 'reason': 'db_corrupt'}
+    except Exception as e:
+        _monitor_log(f"Could not run integrity_check on DB: {e}", active_log)
+        return {'ok': False, 'reason': 'db_check_error'}
+
+    # Determine completed trials count
+    try:
+        import optuna
+        from optuna.trial import TrialState
+        # Auto-detect study name when possible
+        study_name = None
+        try:
+            conn = sqlite3.connect(str(db_path))
+            cur = conn.cursor()
+            cur.execute("SELECT study_name FROM studies;")
+            rows = cur.fetchall()
+            conn.close()
+            names = [r[0] for r in rows]
+            if len(names) == 1:
+                study_name = names[0]
+                _monitor_log(f"Auto-detected study name for resume: {study_name}", active_log)
+            else:
+                study_name = 'kdr100_opt'
+        except Exception:
+            study_name = 'kdr100_opt'
+
+        study = optuna.load_study(study_name=study_name, storage=f"sqlite:///{db_path}")
+        completed = len([t for t in study.trials if t.state == TrialState.COMPLETE])
+        best_before = study.best_value if study.trials else None
+    except Exception as e:
+        _monitor_log(f"Failed to load study for resume: {e}", active_log)
+        return {'ok': False, 'reason': 'load_study_failed'}
+
+    # Use configured n_trials when available; else infer target from manifest/config
+    if configured_n is None:
+        # try manifest
+        try:
+            if manifest.exists():
+                mm = json.loads(manifest.read_text())
+                configured_n = int(mm.get('metadata', {}).get('n_trials')) if mm.get('metadata', {}).get('n_trials') else None
+        except Exception:
+            configured_n = None
+
+    if configured_n is None:
+        _monitor_log('Configured target n_trials unknown; cannot safely resume.', active_log)
+        return {'ok': False, 'reason': 'unknown_target_n'}
+
+    remaining = int(configured_n) - int(completed)
+    remaining_report = max(0, remaining)
+    _monitor_log(f"Completed trials: {completed}; Target: {configured_n}; Remaining: {remaining}", active_log)
+
+    if remaining <= 0:
+        _monitor_log('No remaining trials to run; will check downstream pipeline phases to resume.', active_log)
+    
+    # Create resume lock
+    lock = run_dir / '.resume.lock'
+    if lock.exists():
+        _monitor_log('Resume lock exists; another resume may be running. Aborting.', active_log)
+        return {'ok': False, 'reason': 'locked'}
+    try:
+        lock.write_text(datetime.now(timezone.utc).isoformat())
+    except Exception:
+        pass
+
+    ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    db_backup = db_path.with_name(f"{db_path.name}.bak_resume_{ts}")
+    try:
+        shutil.copy2(db_path, db_backup)
+        _monitor_log(f"Backed up DB to: {db_backup}", active_log)
+    except Exception as e:
+        _monitor_log(f"Warning: failed to backup DB: {e}", active_log)
+
+    # Plan downstream phases to resume (optuna, reproducibility, finalize)
+    phases = []
+    # Optuna resume phase (only if remaining > 0)
+    resume_cmd = None
+    if remaining_report > 0:
+        # Prefer module invocation (-m) to make invocation independent of CWD
+        resume_cmd = f"{sys.executable} -m scripts.optuna_optimize --n-trials {remaining_report}"
+        phases.append({'name': 'optuna', 'cmd': resume_cmd})
+
+    # Reproducibility phase: check for reproducibility runs existence
+    repro_runs = []
+    runs_root = ROOT / 'outputs' / 'runs'
+    if runs_root.exists():
+        repro_runs = [p for p in runs_root.iterdir() if p.is_dir() and 'thesis_hamburg_reproducibility' in p.name]
+    if not repro_runs:
+        # schedule reproducibility (seeds 43,44)
+        repro_cmd = (
+            f"{sys.executable} -c \"from scripts.xxl_KDR146_run_thesis_complete import phase_2_reproducibility;"
+            f" import sys; rc=phase_2_reproducibility(seeds=[43,44], n_trials={configured_n}, dry_run=False); sys.exit(0 if rc else 1)\""
+        )
+        phases.append({'name': 'reproducibility', 'cmd': repro_cmd})
+
+    # Finalize phase: check for final selection JSON
+    final_selection_global = ROOT / 'outputs' / 'THESIS_FINAL_SELECTION_XXL.json'
+    if not final_selection_global.exists():
+        finalize_cmd = (
+            f"{sys.executable} -c \"from pathlib import Path; from scripts.xxl_KDR146_run_thesis_complete import _extract_xxl_final_statistics;"
+            f" import sys; rc=_extract_xxl_final_statistics(Path('.')); sys.exit(0 if rc else 1)\""
+        )
+        phases.append({'name': 'finalize', 'cmd': finalize_cmd})
+
+    _monitor_log(f"Planned resume phases: {[p['name'] for p in phases]}", active_log)
+
+    # Dry-run: report planned actions
+    if dry_run:
+        try:
+            lock.unlink()
+        except Exception:
+            pass
+        return {'ok': True, 'dry_run': True, 'run_dir': str(run_dir), 'configured_n': configured_n, 'completed': completed, 'remaining': remaining_report, 'db_backup': str(db_backup), 'phases': phases}
+
+    # Require explicit force unless interactive
+    if not force:
+        # non-interactive contexts (CI) should require --force-restart
+        if not sys.stdin.isatty():
+            _monitor_log('Non-interactive shell; resume requires --force-restart', active_log)
+            try:
+                lock.unlink()
+            except Exception:
+                pass
+            return {'ok': False, 'reason': 'need_force'}
+        ok = input(f"About to resume run {run_dir.name}: {remaining} trials remaining. Proceed? (y/N): ")
+        if ok.strip().lower() != 'y':
+            _monitor_log('User declined resume.', active_log)
+            try:
+                lock.unlink()
+            except Exception:
+                pass
+            return {'ok': False, 'reason': 'user_decline'}
+
+    env = os.environ.copy()
+    env['EXPERIMENT_RUN_DIR'] = str(run_dir)
+
+    # Execute planned phases sequentially
+    phase_results = []
+    overall_ok = True
+    for phase in phases:
+        name = phase.get('name')
+        cmd = phase.get('cmd')
+        _monitor_log(f"Starting resume phase: {name}", active_log)
+        hook_meta = run_hook(
+            name=f'resume_phase_{name}',
+            cmd_str=cmd,
+            base_log_dir=run_dir / 'logs',
+            active_log=active_log,
+            timeout=0,
+            retries=0,
+            env=env,
+            start_new_session=True,
+            pass_dry_run=False
+        )
+        # After optuna phase, attempt to reconstruct trials
+        if name == 'optuna':
+            try:
+                _reconstruct_trials_from_db(run_dir, active_log)
+            except Exception as e:
+                _monitor_log(f"Post-resume reconstruction error: {e}", active_log)
+        phase_results.append({'name': name, 'cmd': cmd, 'hook_meta': hook_meta})
+        if not hook_meta.get('success'):
+            overall_ok = False
+            _monitor_log(f"Phase {name} reported failure; continuing to next phase (conservative mode)", active_log)
+
+    # reload study to get final counts if optuna present
+    try:
+        study2 = optuna.load_study(study_name=None, storage=f"sqlite:///{db_path}")
+        completed_after = len([t for t in study2.trials if t.state == TrialState.COMPLETE])
+        best_after = study2.best_value if study2.trials else None
+    except Exception:
+        completed_after = None
+        best_after = None
+
+    resume_meta = {
+        'resumed_at': datetime.now(timezone.utc).isoformat(),
+        'run_dir': str(run_dir),
+        'configured_n': configured_n,
+        'completed_before': completed,
+        'remaining_requested': remaining_report,
+        'completed_after': completed_after,
+        'best_before': best_before,
+        'best_after': best_after,
+        'db_backup': str(db_backup),
+        'phases': phase_results,
+        'ok': overall_ok,
+    }
+    try:
+        (run_dir / 'results' / 'resume_meta.json').write_text(json.dumps(resume_meta, indent=2))
+    except Exception:
+        pass
+
+    try:
+        lock.unlink()
+    except Exception:
+        pass
+
+    return resume_meta
+
 def main():
     parser = argparse.ArgumentParser(description="Monitor XXL pipeline run")
     parser.add_argument('--no-new-session', action='store_true', help="Do not start child in new session (better for tests)")
@@ -141,6 +570,12 @@ def main():
     parser.add_argument('--pre-run-retries', type=int, default=0, help="Retries for pre-run command")
     parser.add_argument('--pre-run-fail-mode', choices=['abort', 'warn', 'continue'], default='abort', help="Action on pre-run failure")
     parser.add_argument('--pre-run-dry-run', action='store_true', help="Pass --dry-run to pre-run command if present")
+    parser.add_argument('--no-reconstruct', action='store_true', help="Do not attempt to reconstruct results/trials.csv from optuna_study.db if missing")
+
+    # Resume / restart options
+    parser.add_argument('--restart', nargs='?', const='last', help="Resume a previous run: 'last' (default when provided) or specific run_dir name")
+    parser.add_argument('--force-restart', action='store_true', help="If set, resume without interactive confirmation")
+    parser.add_argument('--dry-run-restart', action='store_true', help="Do not actually start resume, only display planned actions")
     
     args = parser.parse_args()
 
@@ -210,8 +645,38 @@ def main():
             _monitor_log(f"Waiting {args.pre_run_delay}s before starting main run...", ACTIVE_LOG)
             time.sleep(args.pre_run_delay)
 
+    # If --restart requested: perform resume flow and exit
+    if args.restart:
+        _monitor_log(f"Restart requested: {args.restart} (force={args.force_restart}, dry_run={args.dry_run_restart})", ACTIVE_LOG)
+        res = _resume_run(args.restart, ACTIVE_LOG, force=args.force_restart, dry_run=args.dry_run_restart)
+        if res.get('ok'):
+            _monitor_log("Resume flow completed (or dry-run reported); exiting monitor.", ACTIVE_LOG)
+            sys.exit(0)
+        else:
+            _monitor_log(f"Resume aborted/skipped: {res.get('reason')}", ACTIVE_LOG)
+            sys.exit(1)
+
     # Start the full run subprocess
     cmd = [sys.executable, str(MAIN_SCRIPT)]
+
+    # If a selected_sampler artifact exists, use it to instruct the main script which sampler to use
+    try:
+        sel = ROOT / 'outputs' / 'selected_sampler.json'
+        if sel.exists():
+            try:
+                j = __import__('json').loads(sel.read_text())
+                best = j.get('best')
+                if best:
+                    # The pre-run compares Optuna samplers (qmc/tpe/cmaes). Pass the
+                    # selected choice to the orchestrator as the Optuna sampler flag
+                    # so that downstream runs use the empirically best sampler.
+                    cmd.extend(['--optuna-sampler', str(best)])
+                    _monitor_log(f"Using selected sampler for Optuna from artifact: {best}", ACTIVE_LOG)
+            except Exception as e:
+                _monitor_log(f"Could not parse selected_sampler.json: {e}", ACTIVE_LOG)
+    except Exception:
+        pass
+
     # Allow monitor to instruct child to run in dry-run mode for smoke tests
     if args.child_dry_run:
         cmd.append('--dry-run')
@@ -468,8 +933,16 @@ def main():
     report_lines.append('\n## Artifacts')
     if latest_xxl:
         report_lines.append(f"- XXL run dir: {latest_xxl}")
-        if (latest_xxl / 'results' / 'trials.csv').exists():
-            report_lines.append(f"  - trials.csv: {(latest_xxl / 'results' / 'trials.csv')} (size: { (latest_xxl / 'results' / 'trials.csv').stat().st_size } bytes)")
+        trials_path = latest_xxl / 'results' / 'trials.csv'
+        if not trials_path.exists() and not args.no_reconstruct:
+            _monitor_log("trials.csv missing; attempting reconstruction from optuna_study.db", ACTIVE_LOG)
+            ok = _reconstruct_trials_from_db(latest_xxl, ACTIVE_LOG)
+            if ok:
+                report_lines.append(f"  - trials.csv: reconstructed from optuna_study.db -> {trials_path}")
+            else:
+                report_lines.append(f"  - trials.csv: missing and reconstruction failed/skipped")
+        if trials_path.exists():
+            report_lines.append(f"  - trials.csv: {trials_path} (size: { trials_path.stat().st_size } bytes)")
     else:
         report_lines.append("- XXL run dir: Not found")
 

@@ -6,6 +6,7 @@ import subprocess
 from unittest.mock import MagicMock, patch
 from pathlib import Path
 import json
+import optuna
 
 # Ensure repo root on path
 ROOT = Path(__file__).resolve().parents[1]
@@ -280,6 +281,95 @@ def test_monitor_config_validation(monkeypatch, tmp_path):
         assert any('unexpected sampler' in s for s in meta['config_issues'])
         assert any('n_trials too small' in s for s in meta['config_issues'])
         assert any('n_candidates mismatch' in s for s in meta['config_issues'])
+
+
+def test_monitor_attempts_reconstruction(monkeypatch, tmp_path):
+    """Test that monitor attempts to reconstruct missing trials.csv from optuna DB."""
+    monkeypatch.setattr(sys, 'argv', ['monitor.py', '--poll-interval', '0'])
+    mock_popen = MagicMock()
+    mock_popen.pid = 4444
+    mock_popen.poll.side_effect = [None, 0]
+
+    run_dir = tmp_path / "outputs" / "runs" / "hamburg_xxl_final"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create a minimal optuna DB with a few trials
+    db_path = run_dir / 'optuna_study.db'
+    storage_url = f"sqlite:///{db_path}"
+    study = optuna.create_study(direction='maximize', storage=storage_url, study_name='recon_test')
+    def objective(trial):
+        x = trial.suggest_float('a', 0.0, 1.0)
+        return x
+    for _ in range(4):
+        study.optimize(objective, n_trials=1)
+
+    # Ensure results dir exists but trials.csv is missing
+    (run_dir / 'results').mkdir(parents=True, exist_ok=True)
+
+    with patch('subprocess.Popen', return_value=mock_popen), \
+         patch('time.sleep'), \
+         patch('glob.glob', return_value=[str(run_dir)]), \
+         patch('scripts.xxl_full_run_monitor.datetime') as mock_dt, \
+         patch('os.getpgid', return_value=4444):
+
+        mock_dt.now.return_value.strftime.return_value = "TEST_TS"
+        mock_dt.now.return_value.isoformat.return_value = "ISO"
+        mock_dt.fromtimestamp.return_value.isoformat.return_value = "ISO"
+
+        monkeypatch.setattr(monitor, 'LOG_FILE', tmp_path / 'XXL_FULL_RUN.log')
+        monkeypatch.setattr(monitor, 'ROOT', tmp_path)
+
+        monitor.main()
+
+        # After running monitor, trials.csv should be reconstructed
+        trials_csv = run_dir / 'results' / 'trials.csv'
+        assert trials_csv.exists()
+        content = trials_csv.read_text()
+        assert 'trial_number' in content
+        assert 'a' in content
+
+
+def test_monitor_no_reconstruct_flag(monkeypatch, tmp_path):
+    """Test that --no-reconstruct prevents reconstruction of missing trials.csv."""
+    monkeypatch.setattr(sys, 'argv', ['monitor.py', '--poll-interval', '0', '--no-reconstruct'])
+    mock_popen = MagicMock()
+    mock_popen.pid = 5555
+    mock_popen.poll.side_effect = [None, 0]
+
+    run_dir = tmp_path / "outputs" / "runs" / "hamburg_xxl_final"
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create a minimal optuna DB with a few trials
+    db_path = run_dir / 'optuna_study.db'
+    storage_url = f"sqlite:///{db_path}"
+    study = optuna.create_study(direction='maximize', storage=storage_url, study_name='recon_test_no')
+    def objective(trial):
+        x = trial.suggest_float('a', 0.0, 1.0)
+        return x
+    for _ in range(2):
+        study.optimize(objective, n_trials=1)
+
+    # Ensure results dir exists but trials.csv is missing
+    (run_dir / 'results').mkdir(parents=True, exist_ok=True)
+
+    with patch('subprocess.Popen', return_value=mock_popen), \
+         patch('time.sleep'), \
+         patch('glob.glob', return_value=[str(run_dir)]), \
+         patch('scripts.xxl_full_run_monitor.datetime') as mock_dt, \
+         patch('os.getpgid', return_value=5555):
+
+        mock_dt.now.return_value.strftime.return_value = "TEST_TS"
+        mock_dt.now.return_value.isoformat.return_value = "ISO"
+        mock_dt.fromtimestamp.return_value.isoformat.return_value = "ISO"
+
+        monkeypatch.setattr(monitor, 'LOG_FILE', tmp_path / 'XXL_FULL_RUN.log')
+        monkeypatch.setattr(monitor, 'ROOT', tmp_path)
+
+        monitor.main()
+
+        # After running monitor with --no-reconstruct, trials.csv should still be missing
+        trials_csv = run_dir / 'results' / 'trials.csv'
+        assert not trials_csv.exists()
 
 def test_monitor_hooks(monkeypatch, tmp_path):
     """Test that monitor executes pre-run and post-run hooks."""

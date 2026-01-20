@@ -280,6 +280,40 @@ def main():
 
     analysis = compare_and_analyze(df_results, global_out_dir)
     print('Analysis complete:', analysis)
+
+    # Determine best sampler (mean best_value across seeds)
+    try:
+        best_sampler = df_results.groupby('sampler')['best_value'].mean().idxmax()
+        best_score = float(df_results.groupby('sampler')['best_value'].mean().max())
+    except Exception:
+        best_sampler = None
+        best_score = None
+
+    selected = {
+        'best': best_sampler,
+        'metric': 'mean_best_value',
+        'score': best_score,
+        'n_trials': int(args.n_trials),
+        'seeds': list(args.seeds),
+        'datasets': datasets,
+        'generated_at': datetime.now().isoformat(),
+        'output_dir': str(global_out_dir),
+    }
+
+    # Persist selected sampler artifact to a canonical location for the monitor
+    try:
+        sel_file = ROOT / 'outputs' / 'selected_sampler.json'
+        sel_file.write_text(pd.json.dumps(selected) if hasattr(pd, 'json') else __import__('json').dumps(selected, indent=2))
+        print(f"Wrote selected sampler artifact: {sel_file}")
+    except Exception as e:
+        print(f"Warning: could not write selected_sampler.json: {e}")
+
+    # Also write inside the experiment-specific output folder for convenience
+    try:
+        (global_out_dir / 'selected_sampler.json').write_text(__import__('json').dumps(selected, indent=2))
+    except Exception:
+        pass
+
     return 0
 
 

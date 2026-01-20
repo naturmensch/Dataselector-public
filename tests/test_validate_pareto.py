@@ -18,15 +18,20 @@ def _make_pareto_csv(tmp_path):
     # create fake outputs for features and metadata in a temp outdir
     out = tmp_path / "outputs"
     out.mkdir()
-    np.save(out / "features.npy", np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]))
-    pd.DataFrame(
+    # Increase sample size so that n_neighbors (15) < N and UMAP does not trigger the k>=N warning
+    N = 20
+    rng = np.random.RandomState(0)
+    features = rng.rand(N, 2)
+    np.save(out / "features.npy", features)
+    md = pd.DataFrame(
         {
-            "N": [50, 51, 52],
-            "left": [10, 11, 12],
-            "year": [1900, 1914, 1918],
-            "image_path": ["a", "b", "c"],
+            "N": list(range(50, 50 + N)),
+            "left": list(range(10, 10 + N)),
+            "year": [1900 + (i % 30) for i in range(N)],
+            "image_path": [f"img_{i}.png" for i in range(N)],
         }
-    ).to_csv(out / "metadata.csv", index=False)
+    )
+    md.to_csv(out / "metadata.csv", index=False)
     return str(p), str(out)
 
 

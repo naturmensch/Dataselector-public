@@ -265,18 +265,25 @@ def _extract_xxl_final_statistics(root: Path) -> dict | None:
         
         best_val = df['value'].max()
         best_row = df[df['value'] == best_val].iloc[0]
-        best_trial = int(best_row['trial_number'])
-        
+
+        def _safe_int(x):
+            return int(x) if pd.notna(x) else None
+
+        def _safe_float(x):
+            return float(x) if pd.notna(x) else None
+
+        best_trial = _safe_int(best_row.get('trial_number'))
+
         best_params = {
-            'a': float(best_row['a']),
-            'b': float(best_row['b']),
-            'c': float(best_row['c']),
-            'min_distance_km': float(best_row['min_distance_km']),
-            'n_samples': int(best_row['n_samples']),
+            'a': _safe_float(best_row.get('a')),
+            'b': _safe_float(best_row.get('b')),
+            'c': _safe_float(best_row.get('c')),
+            'min_distance_km': _safe_float(best_row.get('min_distance_km')),
+            'n_samples': _safe_int(best_row.get('n_samples')),
         }
-        
-        log(f"Best value: {best_val:.6f} @ Trial #{best_trial}")
-        log(f"Best params: a={best_params['a']:.3f}, b={best_params['b']:.3f}, c={best_params['c']:.3f}")
+
+        log(f"Best value: {float(best_val):.6f} @ Trial #{best_trial if best_trial is not None else 'N/A'}")
+        log(f"Best params: a={best_params['a'] if best_params['a'] is not None else 'N/A'}, b={best_params['b'] if best_params['b'] is not None else 'N/A'}, c={best_params['c'] if best_params['c'] is not None else 'N/A'}")
         
         # Build final selection
         final_selection = {

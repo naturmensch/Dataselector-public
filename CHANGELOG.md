@@ -4,6 +4,9 @@
 - Removed hard-coded CLI default `34` for `--n-samples`. The selection size is now **config-driven** (set `selection.n_samples` in `config/pipeline_config.yaml`) or can be overridden on the CLI with `--n-samples`.
 - Added unit test `tests/test_run_adaptive_default_n_samples.py` to ensure help text and behavior remain consistent.
 - Fixed monitor run detection to be more robust across environments (improved handling of `outputs/runs/` discovery).
+- Added automatic reconstruction of missing `results/trials.csv` from `optuna_study.db` in `scripts/xxl_full_run_monitor.py` (safe: PRAGMA integrity_check, atomic write, provenance `trials_reconstruct_meta.json`, opt-out via `--no-reconstruct`).
+- Added safe resume/restart support to `scripts/xxl_full_run_monitor.py` (`--restart last|<run_id>`, `--force-restart`, `--dry-run-restart`): DB integrity checks, automatic DB backup (`optuna_study.db.bak_resume_<ts>`), compute remaining trials and resume Optuna via `scripts/optuna_optimize.py --n-trials <remaining>`, and write `results/resume_meta.json` for provenance. The resume flow was extended to perform staged resume: when Optuna is already complete the monitor can continue downstream phases (reproducibility, finalization), append logs, and record per-phase metadata. Added unit tests `tests/test_monitor_resume.py`.
+- Added unit/integration tests (`tests/test_monitor_reconstruct.py`, extended `tests/test_monitor_robustness.py`) to validate reconstruction behavior.
 - Added optional helper `scripts/merge_xxl_logs.py` for post-hoc consolidation/annotation of run logs (intentionally **not** integrated automatically into the monitor).
 
 ## [2026-01-16] - Run orchestration: detach flag
