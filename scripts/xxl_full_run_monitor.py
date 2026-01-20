@@ -269,6 +269,141 @@ def _reconstruct_trials_from_db(run_dir: Path, active_log: Path, study_name: Opt
         return False
 
 
+def _reconcile_trials(run_dir: Path, active_log: Path) -> dict:
+    """
+    Decide whether to use optuna_study.db or trials.csv as the source of truth.
+    If DB is authoritative (newer/more complete), reconstruct trials.csv.
+    
+    Returns dict with keys: ok, source, completed_count, best_value, actions, reason, db_path.
+    """
+    res = {
+        'ok': False,
+        'source': None,
+        'completed_count': 0,
+        'best_value': None,
+        'actions': [],
+        'reason': None,
+        'db_path': None,
+        'attempts': []  # structured steps: {step, ts, result, message}
+    }
+
+    # 1. Inspect DB
+    db_path = run_dir / 'optuna_study.db'
+    if not db_path.exists():
+        candidates = list(run_dir.glob('optuna_study.db*'))
+        if candidates:
+            db_path = max(candidates, key=lambda p: p.stat().st_mtime)
+    
+    db_info = None
+    if db_path.exists():
+        res['db_path'] = str(db_path)
+        try:
+            import sqlite3
+            conn = sqlite3.connect(str(db_path))
+            cur = conn.cursor()
+            integrity = cur.execute("PRAGMA integrity_check;").fetchone()
+            conn.close()
+            
+            if not integrity or (isinstance(integrity, tuple) and integrity[0] != 'ok'):
+                msg = f"db_corrupt: {integrity}"
+                res['actions'].append(msg)
+                res['attempts'].append({'step': 'db_integrity_check', 'ts': datetime.now(timezone.utc).isoformat(), 'result': 'corrupt', 'message': str(integrity)})
+            else:
+                # Load stats from DB
+                try:
+                    import optuna
+                    from optuna.trial import TrialState
+                    # Guess study name
+                    conn = sqlite3.connect(str(db_path))
+                    cur = conn.cursor()
+                    rows = cur.execute("SELECT study_name FROM studies;").fetchall()
+                    conn.close()
+                    study_name = rows[0][0] if rows and len(rows) == 1 else 'kdr100_opt'
+
+                    study = optuna.load_study(study_name=study_name, storage=f"sqlite:///{db_path}")
+                    completed = len([t for t in study.trials if t.state == TrialState.COMPLETE])
+                    try:
+                        best = study.best_value
+                    except ValueError:
+                        best = None
+                    db_info = {'completed': completed, 'best': best}
+                    res['attempts'].append({'step': 'db_inspect', 'ts': datetime.now(timezone.utc).isoformat(), 'result': 'ok', 'message': f"completed={completed}, best={best}"})
+                except Exception as e:
+                    res['actions'].append(f"db_read_failed: {e}")
+                    res['attempts'].append({'step': 'db_inspect', 'ts': datetime.now(timezone.utc).isoformat(), 'result': 'error', 'message': str(e)})
+        except Exception as e:
+            res['actions'].append(f"db_check_error: {e}")
+
+    # 2. Inspect CSV
+    csv_path = run_dir / 'results' / 'trials.csv'
+    csv_info = None
+    if csv_path.exists():
+        try:
+            import pandas as pd
+            df = pd.read_csv(csv_path)
+            if 'state' in df.columns:
+                completed = len(df[df['state'].astype(str).str.contains('COMPLETE')])
+            else:
+                completed = len(df)
+
+            best = df['value'].max() if 'value' in df.columns and not df['value'].isnull().all() else None
+            csv_info = {'completed': completed, 'best': best}
+            res['attempts'].append({'step': 'csv_read', 'ts': datetime.now(timezone.utc).isoformat(), 'result': 'ok', 'message': f"completed={completed}, best={best}"})
+        except Exception as e:
+            res['actions'].append(f"csv_read_failed: {e}")
+            res['attempts'].append({'step': 'csv_read', 'ts': datetime.now(timezone.utc).isoformat(), 'result': 'error', 'message': str(e)})
+
+    # If DB was corrupt but CSV exists, explicitly note the decision to use CSV
+    if csv_info and any(a.startswith('db_corrupt') for a in res['actions']):
+        res['actions'].append('used_csv_due_to_db_corruption')
+
+    # 3. Reconcile
+    if db_info:
+        # DB is available and valid
+        if not csv_info or (db_info['completed'] > csv_info['completed']):
+            # DB is authoritative (either CSV missing or DB has more trials)
+            reason_str = "CSV missing" if not csv_info else f"DB has more trials ({db_info['completed']} > {csv_info['completed']})"
+            _monitor_log(f"Reconcile: {reason_str}. Reconstructing trials.csv from DB...", active_log)
+            
+            if _reconstruct_trials_from_db(run_dir, active_log):
+                res['ok'] = True
+                res['source'] = 'reconstructed'
+                res['completed_count'] = db_info['completed']
+                res['best_value'] = db_info['best']
+                res['actions'].append('reconstructed_from_db')
+                res['attempts'].append({'step': 'reconstruct', 'ts': datetime.now(timezone.utc).isoformat(), 'result': 'ok', 'message': 'reconstructed from db'})
+            else:
+                res['ok'] = False
+                res['reason'] = 'reconstruction_failed'
+                res['attempts'].append({'step': 'reconstruct', 'ts': datetime.now(timezone.utc).isoformat(), 'result': 'error', 'message': 'reconstruction_failed'})
+        else:
+            # CSV exists and has equal or more trials -> Trust CSV (avoid overhead)
+            res['ok'] = True
+            res['source'] = 'trials_csv'
+            res['completed_count'] = csv_info['completed']
+            res['best_value'] = csv_info['best']
+            res['actions'].append('kept_existing_csv')
+            if db_info['completed'] < csv_info['completed']:
+                 res['actions'].append(f"warning_db_has_fewer_trials({db_info['completed']})_than_csv({csv_info['completed']})")
+
+    elif csv_info:
+        # Only CSV exists
+        res['ok'] = True
+        res['source'] = 'trials_csv'
+        res['completed_count'] = csv_info['completed']
+        res['best_value'] = csv_info['best']
+        res['actions'].append('db_missing_using_csv')
+    else:
+        res['ok'] = False
+        # If DB path exists and integrity check failed, be explicit about corruption
+        if res['actions'] and any(a.startswith('db_corrupt') for a in res['actions']):
+            res['reason'] = 'db_corrupt'
+        else:
+            res['reason'] = 'no_db_and_no_trials'
+    
+    return res
+
+
 def _resume_run(run_selector: str, active_log: Path, force: bool = False, dry_run: bool = False) -> dict:
     """Attempt to safely resume a previous run identified by "last" or run name.
 
@@ -338,100 +473,16 @@ def _resume_run(run_selector: str, active_log: Path, force: bool = False, dry_ru
     except Exception:
         configured_n = None
 
-    # Locate DB
-    db_path = run_dir / 'optuna_study.db'
-    db_found = False
-    if db_path.exists():
-        db_found = True
-    else:
-        candidates = list(run_dir.glob('optuna_study.db*'))
-        if candidates:
-            db_path = max(candidates, key=lambda p: p.stat().st_mtime)
-            _monitor_log(f"Using DB candidate for resume: {db_path}", active_log)
-            db_found = True
-
-    if not db_found:
-        # No DB present — attempt to salvage resume using existing results/trials.csv
-        trials_path = run_dir / 'results' / 'trials.csv'
-        if trials_path.exists():
-            try:
-                import pandas as pd
-                df = pd.read_csv(trials_path)
-                completed = len(df[df['state'] == 'TrialState.COMPLETE']) if 'state' in df.columns else len(df)
-                best_before = df['value'].max() if 'value' in df.columns else None
-                _monitor_log(f"No DB found; using existing trials.csv to infer completed={completed}, best_before={best_before}", active_log)
-                db_found = False  # explicit: no DB, but we have trials info
-                # Set variables so resume can continue without optuna DB
-            except Exception as e:
-                _monitor_log(f"Could not read trials.csv to resume: {e}", active_log)
-                return {'ok': False, 'reason': 'no_db_and_no_trials'}
-        else:
-            _monitor_log("No optuna_study.db found; attempting reconstruction from backups...", active_log)
-            try:
-                if _reconstruct_trials_from_db(run_dir, active_log):
-                    trials_path2 = run_dir / 'results' / 'trials.csv'
-                    if trials_path2.exists():
-                        import pandas as pd
-                        df = pd.read_csv(trials_path2)
-                        completed = len(df[df['state'] == 'TrialState.COMPLETE']) if 'state' in df.columns else len(df)
-                        best_before = df['value'].max() if 'value' in df.columns else None
-                        _monitor_log(f"Reconstruction succeeded: inferred completed={completed}", active_log)
-                        db_found = False
-                    else:
-                        _monitor_log("Reconstruction did not produce trials.csv; cannot resume.", active_log)
-                        return {'ok': False, 'reason': 'no_db_and_reconstruct_failed'}
-                else:
-                    _monitor_log('Reconstruction attempt failed; cannot resume due to missing DB', active_log)
-                    return {'ok': False, 'reason': 'no_db'}
-            except Exception as e:
-                _monitor_log(f"Reconstruction attempt raised error: {e}", active_log)
-                return {'ok': False, 'reason': 'no_db'}
-
-    # Quick integrity check
-    try:
-        import sqlite3
-        conn = sqlite3.connect(str(db_path))
-        cur = conn.cursor()
-        res = cur.execute('PRAGMA integrity_check;').fetchone()
-        conn.close()
-        if not res or (isinstance(res, tuple) and res[0] != 'ok'):
-            _monitor_log(f"SQLite integrity_check failed: {res}", active_log)
-            return {'ok': False, 'reason': 'db_corrupt'}
-    except Exception as e:
-        _monitor_log(f"Could not run integrity_check on DB: {e}", active_log)
-        return {'ok': False, 'reason': 'db_check_error'}
-
-    # Determine completed trials count
-    if db_found:
-        try:
-            import optuna
-            from optuna.trial import TrialState
-            # Auto-detect study name when possible
-            study_name = None
-            try:
-                conn = sqlite3.connect(str(db_path))
-                cur = conn.cursor()
-                cur.execute("SELECT study_name FROM studies;")
-                rows = cur.fetchall()
-                conn.close()
-                names = [r[0] for r in rows]
-                if len(names) == 1:
-                    study_name = names[0]
-                    _monitor_log(f"Auto-detected study name for resume: {study_name}", active_log)
-                else:
-                    study_name = 'kdr100_opt'
-            except Exception:
-                study_name = 'kdr100_opt'
-
-            study = optuna.load_study(study_name=study_name, storage=f"sqlite:///{db_path}")
-            completed = len([t for t in study.trials if t.state == TrialState.COMPLETE])
-            best_before = study.best_value if study.trials else None
-        except Exception as e:
-            _monitor_log(f"Failed to load study for resume: {e}", active_log)
-            return {'ok': False, 'reason': 'load_study_failed'}
-    else:
-        # db not available but we may have inferred completed/best_before from trials.csv or reconstruction
-        _monitor_log('Proceeding without optuna DB using inferred trial counts (no DB).', active_log)
+    # Reconcile trials (DB vs CSV)
+    rec = _reconcile_trials(run_dir, active_log)
+    if not rec['ok']:
+        _monitor_log(f"Resume aborted: {rec.get('reason')}", active_log)
+        return {'ok': False, 'reason': rec.get('reason')}
+    
+    completed = rec['completed_count']
+    best_before = rec['best_value']
+    resume_source = rec['source']
+    db_path = Path(rec['db_path']) if rec.get('db_path') else None
 
     # Use configured n_trials when available; else infer target from manifest/config
     if configured_n is None:
@@ -464,13 +515,16 @@ def _resume_run(run_selector: str, active_log: Path, force: bool = False, dry_ru
     except Exception:
         pass
 
-    ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-    db_backup = db_path.with_name(f"{db_path.name}.bak_resume_{ts}")
-    try:
-        shutil.copy2(db_path, db_backup)
-        _monitor_log(f"Backed up DB to: {db_backup}", active_log)
-    except Exception as e:
-        _monitor_log(f"Warning: failed to backup DB: {e}", active_log)
+    if db_path and db_path.exists():
+        ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+        db_backup = db_path.with_name(f"{db_path.name}.bak_resume_{ts}")
+        try:
+            shutil.copy2(db_path, db_backup)
+            _monitor_log(f"Backed up DB to: {db_backup}", active_log)
+        except Exception as e:
+            _monitor_log(f"Warning: failed to backup DB: {e}", active_log)
+    else:
+        db_backup = "N/A"
 
     # Plan downstream phases to resume (optuna, reproducibility, finalize)
     phases = []
@@ -582,6 +636,9 @@ def _resume_run(run_selector: str, active_log: Path, force: bool = False, dry_ru
         'completed_after': completed_after,
         'best_before': best_before,
         'best_after': best_after,
+        'resume_source': resume_source,
+        'reconcile_actions': rec.get('actions', []),
+        'resume_attempts': rec.get('attempts', []),
         'db_backup': str(db_backup),
         'phases': phase_results,
         'ok': overall_ok,
