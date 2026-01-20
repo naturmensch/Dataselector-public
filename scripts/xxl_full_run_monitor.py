@@ -340,14 +340,52 @@ def _resume_run(run_selector: str, active_log: Path, force: bool = False, dry_ru
 
     # Locate DB
     db_path = run_dir / 'optuna_study.db'
-    if not db_path.exists():
+    db_found = False
+    if db_path.exists():
+        db_found = True
+    else:
         candidates = list(run_dir.glob('optuna_study.db*'))
         if candidates:
             db_path = max(candidates, key=lambda p: p.stat().st_mtime)
             _monitor_log(f"Using DB candidate for resume: {db_path}", active_log)
+            db_found = True
+
+    if not db_found:
+        # No DB present — attempt to salvage resume using existing results/trials.csv
+        trials_path = run_dir / 'results' / 'trials.csv'
+        if trials_path.exists():
+            try:
+                import pandas as pd
+                df = pd.read_csv(trials_path)
+                completed = len(df[df['state'] == 'TrialState.COMPLETE']) if 'state' in df.columns else len(df)
+                best_before = df['value'].max() if 'value' in df.columns else None
+                _monitor_log(f"No DB found; using existing trials.csv to infer completed={completed}, best_before={best_before}", active_log)
+                db_found = False  # explicit: no DB, but we have trials info
+                # Set variables so resume can continue without optuna DB
+            except Exception as e:
+                _monitor_log(f"Could not read trials.csv to resume: {e}", active_log)
+                return {'ok': False, 'reason': 'no_db_and_no_trials'}
         else:
-            _monitor_log('No optuna_study.db found; cannot resume.', active_log)
-            return {'ok': False, 'reason': 'no_db'}
+            _monitor_log("No optuna_study.db found; attempting reconstruction from backups...", active_log)
+            try:
+                if _reconstruct_trials_from_db(run_dir, active_log):
+                    trials_path2 = run_dir / 'results' / 'trials.csv'
+                    if trials_path2.exists():
+                        import pandas as pd
+                        df = pd.read_csv(trials_path2)
+                        completed = len(df[df['state'] == 'TrialState.COMPLETE']) if 'state' in df.columns else len(df)
+                        best_before = df['value'].max() if 'value' in df.columns else None
+                        _monitor_log(f"Reconstruction succeeded: inferred completed={completed}", active_log)
+                        db_found = False
+                    else:
+                        _monitor_log("Reconstruction did not produce trials.csv; cannot resume.", active_log)
+                        return {'ok': False, 'reason': 'no_db_and_reconstruct_failed'}
+                else:
+                    _monitor_log('Reconstruction attempt failed; cannot resume due to missing DB', active_log)
+                    return {'ok': False, 'reason': 'no_db'}
+            except Exception as e:
+                _monitor_log(f"Reconstruction attempt raised error: {e}", active_log)
+                return {'ok': False, 'reason': 'no_db'}
 
     # Quick integrity check
     try:
@@ -364,32 +402,36 @@ def _resume_run(run_selector: str, active_log: Path, force: bool = False, dry_ru
         return {'ok': False, 'reason': 'db_check_error'}
 
     # Determine completed trials count
-    try:
-        import optuna
-        from optuna.trial import TrialState
-        # Auto-detect study name when possible
-        study_name = None
+    if db_found:
         try:
-            conn = sqlite3.connect(str(db_path))
-            cur = conn.cursor()
-            cur.execute("SELECT study_name FROM studies;")
-            rows = cur.fetchall()
-            conn.close()
-            names = [r[0] for r in rows]
-            if len(names) == 1:
-                study_name = names[0]
-                _monitor_log(f"Auto-detected study name for resume: {study_name}", active_log)
-            else:
+            import optuna
+            from optuna.trial import TrialState
+            # Auto-detect study name when possible
+            study_name = None
+            try:
+                conn = sqlite3.connect(str(db_path))
+                cur = conn.cursor()
+                cur.execute("SELECT study_name FROM studies;")
+                rows = cur.fetchall()
+                conn.close()
+                names = [r[0] for r in rows]
+                if len(names) == 1:
+                    study_name = names[0]
+                    _monitor_log(f"Auto-detected study name for resume: {study_name}", active_log)
+                else:
+                    study_name = 'kdr100_opt'
+            except Exception:
                 study_name = 'kdr100_opt'
-        except Exception:
-            study_name = 'kdr100_opt'
 
-        study = optuna.load_study(study_name=study_name, storage=f"sqlite:///{db_path}")
-        completed = len([t for t in study.trials if t.state == TrialState.COMPLETE])
-        best_before = study.best_value if study.trials else None
-    except Exception as e:
-        _monitor_log(f"Failed to load study for resume: {e}", active_log)
-        return {'ok': False, 'reason': 'load_study_failed'}
+            study = optuna.load_study(study_name=study_name, storage=f"sqlite:///{db_path}")
+            completed = len([t for t in study.trials if t.state == TrialState.COMPLETE])
+            best_before = study.best_value if study.trials else None
+        except Exception as e:
+            _monitor_log(f"Failed to load study for resume: {e}", active_log)
+            return {'ok': False, 'reason': 'load_study_failed'}
+    else:
+        # db not available but we may have inferred completed/best_before from trials.csv or reconstruction
+        _monitor_log('Proceeding without optuna DB using inferred trial counts (no DB).', active_log)
 
     # Use configured n_trials when available; else infer target from manifest/config
     if configured_n is None:
