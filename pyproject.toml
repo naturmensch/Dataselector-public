@@ -8,6 +8,7 @@ profile = "black"
 [tool.ruff]
 line-length = 88
 
+[tool.ruff.lint]
 # Tests intentionally import local scripts and manipulate sys.path; ignore
 # E402 (module level import not at top) there.
 per-file-ignores = { "tests/*" = ["E402"] }
