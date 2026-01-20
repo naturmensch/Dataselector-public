@@ -34,6 +34,13 @@ if str(ROOT) not in sys.path:
 LOG_FILE = ROOT / 'outputs' / 'XXL_FULL_RUN.log'
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 
+# Environment runner configuration (dataselector mamba/conda env integration)
+USE_DATASELECTOR_ENV: bool = True  # default: use the dataselector environment
+DATASELECTOR_ENV_NAME: str = os.environ.get('DATASELECTOR_ENV_NAME', 'dataselector')
+ENV_RUNNER_CMD: str | None = None  # e.g. 'mamba run -n dataselector --'
+ENV_RUNNER_LIST: list[str] | None = None  # e.g. ['mamba', 'run', '-n', 'dataselector', '--']
+ENV_RUNNER_NAME: str | None = None
+
 MAIN_SCRIPT = ROOT / 'scripts' / 'xxl_KDR146_run_thesis_complete.py'
 
 # Helper to print and append monitor messages to active log
@@ -45,6 +52,41 @@ def _monitor_log(msg: str, active_log: Path) -> None:
             _lf.write(tsmsg + "\n")
     except Exception:
         pass
+
+def _init_env_runner(use_env: bool = True, env_name: str | None = None):
+    """Initialize the ENV runner variables (mamba/conda). Default env name 'dataselector'.
+
+    Sets global ENV_RUNNER_CMD and ENV_RUNNER_LIST.
+    """
+    global USE_DATASELECTOR_ENV, DATASELECTOR_ENV_NAME, ENV_RUNNER_CMD, ENV_RUNNER_LIST, ENV_RUNNER_NAME
+    USE_DATASELECTOR_ENV = bool(use_env)
+    if env_name:
+        DATASELECTOR_ENV_NAME = env_name
+
+    ENV_RUNNER_CMD = None
+    ENV_RUNNER_LIST = None
+    ENV_RUNNER_NAME = None
+
+    if not USE_DATASELECTOR_ENV:
+        return
+
+    # Prefer mamba, fall back to conda
+    try:
+        if shutil.which('mamba'):
+            ENV_RUNNER_CMD = f"mamba run -n {DATASELECTOR_ENV_NAME} --"
+            ENV_RUNNER_LIST = ['mamba', 'run', '-n', DATASELECTOR_ENV_NAME, '--']
+            ENV_RUNNER_NAME = 'mamba'
+        elif shutil.which('conda'):
+            ENV_RUNNER_CMD = f"conda run -n {DATASELECTOR_ENV_NAME} --"
+            ENV_RUNNER_LIST = ['conda', 'run', '-n', DATASELECTOR_ENV_NAME, '--']
+            ENV_RUNNER_NAME = 'conda'
+        else:
+            _monitor_log('Warning: no mamba/conda found on PATH; will not use dataselector env', LOG_FILE)
+            USE_DATASELECTOR_ENV = False
+    except Exception as e:
+        _monitor_log(f'Warning: error detecting mamba/conda: {e}', LOG_FILE)
+        USE_DATASELECTOR_ENV = False
+
 
 def run_hook(name: str, cmd_str: str, base_log_dir: Path, active_log: Path, timeout: int, retries: int, env: dict, start_new_session: bool, pass_dry_run: bool) -> dict:
     """Run a hook command with retries, timeout and logging."""
@@ -71,6 +113,13 @@ def run_hook(name: str, cmd_str: str, base_log_dir: Path, active_log: Path, time
         _monitor_log(f"[{name}] Rewrote hook command to use sys.executable: {rewritten}", active_log)
         cmd_str = rewritten
 
+    # If enabled and available, prefix the command with the env runner (mamba/conda)
+    if USE_DATASELECTOR_ENV and ENV_RUNNER_CMD:
+        _monitor_log(f"[{name}] Prefixing hook command to run inside env '{DATASELECTOR_ENV_NAME}' using {ENV_RUNNER_NAME}", active_log)
+        cmd_str = f"{ENV_RUNNER_CMD} {cmd_str}"
+
+    # Record the actual command being executed (after any rewriting/prefixing)
+    meta['command'] = cmd_str
     _monitor_log(f"[{name}] Running hook: {cmd_str}", active_log)
     _monitor_log(f"[{name}] Log: {log_file}", active_log)
 
@@ -148,81 +197,166 @@ def _reconstruct_trials_from_db(run_dir: Path, active_log: Path, study_name: Opt
             _monitor_log("No optuna_study.db found; skipping reconstruction.", active_log)
             return False
 
+    import sqlite3
     try:
-        import sqlite3
         import optuna
-        import pandas as pd
     except Exception as e:
-        _monitor_log(f"Required packages for reconstruction missing: {e}", active_log)
-        return False
+        _monitor_log(f"Optuna not available, will attempt direct sqlite parsing: {e}", active_log)
+        optuna = None
 
     # Quick DB integrity check
     try:
         conn = sqlite3.connect(str(db_path))
         cur = conn.cursor()
         res = cur.execute("PRAGMA integrity_check;").fetchone()
-        conn.close()
         if not res or (isinstance(res, tuple) and res[0] != 'ok'):
             _monitor_log(f"SQLite integrity_check failed: {res}", active_log)
+            conn.close()
             return False
     except Exception as e:
         _monitor_log(f"Could not run integrity_check on DB: {e}", active_log)
         return False
 
-    # Determine study_name if not provided
-    if study_name is None:
-        cfg_path = run_dir / 'config' / 'config_optuna.yaml'
-        try:
-            if cfg_path.exists():
-                import yaml
-                cfg = yaml.safe_load(cfg_path.read_text()) or {}
-                study_name = cfg.get('study_name') or cfg.get('optuna', {}).get('study_name')
-        except Exception:
-            pass
-
-    # If still not found, attempt to inspect the sqlite DB for a single study
-    if not study_name:
-        try:
-            conn = sqlite3.connect(str(db_path))
-            cur = conn.cursor()
-            cur.execute("SELECT study_name FROM studies;")
-            rows = cur.fetchall()
-            conn.close()
-            names = [r[0] for r in rows]
-            if len(names) == 1:
-                study_name = names[0]
-                _monitor_log(f"Auto-detected study name: {study_name}", active_log)
-            else:
-                _monitor_log(f"Multiple or no studies found in DB: {names}; falling back to default 'kdr100_opt'", active_log)
-                study_name = 'kdr100_opt'
-        except Exception:
-            study_name = 'kdr100_opt'
-
-    try:
-        study = optuna.load_study(study_name=study_name, storage=f"sqlite:///{db_path}")
-    except Exception as e:
-        _monitor_log(f"Failed to load optuna study from DB: {e}", active_log)
-        return False
-
-    # Extract trials
     rows = []
-    for t in study.trials:
-        rows.append({
-            "trial_number": t.number,
-            "datetime_start": t.datetime_start.isoformat() if getattr(t, 'datetime_start', None) else None,
-            "datetime_complete": t.datetime_complete.isoformat() if getattr(t, 'datetime_complete', None) else None,
-            "duration_sec": t.duration.total_seconds() if getattr(t, 'duration', None) else None,
-            "value": t.value,
-            "a": t.params.get('a') if getattr(t, 'params', None) else None,
-            "b": t.params.get('b') if getattr(t, 'params', None) else None,
-            "c": t.params.get('c') if getattr(t, 'params', None) else None,
-            "min_distance_km": t.params.get('min_distance_km') if getattr(t, 'params', None) else None,
-            # n_samples may be stored as trial param (when suggested) or as user_attr (when set manually).
-            "n_samples": (t.params.get('n_samples') if getattr(t, 'params', None) and t.params.get('n_samples') is not None else (getattr(t, 'user_attrs', {}).get('n_samples') if getattr(t, 'user_attrs', None) else None)),
-            "state": str(t.state),
-        })
 
+    if optuna is not None:
+        # Determine study_name if not provided
+        if study_name is None:
+            cfg_path = run_dir / 'config' / 'config_optuna.yaml'
+            try:
+                if cfg_path.exists():
+                    import yaml
+                    cfg = yaml.safe_load(cfg_path.read_text()) or {}
+                    study_name = cfg.get('study_name') or cfg.get('optuna', {}).get('study_name')
+            except Exception:
+                pass
+
+        if not study_name:
+            try:
+                cur.execute("SELECT study_name FROM studies;")
+                rows_st = cur.fetchall()
+                names = [r[0] for r in rows_st]
+                if len(names) == 1:
+                    study_name = names[0]
+                    _monitor_log(f"Auto-detected study name: {study_name}", active_log)
+                else:
+                    study_name = 'kdr100_opt'
+            except Exception:
+                study_name = 'kdr100_opt'
+
+        try:
+            study = optuna.load_study(study_name=study_name, storage=f"sqlite:///{db_path}")
+            for t in study.trials:
+                rows.append({
+                    "trial_number": t.number,
+                    "datetime_start": t.datetime_start.isoformat() if getattr(t, 'datetime_start', None) else None,
+                    "datetime_complete": t.datetime_complete.isoformat() if getattr(t, 'datetime_complete', None) else None,
+                    "duration_sec": t.duration.total_seconds() if getattr(t, 'duration', None) else None,
+                    "value": t.value,
+                    "a": t.params.get('a') if getattr(t, 'params', None) else None,
+                    "b": t.params.get('b') if getattr(t, 'params', None) else None,
+                    "c": t.params.get('c') if getattr(t, 'params', None) else None,
+                    "min_distance_km": t.params.get('min_distance_km') if getattr(t, 'params', None) else None,
+                    "n_samples": (t.params.get('n_samples') if getattr(t, 'params', None) and t.params.get('n_samples') is not None else (getattr(t, 'user_attrs', {}).get('n_samples') if getattr(t, 'user_attrs', None) else None)),
+                    "state": str(t.state),
+                })
+        except Exception as e:
+            _monitor_log(f"Failed to load optuna study from DB: {e}; falling back to direct sqlite parsing", active_log)
+
+    if not rows:
+        # Direct sqlite parsing fallback: query trials and join user attributes and params where available
+        try:
+            cur.execute("SELECT trial_id, number, datetime_start, datetime_complete, state FROM trials ORDER BY number ASC;")
+            trials_raw = cur.fetchall()
+
+            # Load trial params
+            params_map = {}
+            try:
+                cur.execute("SELECT trial_id, param_name, param_value FROM trial_params;")
+                for tid, pname, pval in cur.fetchall():
+                    params_map.setdefault(tid, {})[pname] = pval
+            except Exception:
+                params_map = {}
+
+            # Load user attributes
+            user_map = {}
+            try:
+                cur.execute("SELECT trial_id, key, value FROM trial_user_attributes;")
+                for tid, key, val in cur.fetchall():
+                    user_map.setdefault(tid, {})[key] = val
+            except Exception:
+                user_map = {}
+
+            # Load scalar values (objective)
+            value_map = {}
+            try:
+                cur.execute("SELECT trial_id, value FROM trial_values;")
+                for tid, val in cur.fetchall():
+                    value_map[tid] = val
+            except Exception:
+                value_map = {}
+
+            for tid, number, dt_start, dt_complete, state in trials_raw:
+                p = params_map.get(tid, {})
+                u = user_map.get(tid, {})
+                rows.append({
+                    "trial_number": number,
+                    "datetime_start": dt_start,
+                    "datetime_complete": dt_complete,
+                    "duration_sec": None,
+                    "value": value_map.get(tid),
+                    "a": (p.get('a') if 'a' in p else (u.get('alpha') if 'alpha' in u else None)),
+                    "b": (p.get('b') if 'b' in p else (u.get('beta') if 'beta' in u else None)),
+                    "c": (p.get('c') if 'c' in p else (u.get('gamma') if 'gamma' in u else None)),
+                    "min_distance_km": (p.get('min_distance_km') if 'min_distance_km' in p else (u.get('min_distance_km') if 'min_distance_km' in u else None)),
+                    # Parse n_samples as integer when possible (params may be numeric, user attrs are JSON/text)
+                    "n_samples": (int(p.get('n_samples')) if 'n_samples' in p and p.get('n_samples') is not None else (int(u.get('n_samples')) if 'n_samples' in u and u.get('n_samples') not in (None, 'null') else None)),
+                    "state": state,
+                })
+        except Exception as e:
+            _monitor_log(f"Direct DB parse failed: {e}", active_log)
+            conn.close()
+            return False
+
+    # After constructing rows, attempt to backfill n_samples from direct DB user attributes if available
+    try:
+        # user_map was populated in direct sqlite fallback; use it when present
+        if 'user_map' in locals() and user_map:
+            # Build mapping trial_id -> trial_number
+            conn2 = sqlite3.connect(str(db_path))
+            cur2 = conn2.cursor()
+            cur2.execute("SELECT trial_id, number FROM trials;")
+            id_to_num = {r[0]: r[1] for r in cur2.fetchall()}
+            conn2.close()
+            # Create mapping number -> n_samples
+            num_to_ns = {}
+            for tid, attrs in user_map.items():
+                if 'n_samples' in attrs and attrs.get('n_samples') not in (None, 'null'):
+                    try:
+                        num = id_to_num.get(tid)
+                        if num is not None:
+                            num_to_ns[num] = int(attrs.get('n_samples'))
+                    except Exception:
+                        pass
+            # Apply backfill
+            if num_to_ns:
+                for r in rows:
+                    tn = r.get('trial_number')
+                    if tn in num_to_ns and (r.get('n_samples') is None or str(r.get('n_samples')).lower() in ('none', 'nan')):
+                        r['n_samples'] = num_to_ns[tn]
+    except Exception as e:
+        _monitor_log(f"Warning: could not backfill n_samples from user attributes: {e}", active_log)
+
+    conn.close()
+    import pandas as pd
     df = pd.DataFrame(rows).sort_values('trial_number')
+
+    # Ensure n_samples column is filled from num_to_ns mapping when possible
+    try:
+        if 'num_to_ns' in locals() and num_to_ns:
+            df['n_samples'] = df['trial_number'].map(num_to_ns).astype('Int64')
+    except Exception:
+        pass
 
     out = run_dir / 'results' / 'trials.csv'
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -244,6 +378,16 @@ def _reconstruct_trials_from_db(run_dir: Path, active_log: Path, study_name: Opt
         # Atomic replace
         os.replace(str(tmp), str(out))
 
+        # Post-process: ensure n_samples filled from DB user attributes when possible
+        try:
+            import pandas as _pd
+            df2 = _pd.read_csv(out)
+            if 'num_to_ns' in locals() and num_to_ns:
+                df2['n_samples'] = df2['trial_number'].map(num_to_ns).astype('Int64')
+                df2.to_csv(out, index=False)
+        except Exception as e:
+            _monitor_log(f"Warning: failed to post-process n_samples column: {e}", active_log)
+
         # Write provenance meta
         meta = {
             'reconstructed_at': datetime.now(timezone.utc).isoformat(),
@@ -251,7 +395,7 @@ def _reconstruct_trials_from_db(run_dir: Path, active_log: Path, study_name: Opt
             'n_trials': len(df),
             'best_value': float(df['value'].max()) if not df['value'].isnull().all() else None,
             'study_name': study_name,
-            'optuna_version': getattr(optuna, '__version__', None),
+            'optuna_version': getattr(optuna, '__version__', None) if 'optuna' in globals() and optuna is not None else None,
         }
         meta_file = out.with_name('trials_reconstruct_meta.json')
         try:
@@ -697,13 +841,20 @@ def main():
     parser.add_argument('--dry-run-restart', action='store_true', help="Do not actually start resume, only display planned actions")
     # Auto-resume options
     parser.add_argument('--auto-resume-force', action='store_true', help="Automatically attempt to resume the last run and force restart non-interactively (safe for cron/CI)")
-    
+    # Dataselector environment options
+    parser.add_argument('--no-dataselector-env', action='store_true', help="Do not run hooks and child processes inside the 'dataselector' mamba/conda environment (default: use env)")
+    parser.add_argument('--dataselector-env-name', type=str, default=os.environ.get('DATASELECTOR_ENV_NAME', 'dataselector'), help="Name of the mamba/conda environment to use (default from DATASELECTOR_ENV_NAME or 'dataselector')")
+
     args = parser.parse_args()
 
     # Ensure PYTHONPATH in env
     env = os.environ.copy()
     env['PYTHONPATH'] = str(ROOT)
     env['PYTHONUNBUFFERED'] = '1'  # Force unbuffered output for real-time monitoring
+
+    # Initialize dataselector env runner (default: use dataselector env)
+    # Allow disabling with --no-dataselector-env and override name with --dataselector-env-name
+    _init_env_runner(use_env=not args.no_dataselector_env, env_name=args.dataselector_env_name)
 
     # Create per-run timestamped log file and make `XXL_FULL_RUN.log` point to it (symlink)
     ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
