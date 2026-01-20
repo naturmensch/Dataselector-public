@@ -65,6 +65,15 @@ def test_resume_attempts_reconstruction_then_succeeds(monkeypatch, tmp_path):
 
     monkeypatch.setattr(monitor, 'ROOT', tmp_path)
 
+    # Create a real optuna DB with completed trials so reconcile will attempt reconstruction
+    import optuna
+    db = run_dir / 'optuna_study.db'
+    storage = f"sqlite:///{db}"
+    study = optuna.create_study(direction='maximize', storage=storage, study_name='kdr100_opt', load_if_exists=True)
+    def simple_objective(t):
+        return 1.0
+    study.optimize(simple_objective, n_trials=2)
+
     # Monkeypatch reconstruction to create a trials.csv and return True
     def fake_reconstruct(rundir, active_log, study_name=None):
         res_dir = Path(rundir) / 'results'

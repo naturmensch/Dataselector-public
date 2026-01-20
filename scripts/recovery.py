@@ -75,7 +75,7 @@ class TaskExecutor:
         for t in tasks:
             if t.name == 'reconstruct':
                 # call monitor reconstruction hook: implemented as direct function/command externally
-                res = self.run_hook(name='reconstruct', cmd_str='reconstruct', base_log_dir=run_dir, active_log=f"{run_dir}/logs/reconstruct.log", timeout=600, retries=0, env=None, start_new_session=False, pass_dry_run=False)
+                res = self.run_hook(name='resume_phase_reconstruct', cmd_str='reconstruct', base_log_dir=run_dir, active_log=f"{run_dir}/logs/reconstruct.log", timeout=600, retries=0, env=None, start_new_session=False, pass_dry_run=False)
                 results.append({'task': t.name, 'meta': res})
 
             elif t.name == 'optuna':
@@ -90,7 +90,7 @@ class TaskExecutor:
                 meta_list = []
                 for s in seeds:
                     cmd_str = f"python -m scripts.run_adaptive_pipeline --seed {s} --hamburg --exp-name thesis_hamburg_reproducibility_s{s}"
-                    meta = self.run_hook(name=f'repro_s{s}', cmd_str=cmd_str, base_log_dir=run_dir, active_log=f"{run_dir}/logs/repro_s{s}.log", timeout=3600, retries=0, env=None, start_new_session=False, pass_dry_run=False)
+                    meta = self.run_hook(name=f'resume_phase_reproducibility_s{s}', cmd_str=cmd_str, base_log_dir=run_dir, active_log=f"{run_dir}/logs/repro_s{s}.log", timeout=3600, retries=0, env=None, start_new_session=False, pass_dry_run=False)
                     meta_list.append(meta)
                 results.append({'task': t.name, 'meta': meta_list})
 
@@ -98,7 +98,7 @@ class TaskExecutor:
                 # call finalization hook
                 n_samples = t.params.get('n_samples')
                 cmd = f"python -m scripts.final_selection --n-samples {n_samples}" if n_samples else f"python -m scripts.final_selection"
-                meta = self.run_hook(name='finalize', cmd_str=cmd, base_log_dir=run_dir, active_log=f"{run_dir}/logs/finalize.log", timeout=3600, retries=0, env=None, start_new_session=False, pass_dry_run=False)
+                meta = self.run_hook(name='resume_phase_finalize', cmd_str=cmd, base_log_dir=run_dir, active_log=f"{run_dir}/logs/finalize.log", timeout=3600, retries=0, env=None, start_new_session=False, pass_dry_run=False)
                 results.append({'task': t.name, 'meta': meta})
 
             else:

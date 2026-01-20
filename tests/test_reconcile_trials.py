@@ -61,8 +61,9 @@ def test_reconcile_db_more_trials_triggers_reconstruct(monkeypatch, tmp_path):
     # Provide fake optuna module and submodule with TrialState
     fake_trial = types.SimpleNamespace(TrialState=types.SimpleNamespace(COMPLETE='COMPLETE'))
     fake_optuna = types.SimpleNamespace(load_study=fake_load_study, trial=fake_trial)
-    _sys.modules['optuna'] = fake_optuna
-    _sys.modules['optuna.trial'] = fake_trial
+    # Use monkeypatch to set into sys.modules and ensure teardown
+    monkeypatch.setitem(_sys.modules, 'optuna', fake_optuna)
+    monkeypatch.setitem(_sys.modules, 'optuna.trial', fake_trial)
 
     # Monkeypatch reconstruct to create new trials.csv and return True
     def fake_reconstruct(rundir, active_log):

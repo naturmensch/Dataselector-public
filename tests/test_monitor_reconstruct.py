@@ -2,7 +2,8 @@ import sqlite3
 import tempfile
 from pathlib import Path
 
-import optuna
+import pytest
+optuna = pytest.importorskip('optuna')
 from scripts.xxl_full_run_monitor import _reconstruct_trials_from_db
 
 

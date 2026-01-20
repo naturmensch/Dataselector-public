@@ -75,8 +75,9 @@ def test_monitor_auto_resume_reconstructs_db_and_finalizes(monkeypatch, tmp_path
         return FakeStudy(n_completed=5, best_value=99.0)
     fake_trial = types.SimpleNamespace(TrialState=types.SimpleNamespace(COMPLETE='COMPLETE'))
     fake_optuna = types.SimpleNamespace(load_study=fake_load_study, trial=fake_trial)
-    sys.modules['optuna'] = fake_optuna
-    sys.modules['optuna.trial'] = fake_trial
+    # Use monkeypatch to inject fake optuna and ensure test isolation
+    monkeypatch.setitem(sys.modules, 'optuna', fake_optuna)
+    monkeypatch.setitem(sys.modules, 'optuna.trial', fake_trial)
 
     # Monkeypatch _reconstruct_trials_from_db to create a new trials.csv with 5 trials
     def fake_reconstruct(rundir, active_log):

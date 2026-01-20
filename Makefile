@@ -46,6 +46,19 @@ env-force:
 	@echo "Recreate 'dataselector' environment from scratch"
 	./scripts/create_env.sh dataselector 3.11 --force
 
+# Local venv targets (create .venv and install the project in editable mode)
+venv:
+	@echo "Create local python venv '.venv' and install project in editable mode"
+	python -m venv .venv
+	. .venv/bin/activate && python -m pip install --upgrade pip
+	. .venv/bin/activate && (pip install -r requirements-cpu.txt || pip install -r requirements.txt || true)
+	. .venv/bin/activate && pip install -e .
+
+venv-force:
+	@echo "Remove and recreate .venv"
+	rm -rf .venv
+	$(MAKE) venv
+
 
 archive-outputs:
 	@echo "Archive outputs to data/archive/"

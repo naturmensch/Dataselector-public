@@ -549,6 +549,24 @@ def _reconcile_trials(run_dir: Path, active_log: Path) -> dict:
     return res
 
 
+def run_cmd_with_retry(cmd: str, retries: int = 2, delay: int = 5, cwd: Path | None = None, fail_ok: bool = False) -> int:
+    """Module-level proxy to run child commands with simple retry semantics.
+
+    Tests can monkeypatch this symbol to simulate child process outcomes.
+    """
+    try:
+        from scripts.xxl_KDR146_run_thesis_complete import run_cmd_with_retry as _r
+        return _r(cmd, retries=retries, delay=delay, cwd=cwd, fail_ok=fail_ok)
+    except Exception:
+        # Fallback: use subprocess.run synchronously
+        try:
+            import subprocess
+            res = subprocess.run(cmd, shell=True, cwd=str(cwd) if cwd else None)
+            return res.returncode
+        except Exception:
+            return 1
+
+
 def _resume_run(run_selector: str, active_log: Path, force: bool = False, dry_run: bool = False) -> dict:
     """Attempt to safely resume a previous run identified by "last" or run name.
 
@@ -671,55 +689,92 @@ def _resume_run(run_selector: str, active_log: Path, force: bool = False, dry_ru
     else:
         db_backup = "N/A"
 
-    # Plan downstream phases to resume (optuna, reproducibility, finalize)
-    phases = []
-    # Optuna resume phase (only if remaining > 0)
-    resume_cmd = None
-    if remaining_report > 0:
-        # Prefer module invocation (-m) to make invocation independent of CWD
-        resume_cmd = f"{sys.executable} -m scripts.optuna_optimize --n-trials {remaining_report}"
-        phases.append({'name': 'optuna', 'cmd': resume_cmd})
+    # Use ExperimentStateAnalyzer and RecoveryPlanner to plan recovery tasks
+    try:
+        from scripts.monitor_state import ExperimentStateAnalyzer
+        from scripts.recovery import RecoveryPlanner, TaskExecutor
+    except Exception:
+        ExperimentStateAnalyzer = None
+        RecoveryPlanner = None
+        TaskExecutor = None
 
-    # Reproducibility phase: check for reproducibility runs existence
-    repro_runs = []
-    runs_root = ROOT / 'outputs' / 'runs'
-    if runs_root.exists():
-        repro_runs = [p for p in runs_root.iterdir() if p.is_dir() and 'thesis_hamburg_reproducibility' in p.name]
-    if not repro_runs:
-        # schedule reproducibility (seeds 43,44)
-        repro_cmd = (
-            f"{sys.executable} -c \"from scripts.xxl_KDR146_run_thesis_complete import phase_2_reproducibility;"
-            f" import sys; rc=phase_2_reproducibility(seeds=[43,44], n_trials={configured_n}, dry_run=False); sys.exit(0 if rc else 1)\""
-        )
-        phases.append({'name': 'reproducibility', 'cmd': repro_cmd})
-
-    # Finalize phase: check for final selection JSON
-    final_selection_global = ROOT / 'outputs' / 'THESIS_FINAL_SELECTION_XXL.json'
-    need_finalize = True
-    if final_selection_global.exists():
+    analyzer_state = {}
+    if ExperimentStateAnalyzer is not None:
         try:
-            sel = json.loads(final_selection_global.read_text())
-            sel_run = sel.get('run_id')
-            # If the global final selection belongs to this run, we can skip finalization
-            if sel_run and str(sel_run) == run_dir.name:
-                need_finalize = False
-                _monitor_log(f"Global final selection already exists for this run ({sel_run}); skipping finalize.", active_log)
-            # If sel_run contains the run_dir.name as substring (tolerant matching), also skip
-            elif sel_run and run_dir.name in str(sel_run):
-                need_finalize = False
-                _monitor_log(f"Global final selection corresponds to this run ({sel_run}); skipping finalize.", active_log)
-            else:
-                _monitor_log(f"Global final selection exists for different run ({sel_run}); will finalize current run.", active_log)
+            analyzer = ExperimentStateAnalyzer(run_dir)
+            analyzer_state = analyzer.inspect()
         except Exception:
-            _monitor_log("Could not parse global final selection; scheduling finalize for current run.", active_log)
-            need_finalize = True
+            analyzer_state = {}
 
-    if need_finalize:
-        finalize_cmd = (
-            f"{sys.executable} -c \"from pathlib import Path; from scripts.xxl_KDR146_run_thesis_complete import _extract_xxl_final_statistics;"
-            f" import sys; rc=_extract_xxl_final_statistics(Path('.')); sys.exit(0 if rc else 1)\""
-        )
-        phases.append({'name': 'finalize', 'cmd': finalize_cmd})
+    # Build a state summary for planner
+    state = {
+        'csv_exists': analyzer_state.get('csv_exists', False) or (run_dir / 'results' / 'trials.csv').exists(),
+        'csv_completed': analyzer_state.get('csv_completed', completed),
+        'csv_best': analyzer_state.get('csv_best', best_before),
+        'db_exists': analyzer_state.get('db_exists', False) or (db_path.exists() if db_path else False),
+        'db_integrity_ok': analyzer_state.get('db_integrity_ok', False),
+        'db_completed': analyzer_state.get('db_completed', 0),
+        'db_best': analyzer_state.get('db_best', None),
+        'db_path': str(db_path) if db_path else None,
+        'repro_done': bool(list((ROOT / 'outputs' / 'runs').glob('*thesis_hamburg_reproducibility*'))),
+        'final_exists': (ROOT / 'outputs' / 'THESIS_FINAL_SELECTION_XXL.json').exists(),
+        'final_belongs': False,
+        'n_samples': None,
+    }
+
+    # Check whether global final selection belongs to this run
+    final_sel = ROOT / 'outputs' / 'THESIS_FINAL_SELECTION_XXL.json'
+    if final_sel.exists():
+        try:
+            sel = json.loads(final_sel.read_text())
+            sel_run = sel.get('run_id')
+            if sel_run and (str(sel_run) == run_dir.name or run_dir.name in str(sel_run)):
+                state['final_belongs'] = True
+        except Exception:
+            pass
+
+    # If best_params includes n_samples, surface it
+    try:
+        if best_before is not None:
+            # attempt to read n_samples from best trial row in CSV
+            if (run_dir / 'results' / 'trials.csv').exists():
+                import pandas as _pd
+                df_tmp = _pd.read_csv(run_dir / 'results' / 'trials.csv')
+                best_row = df_tmp[df_tmp['value'] == df_tmp['value'].max()].iloc[0]
+                state['n_samples'] = int(best_row.get('n_samples')) if 'n_samples' in best_row and not _pd.isna(best_row.get('n_samples')) else None
+    except Exception:
+        state['n_samples'] = None
+
+    # Compute dataset size (used for repro CLI invocation)
+    n_candidates_calculated = 673
+    try:
+        tiles_df = pd.read_csv(ROOT / 'data' / 'new_all_tiles.csv')
+        n_candidates_calculated = len(tiles_df)
+    except Exception:
+        pass
+
+    planner = RecoveryPlanner(configured_n=configured_n, repro_seeds=[43, 44])
+    tasks = planner.plan(state)
+
+    # Map tasks to phase dicts with representative commands (for dry-run reporting)
+    phases = []
+    for t in tasks:
+        if t.name == 'reconstruct':
+            phases.append({'name': 'reconstruct', 'cmd': 'reconstruct'})
+        elif t.name == 'optuna':
+            n = int(t.params.get('n_trials', 0))
+            phases.append({'name': 'optuna', 'cmd': f"{sys.executable} -m scripts.optuna_optimize --n-trials {n}"})
+        elif t.name == 'repro':
+            seeds = ','.join(str(s) for s in t.params.get('seeds', []))
+            phases.append({'name': 'reproducibility', 'cmd': f"{sys.executable} -m scripts.xxl_KDR146_run_thesis_complete --phase repro --seeds {seeds} --n-trials {configured_n} --n-candidates {n_candidates_calculated}"})
+        elif t.name == 'finalize':
+            n_samples = t.params.get('n_samples')
+            cmd = f"{sys.executable} -m scripts.xxl_KDR146_run_thesis_complete --phase finalize --run-dir {run_dir}"
+            if n_samples:
+                cmd += f" --n-samples {n_samples}"
+            phases.append({'name': 'finalize', 'cmd': cmd})
+        else:
+            phases.append({'name': t.name, 'cmd': None})
 
     _monitor_log(f"Planned resume phases: {[p['name'] for p in phases]}", active_log)
 
@@ -750,37 +805,121 @@ def _resume_run(run_selector: str, active_log: Path, force: bool = False, dry_ru
                 pass
             return {'ok': False, 'reason': 'user_decline'}
 
-    env = os.environ.copy()
-    env['EXPERIMENT_RUN_DIR'] = str(run_dir)
+    try:
+        env = os.environ.copy()
+        env['EXPERIMENT_RUN_DIR'] = str(run_dir)
 
-    # Execute planned phases sequentially
-    phase_results = []
-    overall_ok = True
-    for phase in phases:
-        name = phase.get('name')
-        cmd = phase.get('cmd')
-        _monitor_log(f"Starting resume phase: {name}", active_log)
-        hook_meta = run_hook(
-            name=f'resume_phase_{name}',
-            cmd_str=cmd,
-            base_log_dir=run_dir / 'logs',
-            active_log=active_log,
-            timeout=0,
-            retries=0,
-            env=env,
-            start_new_session=True,
-            pass_dry_run=False
-        )
-        # After optuna phase, attempt to reconstruct trials
-        if name == 'optuna':
+
+
+        # Execute planned tasks using TaskExecutor
+        phase_results = []
+        overall_ok = True
+        try:
+            executor = TaskExecutor(run_hook_func=lambda **kw: run_hook(**kw), run_cmd_func=run_cmd_with_retry)
+            _monitor_log("Executor initialized: yes", active_log)
+        except Exception as e:
+            executor = None
+            _monitor_log(f"Executor init failed: {e}", active_log)
+
+        _monitor_log(f"Planned tasks: {[t.name for t in tasks]}", active_log)
+
+        if executor is None:
+            _monitor_log("Executor not available; using fallback sequential phases", active_log)
+            # Fallback: run old behavior for backward compatibility
+            for phase in phases:
+                name = phase.get('name')
+                cmd = phase.get('cmd')
+                _monitor_log(f"Starting resume phase: {name}", active_log)
+                hook_meta = run_hook(
+                    name=f'resume_phase_{name}',
+                    cmd_str=cmd,
+                    base_log_dir=run_dir / 'logs',
+                    active_log=active_log,
+                    timeout=0,
+                    retries=0,
+                    env=env,
+                    start_new_session=True,
+                    pass_dry_run=False
+                )
+                if name == 'optuna':
+                    try:
+                        _reconstruct_trials_from_db(run_dir, active_log)
+                    except Exception as e:
+                        _monitor_log(f"Post-resume reconstruction error: {e}", active_log)
+                phase_results.append({'name': name, 'cmd': cmd, 'hook_meta': hook_meta})
+                if not hook_meta.get('success'):
+                    overall_ok = False
+                    _monitor_log(f"Phase {name} reported failure; continuing to next phase (conservative mode)", active_log)
+        else:
+            # Convert Task objects back to a list and execute
+            exec_results = executor.execute(tasks, str(run_dir))
+            # Map exec_results to phase_results structure
+            for r, t in zip(exec_results, tasks):
+                # Use human-readable phase names in resume_meta (match dry-run output)
+                entry = {'name': t.name, 'cmd': None, 'result': r}
+                if t.name == 'optuna':
+                    entry['cmd'] = f"{sys.executable} -m scripts.optuna_optimize --n-trials {t.params.get('n_trials')}"
+                    # After optuna, reconstruct trials from DB
+                    try:
+                        _reconstruct_trials_from_db(run_dir, active_log)
+                    except Exception as e:
+                        _monitor_log(f"Post-resume reconstruction error: {e}", active_log)
+                elif t.name == 'repro':
+                    # normalize executed phase name to match dry-run naming
+                    entry['name'] = 'reproducibility'
+                    seeds = ','.join(str(s) for s in t.params.get('seeds', []))
+                    entry['cmd'] = f"{sys.executable} -m scripts.xxl_KDR146_run_thesis_complete --phase repro --seeds {seeds} --n-trials {configured_n} --n-candidates {n_candidates_calculated}"
+                elif t.name == 'finalize':
+                    n_samples = t.params.get('n_samples')
+                    entry['cmd'] = f"{sys.executable} -m scripts.xxl_KDR146_run_thesis_complete --phase finalize --run-dir {run_dir}"
+                    if n_samples:
+                        entry['cmd'] += f" --n-samples {n_samples}"
+                elif t.name == 'reconstruct':
+                    entry['cmd'] = 'reconstruct'
+                phase_results.append(entry)
+                # Interpret execution outcome
+                ok_flag = True
+                if isinstance(r, dict):
+                    # heuristics: check 'success' or exit_code
+                    ok_flag = bool(r.get('success', True)) if 'success' in r else (r.get('exit_code', 0) == 0 if isinstance(r.get('exit_code', None), int) else True)
+                elif isinstance(r, int):
+                    ok_flag = (r == 0)
+                if not ok_flag:
+                    overall_ok = False
+                    _monitor_log(f"Task {t.name} reported failure; continuing to next task (conservative mode)", active_log)
+
+    except Exception as e:
+        _monitor_log(f"Resume flow exception: {e}", active_log)
+        # Attempt to write a resume_meta file documenting the failure for later inspection
+        try:
+            import traceback
+            # Gather provenance: git short sha (if available) and active conda env name
             try:
-                _reconstruct_trials_from_db(run_dir, active_log)
-            except Exception as e:
-                _monitor_log(f"Post-resume reconstruction error: {e}", active_log)
-        phase_results.append({'name': name, 'cmd': cmd, 'hook_meta': hook_meta})
-        if not hook_meta.get('success'):
-            overall_ok = False
-            _monitor_log(f"Phase {name} reported failure; continuing to next phase (conservative mode)", active_log)
+                git_sha = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'], stderr=subprocess.DEVNULL).decode().strip()
+            except Exception:
+                git_sha = None
+            conda_env = os.environ.get('DATASELECTOR_ENV_NAME') or os.environ.get('CONDA_DEFAULT_ENV') or None
+            env_snapshot = {'PATH': os.environ.get('PATH'), 'PYTHONPATH': os.environ.get('PYTHONPATH'), 'CONDA_ENV': conda_env}
+
+            resume_meta_err = {
+                'resumed_at': datetime.now(timezone.utc).isoformat(),
+                'run_dir': str(run_dir),
+                'ok': False,
+                'reason': 'internal_exception',
+                'message': str(e),
+                'traceback': traceback.format_exc(),
+                'git_sha': git_sha,
+                'env': env_snapshot,
+                'phases': [],
+            }
+            (run_dir / 'results' / 'resume_meta.json').write_text(json.dumps(resume_meta_err, indent=2))
+        except Exception:
+            pass
+        try:
+            lock.unlink()
+        except Exception:
+            pass
+        return {'ok': False, 'reason': 'internal_exception', 'message': str(e)}
 
     # reload study to get final counts if optuna present
     try:
@@ -817,6 +956,7 @@ def _resume_run(run_selector: str, active_log: Path, force: bool = False, dry_ru
     except Exception:
         pass
 
+    _monitor_log(f"Resume flow completed; returning resume_meta ok={resume_meta.get('ok')}", active_log)
     return resume_meta
 
 def main():
@@ -945,9 +1085,13 @@ def main():
     # If a selected_sampler artifact exists, use it to instruct the main script which sampler to use
     try:
         sel = ROOT / 'outputs' / 'selected_sampler.json'
+        # Debug visibility: print the exact path and existence check so tests can be deterministic
+        print(f"DEBUG: selected_sampler path: {sel} ; exists={sel.exists()}", flush=True)
         if sel.exists():
             try:
-                j = __import__('json').loads(sel.read_text())
+                txt = sel.read_text()
+                print(f"DEBUG: selected_sampler contents: {txt}", flush=True)
+                j = __import__('json').loads(txt)
                 best = j.get('best')
                 if best:
                     # The pre-run compares Optuna samplers (qmc/tpe/cmaes). Pass the
@@ -955,9 +1099,12 @@ def main():
                     # so that downstream runs use the empirically best sampler.
                     cmd.extend(['--optuna-sampler', str(best)])
                     _monitor_log(f"Using selected sampler for Optuna from artifact: {best}", ACTIVE_LOG)
+                    # Also emit to stdout for visibility in non-interactive test runs
+                    print(f"Using selected sampler for Optuna from artifact: {best}", flush=True)
             except Exception as e:
                 _monitor_log(f"Could not parse selected_sampler.json: {e}", ACTIVE_LOG)
-    except Exception:
+    except Exception as e:
+        print(f"DEBUG: selected_sampler check failed: {e}", flush=True)
         pass
 
     # Allow monitor to instruct child to run in dry-run mode for smoke tests

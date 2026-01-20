@@ -6,7 +6,7 @@ import subprocess
 from unittest.mock import MagicMock, patch
 from pathlib import Path
 import json
-import optuna
+optuna = pytest.importorskip('optuna')
 
 # Ensure repo root on path
 ROOT = Path(__file__).resolve().parents[1]

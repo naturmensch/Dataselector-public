@@ -35,13 +35,18 @@ cd Dataselector
 ### 2. Python-Umgebung einrichten
 
 ```bash
-# Virtuelle Umgebung erstellen
-python -m venv venv
+# Lokale virtuelle Umgebung im Projekt-Root erstellen (empfohlen: .venv)
+python -m venv .venv
 
 # Aktivieren
-source venv/bin/activate  # Linux/Mac
+source .venv/bin/activate  # Linux/Mac
 # oder
-venv\Scripts\activate  # Windows
+.venv\Scripts\activate  # Windows
+
+# Alternative: helper script oder Makefile target
+./scripts/setup_local_venv.sh
+# oder
+make venv
 ```
 
 ### 3. Dependencies installieren

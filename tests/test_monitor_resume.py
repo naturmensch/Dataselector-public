@@ -3,7 +3,8 @@ import os
 from pathlib import Path
 import sqlite3
 
-import optuna
+import pytest
+optuna = pytest.importorskip('optuna')
 
 from scripts.xxl_full_run_monitor import _resume_run
 

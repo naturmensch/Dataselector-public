@@ -53,7 +53,8 @@ def test_reconstruct_uses_trial_user_attrs_for_n_samples(monkeypatch, tmp_path):
     def fake_load_study(study_name, storage):
         return FakeStudy([FakeTrial(0, 1.0, 25), FakeTrial(1, 2.0, 25)])
 
-    sys.modules['optuna'] = types.SimpleNamespace(load_study=fake_load_study)
+    # Use monkeypatch to avoid leaking the fake optuna into other tests
+    monkeypatch.setitem(sys.modules, 'optuna', types.SimpleNamespace(load_study=fake_load_study))
 
     ok = monitor._reconstruct_trials_from_db(run_dir, tmp_path / 'log.txt')
     assert ok is True
