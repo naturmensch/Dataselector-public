@@ -8,6 +8,10 @@ profile = "black"
 [tool.ruff]
 line-length = 88
 
+# Tests intentionally import local scripts and manipulate sys.path; ignore
+# E402 (module level import not at top) there.
+per-file-ignores = { "tests/*" = ["E402"] }
+
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
