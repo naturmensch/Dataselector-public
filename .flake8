@@ -2,3 +2,11 @@
 max-line-length = 100
 extend-ignore = E203, W503
 exclude = .venv,venv,.git,__pycache__,docs
+
+# Tests intentionally import local scripts after manipulating sys.path.
+# Ignore lint errors in test files that occur due to intentional patterns such
+# as importing from `scripts/` after manipulating `sys.path`, re-imports in
+# pytest usage, and long test fixtures. These are noisy and better handled by
+# per-file-ignores than mass-editing many tests.
+per-file-ignores =
+    tests/*: E402,F811,F841,E501,E502
