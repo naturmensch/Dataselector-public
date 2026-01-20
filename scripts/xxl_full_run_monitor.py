@@ -217,7 +217,8 @@ def _reconstruct_trials_from_db(run_dir: Path, active_log: Path, study_name: Opt
             "b": t.params.get('b') if getattr(t, 'params', None) else None,
             "c": t.params.get('c') if getattr(t, 'params', None) else None,
             "min_distance_km": t.params.get('min_distance_km') if getattr(t, 'params', None) else None,
-            "n_samples": t.params.get('n_samples') if getattr(t, 'params', None) else None,
+            # n_samples may be stored as trial param (when suggested) or as user_attr (when set manually).
+            "n_samples": (t.params.get('n_samples') if getattr(t, 'params', None) and t.params.get('n_samples') is not None else (getattr(t, 'user_attrs', {}).get('n_samples') if getattr(t, 'user_attrs', None) else None)),
             "state": str(t.state),
         })
 

@@ -456,7 +456,8 @@ def run_optuna(
                 "b": trial.params.get("b"),
                 "c": trial.params.get("c"),
                 "min_distance_km": trial.params.get("min_distance_km"),
-                "n_samples": trial.params.get("n_samples"),
+                # n_samples may be a trial.param (when range-sampling) or a user_attr (when fixed/adaptive). Prefer param, fall back to user_attr.
+                "n_samples": (trial.params.get("n_samples") if trial.params and trial.params.get("n_samples") is not None else (trial.user_attrs.get("n_samples") if hasattr(trial, 'user_attrs') and trial.user_attrs.get('n_samples') is not None else None)),
                 "state": str(trial.state),
             }
             trial_buffer.add_trial(trial_dict)
