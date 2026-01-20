@@ -257,8 +257,12 @@ def _extract_xxl_final_statistics(root: Path) -> dict | None:
             return None
         
         df = pd.read_csv(trials_csv)
-        df = df[df['state'] == 'TrialState.COMPLETE']
-        
+        # state values may be stored as 'COMPLETE' or 'TrialState.COMPLETE' depending on producer; be permissive
+        if 'state' in df.columns:
+            df = df[df['state'].astype(str).str.contains('COMPLETE')]
+        else:
+            df = df
+
         if df.empty:
             log("ERROR: No completed trials found", "ERROR")
             return None
@@ -281,6 +285,31 @@ def _extract_xxl_final_statistics(root: Path) -> dict | None:
             'min_distance_km': _safe_float(best_row.get('min_distance_km')),
             'n_samples': _safe_int(best_row.get('n_samples')),
         }
+
+        # If n_samples is missing in trials.csv, try to read it from optuna DB user attributes
+        if best_params['n_samples'] is None:
+            try:
+                import sqlite3
+                db_path = xxl_run / 'optuna_study.db'
+                if db_path.exists():
+                    conn = sqlite3.connect(str(db_path))
+                    cur = conn.cursor()
+                    # find trial_id for the best trial number
+                    cur.execute('SELECT trial_id FROM trials WHERE number = ?', (best_trial,))
+                    r = cur.fetchone()
+                    if r:
+                        tid = r[0]
+                        cur.execute("SELECT value_json FROM trial_user_attributes WHERE trial_id = ? AND key = 'n_samples'", (tid,))
+                        rr = cur.fetchone()
+                        if rr and rr[0] not in (None, 'null'):
+                            try:
+                                best_params['n_samples'] = int(rr[0])
+                                log(f"Backfilled best_params['n_samples'] from DB: {best_params['n_samples']}")
+                            except Exception:
+                                pass
+                    conn.close()
+            except Exception:
+                pass
 
         log(f"Best value: {float(best_val):.6f} @ Trial #{best_trial if best_trial is not None else 'N/A'}")
         log(f"Best params: a={best_params['a'] if best_params['a'] is not None else 'N/A'}, b={best_params['b'] if best_params['b'] is not None else 'N/A'}, c={best_params['c'] if best_params['c'] is not None else 'N/A'}")
@@ -406,13 +435,18 @@ def phase_2_reproducibility(seeds: list[int] | None = None, n_trials: int = 500,
     log("Phase 2 COMPLETE", "INFO")
     return True
 
-def phase_3_final_statistics() -> bool:
-    """Phase 3: Final Statistics & Report Generation."""
+def phase_3_final_statistics(run_dir: Path | None = None) -> bool:
+    """Phase 3: Final Statistics & Report Generation.
+
+    Args:
+        run_dir: Optional specific run directory to operate on. If None, auto-detected.
+    """
     log("=" * 70, "PHASE")
     log("PHASE 3: FINAL STATISTICS & REPORT GENERATION", "PHASE")
     log("=" * 70, "PHASE")
     
-    result = _extract_xxl_final_statistics(ROOT)
+    target_root = run_dir if run_dir is not None else ROOT
+    result = _extract_xxl_final_statistics(target_root)
     
     if result is None:
         log("Phase 3 FAILED", "ERROR")
@@ -555,18 +589,87 @@ def main() -> int:
     log("PRE-FLIGHT: CONVERGENCE VALIDATION FROM 10-SEED HAMBURG DATA", "PRE-FLIGHT")
     log("=" * 70, "PRE-FLIGHT")
     
-    # Parse known CLI args for optional behavior
+    # Parse CLI args (supports running specific phases for use by monitor)
     import argparse
-    parser = argparse.ArgumentParser(add_help=False)
+    parser = argparse.ArgumentParser(description="XXL pipeline runner (supports selective phases)")
     parser.add_argument('--use-suite-defaults', action='store_true', help='Do not pass n_trials/n_candidates to run_adaptive_pipeline; let it compute defaults')
     parser.add_argument('--dry-run', action='store_true', help='Do a dry-run and pass --dry-run to heavy sub-scripts')
-    parsed_args, _ = parser.parse_known_args()
-    use_suite_defaults = parsed_args.use_suite_defaults
-    dry_run = parsed_args.dry_run
+    parser.add_argument('--phase', nargs='+', choices=['all','phase1','phase2','phase3','phase4','optuna','repro','finalize','summary'], default=['all'], help='Run only specific phase(s) (default: all)')
+    parser.add_argument('--seeds', type=str, default=None, help="Comma-separated seeds for reproducibility phase (e.g. '43,44')")
+    parser.add_argument('--n-trials', type=int, default=None, help='Override n_trials for Phase 1/2')
+    parser.add_argument('--n-candidates', type=int, default=None, help='Override n_candidates for Phase 1/2')
+    parser.add_argument('--n-samples', type=int, default=None, help='Override n_samples for final selection (used by finalization flow)')
+    parser.add_argument('--run-dir', type=str, default=None, help='Path to a specific run dir (used by finalize)')
+
+    args = parser.parse_args()
+    use_suite_defaults = args.use_suite_defaults
+    dry_run = args.dry_run
+    requested_phases = args.phase
+
+    # Parse seeds argument into list of ints when provided
+    seeds_list: list[int] | None = None
+    if args.seeds:
+        try:
+            seeds_list = [int(s) for s in str(args.seeds).split(',') if s.strip()]
+        except Exception:
+            seeds_list = None
 
     conv_data = None
     if not use_suite_defaults:
         conv_data = _validate_convergence_from_validation_data(ROOT)
+
+    # Dataset size: compute from data/new_all_tiles.csv when available (keeps in sync with dataset)
+    n_candidates_calculated = 673
+    try:
+        tiles_df = pd.read_csv(ROOT / 'data' / 'new_all_tiles.csv')
+        n_candidates_calculated = len(tiles_df)
+    except Exception:
+        log("WARN: Could not read data/new_all_tiles.csv; falling back to 673 candidates", "WARN")
+
+    # If user requested specific phases, only run those
+    run_only = not (len(requested_phases) == 1 and requested_phases[0] == 'all')
+
+    # Helper: map synonyms
+    phase_map = {'optuna': 'phase1', 'repro': 'phase2', 'finalize': 'phase3', 'summary': 'phase4'}
+    normalized_phases = []
+    for p in requested_phases:
+        normalized_phases.append(phase_map.get(p, p))
+
+    # If running only specific phases: compute parameters lazily and run the requested ones
+    if run_only:
+        # Phase 1
+        if 'phase1' in normalized_phases:
+            nt = args.n_trials if args.n_trials is not None else (conv_data['convergence_99_trials_median'] * 5 if conv_data else 500)
+            nc = args.n_candidates if args.n_candidates is not None else n_candidates_calculated
+            if not phase_1_xxl_hamburg(n_trials=int(nt), n_candidates=int(nc), pass_params=True, dry_run=dry_run):
+                log('Pipeline aborted at Phase 1 (CLI request)', 'ERROR')
+                return 1
+
+        # Phase 2
+        if 'phase2' in normalized_phases:
+            seeds = seeds_list if seeds_list is not None else [43, 44]
+            nt = args.n_trials if args.n_trials is not None else (conv_data['convergence_99_trials_median'] * 5 if conv_data else 500)
+            nc = args.n_candidates if args.n_candidates is not None else n_candidates_calculated
+            if not phase_2_reproducibility(seeds=seeds, n_trials=int(nt), n_candidates=int(nc), pass_params=True, dry_run=dry_run):
+                log('Pipeline aborted at Phase 2 (CLI request)', 'ERROR')
+                return 1
+
+        # Phase 3
+        if 'phase3' in normalized_phases:
+            run_dir = Path(args.run_dir) if args.run_dir else None
+            if not phase_3_final_statistics(run_dir=run_dir):
+                log('Pipeline aborted at Phase 3 (CLI request)', 'ERROR')
+                return 1
+
+        # Phase 4
+        if 'phase4' in normalized_phases:
+            if not phase_4_thesis_summary():
+                log('Pipeline aborted at Phase 4 (CLI request)', 'ERROR')
+                return 1
+
+        # Done with requested phases
+        log('Requested phases completed (CLI mode)', 'INFO')
+        return 0
 
     # Calculate adaptive n_trials based on actual convergence data
     if conv_data:
