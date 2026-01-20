@@ -576,6 +576,8 @@ def main():
     parser.add_argument('--restart', nargs='?', const='last', help="Resume a previous run: 'last' (default when provided) or specific run_dir name")
     parser.add_argument('--force-restart', action='store_true', help="If set, resume without interactive confirmation")
     parser.add_argument('--dry-run-restart', action='store_true', help="Do not actually start resume, only display planned actions")
+    # Auto-resume options
+    parser.add_argument('--auto-resume-force', action='store_true', help="Automatically attempt to resume the last run and force restart non-interactively (safe for cron/CI)")
     
     args = parser.parse_args()
 
@@ -654,6 +656,17 @@ def main():
             sys.exit(0)
         else:
             _monitor_log(f"Resume aborted/skipped: {res.get('reason')}", ACTIVE_LOG)
+            sys.exit(1)
+
+    # Auto-resume (force) requested: attempt to resume last run automatically and exit
+    if args.auto_resume_force:
+        _monitor_log("Auto-resume-force requested: attempting to resume last run (force=true)", ACTIVE_LOG)
+        res = _resume_run('last', ACTIVE_LOG, force=True, dry_run=False)
+        if res.get('ok'):
+            _monitor_log("Auto-resume completed successfully; exiting monitor.", ACTIVE_LOG)
+            sys.exit(0)
+        else:
+            _monitor_log(f"Auto-resume failed: {res.get('reason')}; exiting with failure.", ACTIVE_LOG)
             sys.exit(1)
 
     # Start the full run subprocess
