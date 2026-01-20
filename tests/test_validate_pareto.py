@@ -2,8 +2,11 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
-from scripts.validate_pareto_candidates import validate
+pytest.importorskip("numba", exc_type=ImportError)
+pytestmark = pytest.mark.integration
+import importlib.util
 
 
 def _make_pareto_csv(tmp_path):
@@ -37,6 +40,16 @@ def _make_pareto_csv(tmp_path):
 
 def test_validate_small(tmp_path, monkeypatch):
     pareto, outdir = _make_pareto_csv(tmp_path)
+
+    # Dynamically load the validate function from script after skip checks
+    ROOT = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "validate_pareto_candidates", ROOT / "scripts" / "validate_pareto_candidates.py"
+    )
+    validate_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validate_mod)
+    validate = validate_mod.validate
+
     # Run validation with small params to be quick and point to temp outdir
     df = validate(
         pareto, min_distances=[10], seeds=[1, 2], n_samples=2, output_dir=outdir

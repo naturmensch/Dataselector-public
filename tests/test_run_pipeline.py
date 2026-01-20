@@ -2,7 +2,13 @@ import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from scripts.run_pipeline import should_run_tuning
+import pytest
+import importlib.util
+
+pytest.importorskip("numba", exc_type=ImportError)
+pytestmark = pytest.mark.integration
+
+
 
 
 def _write_meta(path: Path, csv_hash: str, days_ago: int = 0):
@@ -22,6 +28,15 @@ def _write_file(path: Path, content: bytes):
 
 
 def test_should_run_tuning_logic(tmp_path):
+    # Load the module dynamically after environment skip checks
+    ROOT = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "run_pipeline", ROOT / "scripts" / "run_pipeline.py"
+    )
+    run_pipeline = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(run_pipeline)
+    should_run_tuning = run_pipeline.should_run_tuning
+
     csv = tmp_path / "meta.csv"
     csv.write_bytes(b"hello")
     out = tmp_path / "out"
