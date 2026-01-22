@@ -11,15 +11,11 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
-import sys  # noqa: E402
 
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+# Note: Project imports (src.*) are deferred into functions to keep this module
+# import-safe for tests and linters (avoid import-time side-effects).
 
-from src.clustering import ClusteringPipeline  # noqa: E402
-from src.diversity_selector import DiversitySelector  # noqa: E402
-from src.io import load_metadata, load_or_extract_features  # noqa: E402
-from src.metrics import compute_metrics  # noqa: E402
+
 
 
 def jaccard(a, b):
@@ -44,11 +40,20 @@ def bootstrap_candidate(
     n_boot=200,
     random_seed=42,
 ):
+    # Local imports to keep module import-safe
+    from tqdm import trange
+    from src.clustering import ClusteringPipeline
+    from src.diversity_selector import DiversitySelector
+    from src.metrics import compute_metrics
+
     rng = np.random.default_rng(random_seed)
     N = features.shape[0]
     results = []
 
     for i in range(n_boot):
+        for _ in trange(1, desc=f"Boot candidate {alpha:.2f},{beta:.2f},{gamma:.2f} (iter {i+1})", leave=False):
+            pass
+
         sample_idx = rng.integers(0, N, size=N)
         boot_features = features[sample_idx]
         boot_meta = metadata.iloc[sample_idx].reset_index(drop=True)
@@ -100,6 +105,11 @@ def main(
     pre_selected_names=None,
     pre_selected_indices=None,
 ):
+    # Local imports to keep module import-safe
+    from src.io import load_metadata, load_or_extract_features
+    from src.clustering import ClusteringPipeline
+    from src.diversity_selector import DiversitySelector
+
     pareto = pd.read_csv(pareto_csv)
 
     # load full metadata and features
