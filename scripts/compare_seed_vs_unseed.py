@@ -1,39 +1,48 @@
 """Compare selection with and without pre-selected seeds (e.g. 'Hamburg').
 Produces a small CSV and Markdown report in outputs/seed_benchmark.
 """
+
 from pathlib import Path
+
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in __import__("sys").path:
     __import__("sys").path.insert(0, str(ROOT))
 
-from src.io import load_or_extract_features, load_metadata
-from src.diversity_selector import DiversitySelector
-from src.metrics import compute_metrics
+from src.diversity_selector import DiversitySelector  # noqa: E402
+from src.io import load_metadata, load_or_extract_features  # noqa: E402
+from src.metrics import compute_metrics  # noqa: E402
 
 OUT = ROOT / "outputs" / "seed_benchmark"
 OUT.mkdir(parents=True, exist_ok=True)
 
 # Config (read from pipeline config for consistency)
-import yaml
+import yaml  # noqa: E402
+
 cfg = yaml.safe_load(open(ROOT / "config" / "pipeline_config.yaml"))
 
-n_samples = cfg.get('selection', {}).get('n_samples', 34)
-alpha = cfg.get('selection', {}).get('alpha_visual', 0.7)
-beta = cfg.get('selection', {}).get('beta_spatial', 0.05)
-gamma = cfg.get('selection', {}).get('gamma_temporal', 0.25)
-min_distance_km = cfg.get('selection', {}).get('min_distance_km', 40.0)
-batch_size = cfg.get('feature_extraction', {}).get('batch_size', 8)
+n_samples = cfg.get("selection", {}).get("n_samples", 34)
+alpha = cfg.get("selection", {}).get("alpha_visual", 0.7)
+beta = cfg.get("selection", {}).get("beta_spatial", 0.05)
+gamma = cfg.get("selection", {}).get("gamma_temporal", 0.25)
+min_distance_km = cfg.get("selection", {}).get("min_distance_km", 40.0)
+batch_size = cfg.get("feature_extraction", {}).get("batch_size", 8)
 
 # Load cached features & metadata
-features = load_or_extract_features(OUT, csv_meta=str(ROOT / "data" / "new_all_tiles.csv"), batch_size=batch_size, cache=True)
+features = load_or_extract_features(
+    OUT,
+    csv_meta=str(ROOT / "data" / "new_all_tiles.csv"),
+    batch_size=batch_size,
+    cache=True,
+)
 metadata = load_metadata(str(ROOT / "data" / "new_all_tiles.csv"))
 
 cluster_labels = None
 # compute cluster labels using existing pipeline to be consistent
-from src.clustering import ClusteringPipeline
-n_clusters_cfg = cfg.get('clustering', {}).get('n_clusters', 8)
+from src.clustering import ClusteringPipeline  # noqa: E402
+
+n_clusters_cfg = cfg.get("clustering", {}).get("n_clusters", 8)
 clustering = ClusteringPipeline(n_clusters=n_clusters_cfg)
 _, cluster_labels = clustering.fit_transform(features)
 
@@ -46,7 +55,9 @@ scenarios = [
 ]
 
 for tag, pre_names, pre_idxs in scenarios:
-    ds = DiversitySelector(n_samples=n_samples, use_multi_criteria=True, random_state=42)
+    ds = DiversitySelector(
+        n_samples=n_samples, use_multi_criteria=True, random_state=42
+    )
     selected = ds.select(
         features=features,
         metadata=metadata,
@@ -60,12 +71,14 @@ for tag, pre_names, pre_idxs in scenarios:
     )
 
     metrics = compute_metrics(selected, metadata, cluster_labels, features)
-    metrics.update({
-        "scenario": tag,
-        "pre_selected_names": pre_names,
-        "pre_selected_indices": pre_idxs,
-        "n_selected": len(selected),
-    })
+    metrics.update(
+        {
+            "scenario": tag,
+            "pre_selected_names": pre_names,
+            "pre_selected_indices": pre_idxs,
+            "n_selected": len(selected),
+        }
+    )
 
     # Also save the selection CSV snapshot
     sel_df = metadata.iloc[selected].copy()
@@ -83,7 +96,9 @@ df.to_csv(OUT / "seed_vs_unseed_metrics.csv", index=False)
 md = OUT / "seed_vs_unseed_report.md"
 with open(md, "w") as f:
     f.write("# Seed vs No-Seed Selection Benchmark\n\n")
-    f.write("This short report compares baseline selection and selection seeded with 'Hamburg'.\n\n")
+    f.write(
+        "This short report compares baseline selection and selection seeded with 'Hamburg'.\n\n"
+    )
     try:
         f.write(df.to_markdown(index=False))
     except Exception:

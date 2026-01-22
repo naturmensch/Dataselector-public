@@ -9,13 +9,16 @@ alternative to running hundreds of resamples at prediction time. It still
 requires generating a modest training set (e.g., 30-100 resamples) but the
 inference is very fast once the ensemble is trained.
 """
-from typing import List, Tuple, Sequence
+
+from typing import List, Sequence, Tuple
+
 import numpy as np
 
 try:
     import torch
     import torch.nn as nn
     import torch.optim as optim
+
     HAS_TORCH = True
 except Exception:
     HAS_TORCH = False
@@ -36,7 +39,9 @@ class EnsembleMLP(nn.Module):
         return self.net(x)
 
 
-def train_ensemble(X: np.ndarray, y: np.ndarray, n_models: int = 5, epochs: int = 50, lr: float = 1e-3) -> List[EnsembleMLP]:
+def train_ensemble(
+    X: np.ndarray, y: np.ndarray, n_models: int = 5, epochs: int = 50, lr: float = 1e-3
+) -> List[EnsembleMLP]:
     """Train an ensemble of small MLPs to predict `y` from `X`.
 
     Args:
@@ -72,7 +77,9 @@ def train_ensemble(X: np.ndarray, y: np.ndarray, n_models: int = 5, epochs: int 
     return models
 
 
-def predict_with_uncertainty(models: Sequence[EnsembleMLP], X: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def predict_with_uncertainty(
+    models: Sequence[EnsembleMLP], X: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray]:
     """Return mean and std predictions across ensemble members.
 
     Args:
@@ -96,7 +103,13 @@ def predict_with_uncertainty(models: Sequence[EnsembleMLP], X: np.ndarray) -> Tu
     return arr.mean(axis=0), arr.std(axis=0)
 
 
-def fit_ensemble_on_bootstrap_df(df_boot: np.ndarray, input_cols: Sequence[str], target_col: str, n_models: int = 5, epochs: int = 50):
+def fit_ensemble_on_bootstrap_df(
+    df_boot: np.ndarray,
+    input_cols: Sequence[str],
+    target_col: str,
+    n_models: int = 5,
+    epochs: int = 50,
+):
     """Fit ensemble to bootstrap DataFrame exported from `bootstrap_candidate`.
 
     Args:

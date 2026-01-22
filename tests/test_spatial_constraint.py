@@ -1,5 +1,9 @@
 import numpy as np
 import pandas as pd
+import pytest
+
+pytest.importorskip("numba", exc_type=ImportError)
+pytestmark = pytest.mark.integration
 
 from src.diversity_selector import DiversitySelector
 from src.metadata_processor import MetadataProcessor

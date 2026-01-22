@@ -3,21 +3,23 @@
 Usage example:
   PYTHONPATH=. python scripts/bootstrap_pareto_candidates.py --pareto outputs/fine_sweep/pareto_solutions.csv --n-boot 200 --out outputs/fine_sweep/bootstrap_results.csv
 """
-from pathlib import Path
+
 import argparse
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from tqdm import trange
 
 ROOT = Path(__file__).resolve().parents[1]
-import sys
+import sys  # noqa: E402
+
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from src.diversity_selector import DiversitySelector
-from src.metrics import compute_metrics
-from src.clustering import ClusteringPipeline
-from src.io import load_metadata, load_or_extract_features
+from src.clustering import ClusteringPipeline  # noqa: E402
+from src.diversity_selector import DiversitySelector  # noqa: E402
+from src.io import load_metadata, load_or_extract_features  # noqa: E402
+from src.metrics import compute_metrics  # noqa: E402
 
 
 def jaccard(a, b):
@@ -30,7 +32,18 @@ def jaccard(a, b):
     return len(A & B) / len(A | B)
 
 
-def bootstrap_candidate(alpha, beta, gamma, min_d, features, metadata, original_selection, cluster_labels_full, n_boot=200, random_seed=42):
+def bootstrap_candidate(
+    alpha,
+    beta,
+    gamma,
+    min_d,
+    features,
+    metadata,
+    original_selection,
+    cluster_labels_full,
+    n_boot=200,
+    random_seed=42,
+):
     rng = np.random.default_rng(random_seed)
     N = features.shape[0]
     results = []
@@ -43,11 +56,16 @@ def bootstrap_candidate(alpha, beta, gamma, min_d, features, metadata, original_
         # clustering on boot features (not used for metrics -- metrics computed on original mapping)
         clustering = ClusteringPipeline(n_clusters=8)
         try:
-            embeddings, cluster_labels_boot = clustering.fit_transform(boot_features)
+            _embeddings, _cluster_labels_boot = clustering.fit_transform(boot_features)
         except Exception:
-            cluster_labels_boot = np.zeros(N, dtype=int)
+            # if clustering fails, continue with metrics computed on original labels
+            pass
 
-        ds = DiversitySelector(n_samples=len(original_selection), use_multi_criteria=True, random_state=int(1000 + i))
+        ds = DiversitySelector(
+            n_samples=len(original_selection),
+            use_multi_criteria=True,
+            random_state=int(1000 + i),
+        )
         selected_boot = ds.select(
             features=boot_features,
             metadata=boot_meta,
@@ -64,19 +82,41 @@ def bootstrap_candidate(alpha, beta, gamma, min_d, features, metadata, original_
         # compute metrics relative to original data using full clustering labels
         metrics = compute_metrics(mapped, metadata, cluster_labels_full, features)
         # compute jaccard with original_selection
-        metrics['jaccard_with_original'] = jaccard(mapped, original_selection)
-        metrics['bootstrap_i'] = i
+        metrics["jaccard_with_original"] = jaccard(mapped, original_selection)
+        metrics["bootstrap_i"] = i
         results.append(metrics)
 
     return pd.DataFrame(results)
 
 
-def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str = 'bootstrap', n_ensemble_models: int = 5, ensemble_epochs: int = 50, pre_selected_names=None, pre_selected_indices=None):
+def main(
+    pareto_csv,
+    n_boot=200,
+    output_csv=None,
+    random_seed=42,
+    uq_method: str = "bootstrap",
+    n_ensemble_models: int = 5,
+    ensemble_epochs: int = 50,
+    pre_selected_names=None,
+    pre_selected_indices=None,
+):
     pareto = pd.read_csv(pareto_csv)
 
     # load full metadata and features
-    metadata = load_metadata(str(Path(ROOT) / 'data' / 'new_all_tiles.csv')) if (Path(ROOT) / 'outputs' / 'metadata.csv').exists() is False else pd.read_csv(Path(ROOT) / 'outputs' / 'metadata.csv')
-    features = load_or_extract_features(Path(ROOT) / 'outputs', csv_meta=str(Path(ROOT) / 'outputs' / 'metadata.csv') if (Path(ROOT) / 'outputs' / 'metadata.csv').exists() else None, cache=True)
+    metadata = (
+        load_metadata(str(Path(ROOT) / "data" / "new_all_tiles.csv"))
+        if (Path(ROOT) / "outputs" / "metadata.csv").exists() is False
+        else pd.read_csv(Path(ROOT) / "outputs" / "metadata.csv")
+    )
+    features = load_or_extract_features(
+        Path(ROOT) / "outputs",
+        csv_meta=(
+            str(Path(ROOT) / "outputs" / "metadata.csv")
+            if (Path(ROOT) / "outputs" / "metadata.csv").exists()
+            else None
+        ),
+        cache=True,
+    )
 
     # full clustering (for cluster labels)
     clustering = ClusteringPipeline(n_clusters=8)
@@ -89,14 +129,16 @@ def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str
     summary_rows = []
 
     # option: ensemble-based UQ (faster inference after modest training)
-    use_ensemble = uq_method == 'ensemble'
+    use_ensemble = uq_method == "ensemble"
 
     for idx, row in pareto.iterrows():
-        alpha, beta, gamma = row['alpha'], row['beta'], row['gamma']
-        min_d = row['min_distance_km']
+        alpha, beta, gamma = row["alpha"], row["beta"], row["gamma"]
+        min_d = row["min_distance_km"]
 
         # compute original selection on full dataset
-        ds = DiversitySelector(n_samples=int(row['n_selected']), use_multi_criteria=True, random_state=42)
+        ds = DiversitySelector(
+            n_samples=int(row["n_selected"]), use_multi_criteria=True, random_state=42
+        )
         selected = ds.select(
             features=features,
             metadata=metadata,
@@ -113,98 +155,143 @@ def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str
         if use_ensemble:
             # Train small ensemble on a reduced number of bootstrap resamples
             n_boot_train = min(50, max(10, int(n_boot // 4)))
-            df_boot_train = bootstrap_candidate(alpha, beta, gamma, min_d, features, metadata, original_sel, cluster_labels_full, n_boot=n_boot_train, random_seed=random_seed)
+            df_boot_train = bootstrap_candidate(
+                alpha,
+                beta,
+                gamma,
+                min_d,
+                features,
+                metadata,
+                original_sel,
+                cluster_labels_full,
+                n_boot=n_boot_train,
+                random_seed=random_seed,
+            )
             # attach hyperparameter columns so ensemble training can use them
-            df_boot_train['alpha'] = alpha
-            df_boot_train['beta'] = beta
-            df_boot_train['gamma'] = gamma
-            df_boot_train['min_distance_km'] = min_d
+            df_boot_train["alpha"] = alpha
+            df_boot_train["beta"] = beta
+            df_boot_train["gamma"] = gamma
+            df_boot_train["min_distance_km"] = min_d
 
             # Fit ensembles for each target metric
             try:
-                from scripts.uncertainty_quantification import fit_ensemble_on_bootstrap_df, predict_with_uncertainty
-                input_cols = ['alpha', 'beta', 'gamma', 'min_distance_km']
-                targets = ['temporal_std', 'wwi_percent', 'jaccard_with_original']
+                from scripts.uncertainty_quantification import (
+                    fit_ensemble_on_bootstrap_df,
+                    predict_with_uncertainty,
+                )
+
+                input_cols = ["alpha", "beta", "gamma", "min_distance_km"]
+                targets = ["temporal_std", "wwi_percent", "jaccard_with_original"]
 
                 preds = {}
                 X_query = [[float(alpha), float(beta), float(gamma), float(min_d)]]
                 for t in targets:
                     if t not in df_boot_train.columns:
-                        preds[t] = (float('nan'), float('nan'))
+                        preds[t] = (float("nan"), float("nan"))
                         continue
-                    models = fit_ensemble_on_bootstrap_df(df_boot_train, input_cols=input_cols, target_col=t, n_models=n_ensemble_models, epochs=ensemble_epochs)
+                    models = fit_ensemble_on_bootstrap_df(
+                        df_boot_train,
+                        input_cols=input_cols,
+                        target_col=t,
+                        n_models=n_ensemble_models,
+                        epochs=ensemble_epochs,
+                    )
                     mean, std = predict_with_uncertainty(models, np.array(X_query))
                     preds[t] = (float(mean[0]), float(std[0]))
 
                 summary = {
-                    'pareto_idx': idx,
-                    'alpha': alpha,
-                    'beta': beta,
-                    'gamma': gamma,
-                    'min_distance_km': min_d,
-                    'n_selected': int(row['n_selected']),
-                    'temporal_std_mean': preds['temporal_std'][0],
-                    'temporal_std_std': preds['temporal_std'][1],
-                    'wwi_percent_mean': preds['wwi_percent'][0],
-                    'wwi_percent_std': preds['wwi_percent'][1],
-                    'jaccard_mean': preds['jaccard_with_original'][0],
-                    'jaccard_std': preds['jaccard_with_original'][1],
-                    'method': 'ensemble',
+                    "pareto_idx": idx,
+                    "alpha": alpha,
+                    "beta": beta,
+                    "gamma": gamma,
+                    "min_distance_km": min_d,
+                    "n_selected": int(row["n_selected"]),
+                    "temporal_std_mean": preds["temporal_std"][0],
+                    "temporal_std_std": preds["temporal_std"][1],
+                    "wwi_percent_mean": preds["wwi_percent"][0],
+                    "wwi_percent_std": preds["wwi_percent"][1],
+                    "jaccard_mean": preds["jaccard_with_original"][0],
+                    "jaccard_std": preds["jaccard_with_original"][1],
+                    "method": "ensemble",
                 }
 
                 # For ensemble mode we do not record per-resample rows, only the summary.
             except Exception as e:
-                print(f"Ensemble UQ failed ({e}), falling back to standard bootstrap for this candidate")
-                df_boot = bootstrap_candidate(alpha, beta, gamma, min_d, features, metadata, original_sel, cluster_labels_full, n_boot=n_boot, random_seed=random_seed)
-                df_boot['alpha'] = alpha
-                df_boot['beta'] = beta
-                df_boot['gamma'] = gamma
-                df_boot['min_distance_km'] = min_d
-                df_boot['n_selected'] = int(row['n_selected'])
-                df_boot['pareto_idx'] = idx
+                print(
+                    f"Ensemble UQ failed ({e}), falling back to standard bootstrap for this candidate"
+                )
+                df_boot = bootstrap_candidate(
+                    alpha,
+                    beta,
+                    gamma,
+                    min_d,
+                    features,
+                    metadata,
+                    original_sel,
+                    cluster_labels_full,
+                    n_boot=n_boot,
+                    random_seed=random_seed,
+                )
+                df_boot["alpha"] = alpha
+                df_boot["beta"] = beta
+                df_boot["gamma"] = gamma
+                df_boot["min_distance_km"] = min_d
+                df_boot["n_selected"] = int(row["n_selected"])
+                df_boot["pareto_idx"] = idx
                 all_boot.append(df_boot)
 
                 summary = {
-                    'pareto_idx': idx,
-                    'alpha': alpha,
-                    'beta': beta,
-                    'gamma': gamma,
-                    'min_distance_km': min_d,
-                    'n_selected': int(row['n_selected']),
-                    'temporal_std_mean': df_boot['temporal_std'].mean(),
-                    'temporal_std_std': df_boot['temporal_std'].std(),
-                    'wwi_percent_mean': df_boot['wwi_percent'].mean(),
-                    'wwi_percent_std': df_boot['wwi_percent'].std(),
-                    'jaccard_mean': df_boot['jaccard_with_original'].mean(),
-                    'jaccard_std': df_boot['jaccard_with_original'].std(),
-                    'method': 'bootstrap',
+                    "pareto_idx": idx,
+                    "alpha": alpha,
+                    "beta": beta,
+                    "gamma": gamma,
+                    "min_distance_km": min_d,
+                    "n_selected": int(row["n_selected"]),
+                    "temporal_std_mean": df_boot["temporal_std"].mean(),
+                    "temporal_std_std": df_boot["temporal_std"].std(),
+                    "wwi_percent_mean": df_boot["wwi_percent"].mean(),
+                    "wwi_percent_std": df_boot["wwi_percent"].std(),
+                    "jaccard_mean": df_boot["jaccard_with_original"].mean(),
+                    "jaccard_std": df_boot["jaccard_with_original"].std(),
+                    "method": "bootstrap",
                 }
         else:
             # Bootstrap
-            df_boot = bootstrap_candidate(alpha, beta, gamma, min_d, features, metadata, original_sel, cluster_labels_full, n_boot=n_boot, random_seed=random_seed)
-            df_boot['alpha'] = alpha
-            df_boot['beta'] = beta
-            df_boot['gamma'] = gamma
-            df_boot['min_distance_km'] = min_d
-            df_boot['n_selected'] = int(row['n_selected'])
-            df_boot['pareto_idx'] = idx
+            df_boot = bootstrap_candidate(
+                alpha,
+                beta,
+                gamma,
+                min_d,
+                features,
+                metadata,
+                original_sel,
+                cluster_labels_full,
+                n_boot=n_boot,
+                random_seed=random_seed,
+            )
+            df_boot["alpha"] = alpha
+            df_boot["beta"] = beta
+            df_boot["gamma"] = gamma
+            df_boot["min_distance_km"] = min_d
+            df_boot["n_selected"] = int(row["n_selected"])
+            df_boot["pareto_idx"] = idx
             all_boot.append(df_boot)
 
             # summary
             summary = {
-                'pareto_idx': idx,
-                'alpha': alpha,
-                'beta': beta,
-                'gamma': gamma,
-                'min_distance_km': min_d,
-                'n_selected': int(row['n_selected']),
-                'temporal_std_mean': df_boot['temporal_std'].mean(),
-                'temporal_std_std': df_boot['temporal_std'].std(),
-                'wwi_percent_mean': df_boot['wwi_percent'].mean(),
-                'wwi_percent_std': df_boot['wwi_percent'].std(),
-                'jaccard_mean': df_boot['jaccard_with_original'].mean(),
-                'jaccard_std': df_boot['jaccard_with_original'].std(),
-                'method': 'bootstrap',
+                "pareto_idx": idx,
+                "alpha": alpha,
+                "beta": beta,
+                "gamma": gamma,
+                "min_distance_km": min_d,
+                "n_selected": int(row["n_selected"]),
+                "temporal_std_mean": df_boot["temporal_std"].mean(),
+                "temporal_std_std": df_boot["temporal_std"].std(),
+                "wwi_percent_mean": df_boot["wwi_percent"].mean(),
+                "wwi_percent_std": df_boot["wwi_percent"].std(),
+                "jaccard_mean": df_boot["jaccard_with_original"].mean(),
+                "jaccard_std": df_boot["jaccard_with_original"].std(),
+                "method": "bootstrap",
             }
 
         summary_rows.append(summary)
@@ -215,47 +302,105 @@ def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str
         df_all = pd.DataFrame()
     df_summary = pd.DataFrame(summary_rows)
 
-    outdir = Path(output_csv).parent if output_csv is not None else Path(ROOT) / 'outputs' / 'fine_sweep'
+    outdir = (
+        Path(output_csv).parent
+        if output_csv is not None
+        else Path(ROOT) / "outputs" / "fine_sweep"
+    )
     outdir.mkdir(parents=True, exist_ok=True)
     if output_csv is None:
         # Default legacy path
-        default_dir = Path(ROOT) / 'outputs' / 'fine_sweep'
+        default_dir = Path(ROOT) / "outputs" / "fine_sweep"
         if not df_all.empty:
-            df_all.to_csv(default_dir / 'bootstrap_results_full.csv', index=False)
-        df_summary.to_csv(default_dir / 'bootstrap_summary.csv', index=False)
+            df_all.to_csv(default_dir / "bootstrap_results_full.csv", index=False)
+        df_summary.to_csv(default_dir / "bootstrap_summary.csv", index=False)
     else:
         if not df_all.empty:
             df_all.to_csv(output_csv, index=False)
-        df_summary.to_csv(Path(output_csv).with_name(Path(output_csv).stem + '_summary.csv'), index=False)
+        df_summary.to_csv(
+            Path(output_csv).with_name(Path(output_csv).stem + "_summary.csv"),
+            index=False,
+        )
 
     # If attached to an ExperimentManager, persist into the run directory
     import os
-    exp_dir = os.environ.get('EXPERIMENT_RUN_DIR')
+
+    exp_dir = os.environ.get("EXPERIMENT_RUN_DIR")
     if exp_dir:
         try:
             from src.experiment_manager import ExperimentManager
+
             em = ExperimentManager.from_existing(exp_dir)
             if not df_all.empty:
-                em.save_results('bootstrap_results_full', df_all, format='csv')
-            em.save_results('bootstrap_summary', df_summary, format='csv')
-            em.mark_stage_complete('bootstrap', summary={'n_candidates': len(df_summary)})
+                em.save_results("bootstrap_results_full", df_all, format="csv")
+            em.save_results("bootstrap_summary", df_summary, format="csv")
+            em.mark_stage_complete(
+                "bootstrap", summary={"n_candidates": len(df_summary)}
+            )
         except Exception as e:
-            print(f'Warning: could not save bootstrap results to experiment manager: {e}')
+            print(
+                f"Warning: could not save bootstrap results to experiment manager: {e}"
+            )
 
-    print('Bootstrap finished. Results saved.')
+    print("Bootstrap finished. Results saved.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--pareto', type=str, default=str(Path(ROOT) / 'outputs' / 'fine_sweep' / 'pareto_solutions.csv'))
-    parser.add_argument('--n-boot', type=int, default=200)
-    parser.add_argument('--out', type=str, default=str(Path(ROOT) / 'outputs' / 'fine_sweep' / 'bootstrap_results.csv'))
-    parser.add_argument('--seed', type=int, default=42)
-    parser.add_argument('--uq-method', choices=['bootstrap', 'ensemble'], default='bootstrap', help='Uncertainty quantification method to use')
-    parser.add_argument('--n-ensemble-models', type=int, default=5, help='Number of ensemble members when using ensemble UQ')
-    parser.add_argument('--ensemble-epochs', type=int, default=50, help='Epochs per ensemble member when training ensemble UQ')
-    parser.add_argument('--pre-names', type=str, nargs='*', default=None, help='Optional pre-selected tile names (e.g. Hamburg)')
-    parser.add_argument('--pre-indices', type=int, nargs='*', default=None, help='Optional pre-selected tile indices')
+    parser.add_argument(
+        "--pareto",
+        type=str,
+        default=str(Path(ROOT) / "outputs" / "fine_sweep" / "pareto_solutions.csv"),
+    )
+    parser.add_argument("--n-boot", type=int, default=200)
+    parser.add_argument(
+        "--out",
+        type=str,
+        default=str(Path(ROOT) / "outputs" / "fine_sweep" / "bootstrap_results.csv"),
+    )
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--uq-method",
+        choices=["bootstrap", "ensemble"],
+        default="bootstrap",
+        help="Uncertainty quantification method to use",
+    )
+    parser.add_argument(
+        "--n-ensemble-models",
+        type=int,
+        default=5,
+        help="Number of ensemble members when using ensemble UQ",
+    )
+    parser.add_argument(
+        "--ensemble-epochs",
+        type=int,
+        default=50,
+        help="Epochs per ensemble member when training ensemble UQ",
+    )
+    parser.add_argument(
+        "--pre-names",
+        type=str,
+        nargs="*",
+        default=None,
+        help="Optional pre-selected tile names (e.g. Hamburg)",
+    )
+    parser.add_argument(
+        "--pre-indices",
+        type=int,
+        nargs="*",
+        default=None,
+        help="Optional pre-selected tile indices",
+    )
     args = parser.parse_args()
 
-    main(args.pareto, n_boot=args.n_boot, output_csv=args.out, random_seed=args.seed, uq_method=args.uq_method, n_ensemble_models=args.n_ensemble_models, ensemble_epochs=args.ensemble_epochs, pre_selected_names=args.pre_names, pre_selected_indices=args.pre_indices)
+    main(
+        args.pareto,
+        n_boot=args.n_boot,
+        output_csv=args.out,
+        random_seed=args.seed,
+        uq_method=args.uq_method,
+        n_ensemble_models=args.n_ensemble_models,
+        ensemble_epochs=args.ensemble_epochs,
+        pre_selected_names=args.pre_names,
+        pre_selected_indices=args.pre_indices,
+    )

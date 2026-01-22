@@ -1,5 +1,7 @@
-import numpy as np
-import pandas as pd
+import pytest
+
+pytest.importorskip("numba", exc_type=ImportError)
+pytestmark = pytest.mark.integration
 
 from src.diversity_selector import DiversitySelector
 from src.io import load_metadata, load_or_extract_features
@@ -10,12 +12,15 @@ def test_preselection_includes_seed(tmp_path, mock_features_path):
     # Use the mock features path to avoid expensive extraction
     # Copy mock features to tmp_path so load_or_extract_features finds them
     import shutil
+
     src = mock_features_path / "features.npy"
     dst = tmp_path / "features.npy"
     if src.resolve() != dst.resolve():
         shutil.copy(src, dst)
     meta = load_metadata("data/new_all_tiles.csv")
-    features = load_or_extract_features(tmp_path, csv_meta=str("data/new_all_tiles.csv"), cache=True)
+    features = load_or_extract_features(
+        tmp_path, csv_meta=str("data/new_all_tiles.csv"), cache=True
+    )
 
     # find Hamburg by longName
     mask = meta["longName"].str.contains("Hamburg", case=False)
@@ -42,12 +47,15 @@ def test_preselection_respects_min_distance(tmp_path, mock_features_path):
     # Use the mock features path to avoid expensive extraction
     # Copy mock features to tmp_path so load_or_extract_features finds them
     import shutil
+
     src = mock_features_path / "features.npy"
     dst = tmp_path / "features.npy"
     if src.resolve() != dst.resolve():
         shutil.copy(src, dst)
     meta = load_metadata("data/new_all_tiles.csv")
-    features = load_or_extract_features(tmp_path, csv_meta=str("data/new_all_tiles.csv"), cache=True)
+    features = load_or_extract_features(
+        tmp_path, csv_meta=str("data/new_all_tiles.csv"), cache=True
+    )
 
     mask = meta["longName"].str.contains("Hamburg", case=False)
     seed_pos = int(mask[mask].index[0])
@@ -73,4 +81,6 @@ def test_preselection_respects_min_distance(tmp_path, mock_features_path):
         lat = meta.iloc[idx]["N"]
         lon = meta.iloc[idx]["left"]
         d = haversine_distance(seed_lat, seed_lon, lat, lon)
-        assert d >= 50.0, f"Selected index {idx} is within min_distance of seed ({d:.1f} km)"
+        assert (
+            d >= 50.0
+        ), f"Selected index {idx} is within min_distance of seed ({d:.1f} km)"

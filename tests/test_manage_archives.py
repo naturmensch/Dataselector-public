@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+
 import scripts.archive_workspace as aw
 
 
@@ -23,8 +24,9 @@ def test_archive_outputs_with_manifest(tmp_path, monkeypatch):
     monkeypatch.setattr(aw, "ARCHIVE_DIR", archive_dir)
 
     monkeypatch.setattr(
-        aw, "WHITELIST_PATTERNS",
-        set(aw.WHITELIST_PATTERNS) | {"outputs/tuning_weights", "tuning_weights"}
+        aw,
+        "WHITELIST_PATTERNS",
+        set(aw.WHITELIST_PATTERNS) | {"outputs/tuning_weights", "tuning_weights"},
     )
 
     cat = aw.ArchiveCategory("old_outputs", "Test outputs")

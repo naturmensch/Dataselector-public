@@ -1,4 +1,3 @@
-# ruff: noqa: E402
 """
 Optimierter Parameter-Test basierend auf Dataset-Erkenntnissen.
 
@@ -17,33 +16,39 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.clustering import ClusteringPipeline
-from src.diversity_selector import DiversitySelector
-from src.spatial_facility_location import haversine_distance
-
 OUT = Path("outputs")
-from src.io import load_metadata, load_or_extract_features
 
-features = load_or_extract_features(
-    OUT,
-    csv_meta=str(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else None,
-    batch_size=16,
-    cache=True,
-)
-metadata = (
-    pd.read_csv(OUT / "metadata.csv")
-    if (OUT / "metadata.csv").exists()
-    else load_metadata("data/new_all_tiles.csv")
-)
 
-print("=" * 80)
-print("REALITÄTS-ANGEPASSTE PARAMETER-OPTIMIERUNG")
-print("=" * 80)
-print(f"\nDataset: {len(features)} Tiles")
-print("Temporale Konzentration: 42.8% in WWI-Ära (1906-1918)")
-print("Theoretisches Maximum: ~364 Tiles bei min_d=40km")
-print("Aktuell selektiert: 40 (11% des Potentials)")
-print()
+def main():
+    from src.clustering import ClusteringPipeline
+    from src.diversity_selector import DiversitySelector
+    from src.spatial_facility_location import haversine_distance
+    from src.io import load_metadata, load_or_extract_features
+
+    features = load_or_extract_features(
+        OUT,
+        csv_meta=str(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else None,
+        batch_size=16,
+        cache=True,
+    )
+    metadata = (
+        pd.read_csv(OUT / "metadata.csv")
+        if (OUT / "metadata.csv").exists()
+        else load_metadata("data/new_all_tiles.csv")
+    )
+
+    print("=" * 80)
+    print("REALITÄTS-ANGEPASSTE PARAMETER-OPTIMIERUNG")
+    print("=" * 80)
+    print(f"\nDataset: {len(features)} Tiles")
+    print("Temporale Konzentration: 42.8% in WWI-Ära (1906-1918)")
+    print("Theoretisches Maximum: ~364 Tiles bei min_d=40km")
+    print("Aktuell selektiert: 40 (11% des Potentials)")
+    print()
+
+
+if __name__ == "__main__":
+    main()
 
 # Clustering (einmal für alle)
 print("Führe Clustering durch...")

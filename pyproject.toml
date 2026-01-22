@@ -6,7 +6,8 @@ target-version = ['py311']
 profile = "black"
 
 [tool.ruff]
-line-length = 88
+line-length = 100
+exclude = ["scripts/deprecated", "archive_local", ".venv", "venv", ".git", "__pycache__", "docs"]
 
 [tool.ruff.lint]
 # Temporary per-file-ignores for tests have been removed after targeted refactors.

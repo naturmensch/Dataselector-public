@@ -1,4 +1,9 @@
 import numpy as np
+import pytest
+
+pytest.importorskip("numba", exc_type=ImportError)
+pytestmark = pytest.mark.integration
+
 from src import sampling_strategies as ss
 
 

@@ -1,3 +1,4 @@
+# flake8: noqa: E402  # module-level `pytest.importorskip` used to permit optional deps in CI
 import pytest
 
 pytest.importorskip("torch")

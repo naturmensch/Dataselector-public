@@ -1,5 +1,9 @@
 import numpy as np
 import pandas as pd
+import pytest
+
+pytest.importorskip("numba", exc_type=ImportError)
+pytestmark = pytest.mark.integration
 
 from src.diversity_selector import DiversitySelector
 
@@ -29,7 +33,9 @@ def test_adaptive_min_distance_reaches_n_samples():
         adaptive_min_allowed_km=20.0,
     )
 
-    assert len(result) == 5, f"Adaptive fallback failed to reach 5 samples, got {len(result)}"
+    assert (
+        len(result) == 5
+    ), f"Adaptive fallback failed to reach 5 samples, got {len(result)}"
 
 
 def test_adaptive_fallback_allows_duplicates():

@@ -59,6 +59,12 @@ venv-force:
 	rm -rf .venv
 	$(MAKE) venv
 
+# Run the full test-suite inside the dataselector conda environment (non-interactive)
+# Usage: make test-integration
+test-integration:
+	@echo "Activating 'dataselector' env and running pytest (requires conda/mamba installed)"
+	bash -lc "source $(conda info --base)/etc/profile.d/conda.sh && conda activate dataselector && pytest"
+
 
 archive-outputs:
 	@echo "Archive outputs to data/archive/"

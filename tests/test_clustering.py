@@ -1,5 +1,9 @@
+# flake8: noqa: E402  # module-level `pytest.importorskip` used to guard optional deps (numba)
 import numpy as np
 import pytest
+
+pytest.importorskip("numba", exc_type=ImportError)
+pytestmark = pytest.mark.integration
 
 from src.clustering import ClusteringPipeline
 
@@ -62,9 +66,12 @@ def test_small_n_fallback():
 def test_persist_n_neighbors_to_manifest(tmp_path, monkeypatch):
     # Create an ExperimentManager and set EXPERIMENT_RUN_DIR so clustering will persist config
     from src.experiment_manager import ExperimentManager
-    em = ExperimentManager(name='test_clust_persist', description='test', base_dir=tmp_path)
+
+    em = ExperimentManager(
+        name="test_clust_persist", description="test", base_dir=tmp_path
+    )
     em.save_manifest()
-    monkeypatch.setenv('EXPERIMENT_RUN_DIR', str(em.run_dir))
+    monkeypatch.setenv("EXPERIMENT_RUN_DIR", str(em.run_dir))
 
     rng = np.random.RandomState(4)
     N = 25
@@ -73,10 +80,11 @@ def test_persist_n_neighbors_to_manifest(tmp_path, monkeypatch):
     cl.fit_transform(features)
 
     # Check that config file was saved into run config
-    cfg_file = em.run_dir / 'config' / 'config_clustering.yaml'
+    cfg_file = em.run_dir / "config" / "config_clustering.yaml"
     assert cfg_file.exists()
     import yaml
+
     cfg = yaml.safe_load(cfg_file.read_text())
-    assert 'n_neighbors' in cfg and isinstance(cfg['n_neighbors'], int)
+    assert "n_neighbors" in cfg and isinstance(cfg["n_neighbors"], int)
     # Basic sanity: value should be >1 and < N
-    assert 1 < cfg['n_neighbors'] < N
+    assert 1 < cfg["n_neighbors"] < N

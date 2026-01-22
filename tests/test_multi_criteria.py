@@ -2,6 +2,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
+pytest.importorskip("numba", exc_type=ImportError)
+pytestmark = pytest.mark.integration
+
 from src.multi_criteria_facility_location import MultiCriteriaFacilityLocation
 
 

@@ -83,9 +83,7 @@ def main() -> None:
                     r1 = meta.iloc[selected[i]]
                     r2 = meta.iloc[selected[j]]
                     pairwise.append(
-                        haversine_distance(
-                            r1["N"], r1["left"], r2["N"], r2["left"]
-                        )
+                        haversine_distance(r1["N"], r1["left"], r2["N"], r2["left"])
                     )
             mean_pairwise = float(np.mean(pairwise)) if pairwise else np.nan
 

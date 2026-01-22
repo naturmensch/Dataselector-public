@@ -6,72 +6,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-
-def _file_hash(path: Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as fh:
-        while True:
-            chunk = fh.read(8192)
-            if not chunk:
-                break
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def should_run_tuning(
-    tune_flag: bool, force: bool, ttl_days: int, csv_meta: Path, out_dir: Path
-) -> bool:
-    """Decide whether to run tuning based on cache and flags.
-
-    Rules:
-      - If force: True -> run
-      - If tune_flag False -> skip
-      - If meta.json missing -> run
-      - If csv_meta hash != stored -> run
-      - If meta timestamp older than ttl_days -> run
-      - else skip
-    """
-    if force:
-        return True
-    if not tune_flag:
-        return False
-
-    meta_path = Path(out_dir) / "meta.json"
-    results_path = Path(out_dir) / "tuning_results.csv"
-
-    if not results_path.exists() or not meta_path.exists():
-        return True
-
-    try:
-        with open(meta_path, "r") as f:
-            meta = json.load(f)
-    except Exception:
-        return True
-
-    stored_hash = meta.get("csv_meta_hash")
-    if stored_hash is None:
-        return True
-
-    current_hash = _file_hash(Path(csv_meta))
-    if current_hash != stored_hash:
-        return True
-
-    ts = meta.get("timestamp_utc")
-    if ts is None:
-        return True
-    try:
-        meta_time = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-        age_days = (datetime.now(timezone.utc) - meta_time).days
-        if age_days > ttl_days:
-            return True
-    except Exception:
-        return True
-
-    return False
-
-
 __all__ = ["should_run_tuning"]
-# ruff: noqa: E402
+
 """Run pipeline with optional tuning.
 
 Usage:
@@ -79,18 +15,12 @@ Usage:
 """
 
 import argparse
-import hashlib
-import json
 import sys
-from datetime import datetime, timezone
-from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-from src.experiments import ExperimentRunner
-from src.main import KDR100SelectionPipeline
+# NOTE: imports from `src.*` are done inside `main()` to avoid module-level
+# side-effects and to make this module importable for tests.
 
 
 def _file_hash(path: Path) -> str:
@@ -178,6 +108,14 @@ def main():
         help="Ask for confirmation before expensive ops",
     )
     args = parser.parse_args()
+
+    # Ensure project root is available on sys.path when running as script
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+
+    # Import project modules only at runtime to avoid module-level side-effects
+    from src.experiments import ExperimentRunner
+    from src.main import KDR100SelectionPipeline
 
     # Config
     CSV_META = ROOT / "data" / "new_all_tiles.csv"

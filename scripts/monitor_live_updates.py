@@ -1,81 +1,101 @@
 #!/usr/bin/env python3
-import time
-from pathlib import Path
 import subprocess
-import json
+import time
 from datetime import datetime
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-LOG = ROOT / 'outputs' / 'XXL_FULL_RUN.log'
-PRELOGS = list(ROOT.glob('outputs/pre_run_*.log'))
-SEL = ROOT / 'outputs' / 'selected_sampler.json'
+LOG = ROOT / "outputs" / "XXL_FULL_RUN.log"
+PRELOGS = list(ROOT.glob("outputs/pre_run_*.log"))
+SEL = ROOT / "outputs" / "selected_sampler.json"
+
 
 def tail(path, n=20):
     if not path.exists():
-        return ''
+        return ""
     try:
-        return subprocess.check_output(['tail','-n',str(n),str(path)], text=True)
+        return subprocess.check_output(["tail", "-n", str(n), str(path)], text=True)
     except Exception:
         try:
-            return '\n'.join(path.read_text().splitlines()[-n:])
+            return "\n".join(path.read_text().splitlines()[-n:])
         except Exception:
-            return ''
+            return ""
 
-def proc_info(patterns=['compare_samplers_multi_seed','optuna_optimize']):
+
+def proc_info(patterns=["compare_samplers_multi_seed", "optuna_optimize"]):
     try:
-        ps = subprocess.check_output(['pgrep','-a','-f','|'.join(patterns)], text=True, stderr=subprocess.DEVNULL)
-        lines = [l for l in ps.splitlines() if l.strip()]
+        ps = subprocess.check_output(
+            ["pgrep", "-a", "-f", "|".join(patterns)],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        )
+        lines = [line for line in ps.splitlines() if line.strip()]
     except Exception:
         # fallback to pgrep for each
         lines = []
         for p in patterns:
             try:
-                out = subprocess.check_output(['pgrep','-a','-f',p], text=True, stderr=subprocess.DEVNULL)
-                lines.extend([l for l in out.splitlines() if l.strip()])
+                out = subprocess.check_output(
+                    ["pgrep", "-a", "-f", p], text=True, stderr=subprocess.DEVNULL
+                )
+                lines.extend([line for line in out.splitlines() if line.strip()])
             except Exception:
                 pass
     info = []
-    for l in lines:
-        fields = l.split(None, 1)
+    for line in lines:
+        fields = line.split(None, 1)
         pid = fields[0]
-        cmd = fields[1] if len(fields)>1 else ''
+        cmd = fields[1] if len(fields) > 1 else ""
         try:
-            stat = subprocess.check_output(['ps','-p',pid,'-o','pid,ppid,%cpu,%mem,etimes,cmd','--no-headers'], text=True)
+            stat = subprocess.check_output(
+                [
+                    "ps",
+                    "-p",
+                    pid,
+                    "-o",
+                    "pid,ppid,%cpu,%mem,etimes,cmd",
+                    "--no-headers",
+                ],
+                text=True,
+            )
             info.append(stat.strip())
         except Exception:
             info.append(f"{pid} {cmd}")
-    return '\n'.join(info)
+    return "\n".join(info)
 
-print('Starting live monitor (updates every 60s). To stop: kill this process or Ctrl-C.')
+
+print(
+    "Starting live monitor (updates every 60s). To stop: kill this process or Ctrl-C."
+)
 while True:
     ts = datetime.now().isoformat()
-    print('\n' + '='*80)
-    print(f'[{ts}] Live monitor snapshot')
-    print('-'*80)
-    print('XXL_FULL_RUN.log (tail):')
+    print("\n" + "=" * 80)
+    print(f"[{ts}] Live monitor snapshot")
+    print("-" * 80)
+    print("XXL_FULL_RUN.log (tail):")
     print(tail(LOG, 20))
-    print('-'*80)
+    print("-" * 80)
     latest_pre = None
-    prefiles = sorted(ROOT.glob('outputs/pre_run_*.log'))
+    prefiles = sorted(ROOT.glob("outputs/pre_run_*.log"))
     if prefiles:
         latest_pre = prefiles[-1]
-        print(f'Pre-run log ({latest_pre.name}) tail:')
+        print(f"Pre-run log ({latest_pre.name}) tail:")
         print(tail(latest_pre, 20))
     else:
-        print('No pre-run log present yet')
+        print("No pre-run log present yet")
 
-    print('-'*80)
-    print('Active processes matching compare_samplers/optuna:')
+    print("-" * 80)
+    print("Active processes matching compare_samplers/optuna:")
     print(proc_info())
-    print('-'*80)
-    print('Selected sampler artifact:')
+    print("-" * 80)
+    print("Selected sampler artifact:")
     if SEL.exists():
         try:
             print(SEL.read_text())
         except Exception:
-            print('Could not read selected_sampler.json')
+            print("Could not read selected_sampler.json")
     else:
-        print('NOT PRESENT')
+        print("NOT PRESENT")
 
-    print('='*80)
+    print("=" * 80)
     time.sleep(60)

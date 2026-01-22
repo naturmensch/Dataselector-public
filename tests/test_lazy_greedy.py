@@ -1,4 +1,8 @@
 import numpy as np
+import pytest
+
+pytest.importorskip("numba", exc_type=ImportError)
+pytestmark = pytest.mark.integration
 
 from src.diversity_selector import DiversitySelector
 
@@ -44,6 +48,7 @@ def test_lazy_greedy_matches_standard():
 
 def test_selector_requires_n_samples():
     import pytest
+
     features = np.random.randn(10, 5)
     sel = DiversitySelector()
     with pytest.raises(ValueError):

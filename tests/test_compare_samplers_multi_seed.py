@@ -1,67 +1,87 @@
-import sys
-from unittest.mock import MagicMock, patch
+# flake8: noqa: E402  # dynamic imports and runtime path manipulation required for script tests
 from pathlib import Path
-import pytest
+from unittest.mock import MagicMock, patch
+
+import importlib.util
+import sys
 import pandas as pd
+import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
-from scripts.compare_samplers_multi_seed import run_single_optuna
+# Load script module without modifying sys.path and register it under the
+# package name so string-based monkeypatch targets still work.
+ROOT = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location(
+    "scripts.compare_samplers_multi_seed", ROOT / "scripts" / "compare_samplers_multi_seed.py"
+)
+compare_mod = importlib.util.module_from_spec(spec)
+# register into sys.modules under the package-style name so other code can
+# refer to it via 'scripts.compare_samplers_multi_seed'
+sys.modules[spec.name] = compare_mod
+spec.loader.exec_module(compare_mod)
+# Also set as attribute on the `scripts` package so string-based monkeypatch targets
+# like 'scripts.compare_samplers_multi_seed.ROOT' will resolve correctly.
+import scripts as _scripts_pkg
+setattr(_scripts_pkg, "compare_samplers_multi_seed", compare_mod)
+run_single_optuna = compare_mod.run_single_optuna
 
 
 def test_run_single_optuna_no_run_dir_includes_subprocess_output(tmp_path, monkeypatch):
     """If the subprocess completes but no run dir is created, the FileNotFoundError should include stdout/stderr."""
     # Ensure outputs/runs does not contain the expected run
-    monkeypatch.setattr('scripts.compare_samplers_multi_seed.ROOT', tmp_path)
+    monkeypatch.setattr("scripts.compare_samplers_multi_seed.ROOT", tmp_path)
 
     fake_proc = MagicMock()
     fake_proc.returncode = 0
     fake_proc.stdout = "Some output\nModuleNotFoundError: No module named 'optuna'\n"
     fake_proc.stderr = "Error details"
 
-    with patch('subprocess.run', return_value=fake_proc):
+    with patch("subprocess.run", return_value=fake_proc):
         with pytest.raises(FileNotFoundError) as excinfo:
-            run_single_optuna('cmaes', 42, 1000, 673, None, 'exp', dataset='hamburg')
+            run_single_optuna("cmaes", 42, 1000, 673, None, "exp", dataset="hamburg")
 
         msg = str(excinfo.value)
-        assert 'No run dir found' in msg
-        assert 'ModuleNotFoundError' in msg or 'No module named' in msg
-        assert 'Subprocess stdout' in msg and 'Subprocess stderr' in msg
+        assert "No run dir found" in msg
+        assert "ModuleNotFoundError" in msg or "No module named" in msg
+        assert "Subprocess stdout" in msg and "Subprocess stderr" in msg
+
 
 def test_run_single_optuna_success(tmp_path, monkeypatch):
     """Test successful run with mocked subprocess and file system."""
-    # Mock ROOT to point to tmp_path
-    monkeypatch.setattr('scripts.compare_samplers_multi_seed.ROOT', tmp_path)
-    
+    # Mock ROOT to point to tmp_path (patch both the loaded module and any existing package-loaded module)
+    monkeypatch.setattr(compare_mod, "ROOT", tmp_path)
+    monkeypatch.setattr("scripts.compare_samplers_multi_seed.ROOT", tmp_path, raising=False)
+    monkeypatch.setattr("scripts.compare_samplers_multi_seed.ROOT", tmp_path, raising=False)
+
     # Setup dummy run dir structure
     exp_name = "hamburg_cmaes_10trials_s42"
-    run_dir = tmp_path / 'outputs' / 'runs' / exp_name
-    (run_dir / 'results').mkdir(parents=True)
-    
+    run_dir = tmp_path / "outputs" / "runs" / exp_name
+    (run_dir / "results").mkdir(parents=True)
+
     # Create dummy trials.csv
-    df = pd.DataFrame({'trial_number': range(10), 'value': range(10)})
-    df.to_csv(run_dir / 'results' / 'trials.csv', index=False)
-    
+    df = pd.DataFrame({"trial_number": range(10), "value": range(10)})
+    df.to_csv(run_dir / "results" / "trials.csv", index=False)
+
     # Mock subprocess to return success
-    with patch('subprocess.run') as mock_run:
+    with patch("subprocess.run") as mock_run:
         mock_run.return_value.returncode = 0
-        
-        res = run_single_optuna('cmaes', 42, 10, 100, None, 'desc', dataset='hamburg')
-        
-        assert res['n_trials'] == 10
-        assert res['best_value'] == 9.0
-        assert res['run_dir'] == str(run_dir)
+
+        res = run_single_optuna("cmaes", 42, 10, 100, None, "desc", dataset="hamburg")
+
+        assert res["n_trials"] == 10
+        assert res["best_value"] == 9.0
+        assert res["run_dir"] == str(run_dir)
+
 
 def test_run_single_optuna_missing_trials_csv(tmp_path, monkeypatch):
     """Test that missing trials.csv raises FileNotFoundError after retries."""
-    monkeypatch.setattr('scripts.compare_samplers_multi_seed.ROOT', tmp_path)
-    
+    monkeypatch.setattr("scripts.compare_samplers_multi_seed.ROOT", tmp_path)
+
     exp_name = "hamburg_cmaes_10trials_s42"
-    run_dir = tmp_path / 'outputs' / 'runs' / exp_name
-    run_dir.mkdir(parents=True) # Run dir exists, but results/trials.csv does not
-    
-    with patch('subprocess.run') as mock_run, patch('time.sleep'): # skip sleep delay
+    run_dir = tmp_path / "outputs" / "runs" / exp_name
+    run_dir.mkdir(parents=True)  # Run dir exists, but results/trials.csv does not
+
+    with patch("subprocess.run") as mock_run, patch("time.sleep"):  # skip sleep delay
         mock_run.return_value.returncode = 0
-        
+
         with pytest.raises(FileNotFoundError, match="trials.csv missing"):
-            run_single_optuna('cmaes', 42, 10, 100, None, 'desc', dataset='hamburg')
+            run_single_optuna("cmaes", 42, 10, 100, None, "desc", dataset="hamburg")

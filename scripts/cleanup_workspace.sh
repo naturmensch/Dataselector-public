@@ -28,6 +28,7 @@ Options:
   --compress        compress backup dir into a tar.gz (default: enabled when --apply)
   --no-compress     do not compress even if --apply
   --interactive     ask for confirmation before applying destructive actions
+  --no-report       disable the compact report output (report is default)
   -h, --help        show this help
 
 Examples:
@@ -51,6 +52,8 @@ COMPRESS=1
 INTERACTIVE=0
 INCLUDE_BACKUPS=0   # if 1, include outputs/backups in candidates
 REMOVE_VENV=0       # if 1, remove venv and .venv when applying
+REPORT=1            # print compact report by default; use --no-report to disable
+REPORT_TOP=5        # how many top files to show in compact report
 LOGFILE="scripts/cleanup_workspace.log"
 
 # Patterns to consider (conservative)
@@ -128,6 +131,42 @@ print_manuscript_info() {
   echo
 }
 
+# Human-readable byte formatter
+human_size() {
+  bytes=$1
+  if command -v numfmt >/dev/null 2>&1; then
+    numfmt --to=iec --suffix=B "$bytes"
+  else
+    # fallback: simple KB/MB/G conversion
+    if [ "$bytes" -ge 1073741824 ]; then
+      printf "%.2f GB" "$(echo "$bytes/1073741824" | bc -l)"
+    elif [ "$bytes" -ge 1048576 ]; then
+      printf "%.2f MB" "$(echo "$bytes/1048576" | bc -l)"
+    elif [ "$bytes" -ge 1024 ]; then
+      printf "%.2f KB" "$(echo "$bytes/1024" | bc -l)"
+    else
+      printf "%d bytes" "$bytes"
+    fi
+  fi
+}
+
+# Compact report printed by default unless --no-report is passed
+print_compact_report() {
+  if [ "$REPORT" -eq 0 ]; then
+    return
+  fi
+  echo
+  echo "--- Cleanup Manifest Report ---"
+  echo "Versioned manifest: file://$ABS_VERSIONED_MANIFEST"
+  entries=$(wc -l < "$VERSIONED_MANIFEST" 2>/dev/null || echo 0)
+  total_bytes=$(awk -F, '{s+=$2} END {print s+0}' "$VERSIONED_MANIFEST" 2>/dev/null || echo 0)
+  echo "Entries: $entries"
+  echo "Total size: $(human_size "$total_bytes") ($total_bytes bytes)"
+  echo "Top $REPORT_TOP largest files:"
+  awk -F, '{print $2 "\t" $1}' "$VERSIONED_MANIFEST" | sort -nr | head -n "$REPORT_TOP"
+  echo "--- End Report ---"
+  echo
+}
 
 parse_args() {
   while [ ${#:-} -gt 0 ]; do
@@ -143,6 +182,7 @@ parse_args() {
       --interactive) INTERACTIVE=1; shift ;;
       --include-backups) INCLUDE_BACKUPS=1; shift ;;
       --remove-venv) REMOVE_VENV=1; shift ;;
+      --no-report) REPORT=0; shift ;;
       -h|--help) usage; exit 0 ;;
       --) shift; break ;;
       -*) echo "Unknown option: $1"; usage; exit 2 ;;
@@ -230,6 +270,27 @@ main() {
   # Write sha256s for manifest entries
   cut -d, -f1 "$MANIFEST_CSV" | xargs -r -I{} sha256sum "{}" > "$MANIFEST_SHA" 2>/dev/null || true
 
+  # Always save a versioned manifest copy for record-keeping
+  MANIFEST_DIR="data/archive/manifests"
+  mkdir -p "$MANIFEST_DIR"
+  VERSIONED_MANIFEST="$MANIFEST_DIR/cleanup_manifest_${TS}.csv"
+  cp "$MANIFEST_CSV" "$VERSIONED_MANIFEST"
+  VERSIONED_SHA="$MANIFEST_DIR/cleanup_manifest_${TS}.sha256"
+  sha256sum "$VERSIONED_MANIFEST" > "$VERSIONED_SHA" 2>/dev/null || true
+
+  # Provide links to the manifest(s)
+  if command -v realpath >/dev/null 2>&1; then
+    ABS_MANIFEST=$(realpath "$MANIFEST_CSV")
+    ABS_VERSIONED_MANIFEST=$(realpath "$VERSIONED_MANIFEST")
+  else
+    ABS_MANIFEST="$PWD/$MANIFEST_CSV"
+    ABS_VERSIONED_MANIFEST="$PWD/$VERSIONED_MANIFEST"
+  fi
+  # Explicit direct manifest link for easy reference (matches #file:cleanup_manifest.csv)
+  echo "Direct manifest (#file:cleanup_manifest.csv): file://$ABS_MANIFEST"
+  echo "Versioned manifest (file): file://$ABS_VERSIONED_MANIFEST"
+  echo "SHA256s written to: $MANIFEST_SHA and $VERSIONED_SHA"
+
   # Summary
   total_files=$(wc -l < "$MANIFEST_CSV" || echo 0)
   total_size=$(awk -F, '{s+=$2} END {print s+0}' "$MANIFEST_CSV" || echo 0)
@@ -267,6 +328,21 @@ main() {
     # Manuscript link info
     print_manuscript_info
 
+    # Compact report (default)
+    print_compact_report
+
+    # Explicit final manifest link at the bottom for easy reference
+    echo
+    echo "--- Final manifest link ---"
+    echo "Direct manifest (#file:cleanup_manifest.csv): file://$ABS_MANIFEST"
+    echo "Versioned manifest: file://$ABS_VERSIONED_MANIFEST"
+    echo "--- End ---"
+
+    # End Dry‑Run: do not perform any moves/compression
+    echo "Dry‑run complete: no changes made. To apply, re-run with --apply --confirm."
+    exit 0
+
+    # The following checks are apply-time only
     avail=$(df --output=avail -k "$BASE_BACKUP_DIR" | tail -1)
     avail_bytes=$((avail * 1024))
     if [ "$avail_bytes" -lt $(( total_size * 6 / 5 )) ]; then
@@ -310,6 +386,16 @@ main() {
 
     # Manuscript link info
     print_manuscript_info
+
+    # Compact report (default)
+    print_compact_report
+
+    # Explicit final manifest link at the bottom for easy reference (apply)
+    echo
+    echo "--- Final manifest link ---"
+    echo "Direct manifest (#file:cleanup_manifest.csv): file://$ABS_MANIFEST"
+    echo "Versioned manifest: file://$ABS_VERSIONED_MANIFEST"
+    echo "--- End ---"
   fi
 }
 

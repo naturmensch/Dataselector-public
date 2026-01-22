@@ -7,6 +7,7 @@ providing confidence intervals and stability metrics for the thesis.
 Usage:
     python scripts/bootstrap_final_selection.py --run-dir outputs/runs/20260116_T164624_hamburg_full_2000 --n-boot 500
 """
+
 import argparse
 import sys
 from pathlib import Path
@@ -15,14 +16,14 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import numpy as np
-import pandas as pd
-from tqdm import trange
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+from tqdm import trange  # noqa: E402
 
-from src.diversity_selector import DiversitySelector
-from src.metrics import compute_metrics
-from src.clustering import ClusteringPipeline
-from src.io import load_metadata, load_or_extract_features
+from src.clustering import ClusteringPipeline  # noqa: E402
+from src.diversity_selector import DiversitySelector  # noqa: E402
+from src.io import load_metadata, load_or_extract_features  # noqa: E402
+from src.metrics import compute_metrics  # noqa: E402
 
 
 def jaccard(a, b):
@@ -36,13 +37,22 @@ def jaccard(a, b):
 
 
 def bootstrap_selection(
-    alpha, beta, gamma, min_distance_km, n_samples,
-    features, metadata, original_selection, cluster_labels_full,
-    n_boot=500, random_seed=42,
-    pre_selected_names=None, pre_selected_indices=None
+    alpha,
+    beta,
+    gamma,
+    min_distance_km,
+    n_samples,
+    features,
+    metadata,
+    original_selection,
+    cluster_labels_full,
+    n_boot=500,
+    random_seed=42,
+    pre_selected_names=None,
+    pre_selected_indices=None,
 ):
     """Perform bootstrap resampling to assess selection stability.
-    
+
     Returns DataFrame with metrics for each bootstrap iteration.
     """
     rng = np.random.default_rng(random_seed)
@@ -57,9 +67,7 @@ def bootstrap_selection(
 
         # Run selection on bootstrap sample
         ds = DiversitySelector(
-            n_samples=n_samples,
-            use_multi_criteria=True,
-            random_state=int(1000 + i)
+            n_samples=n_samples, use_multi_criteria=True, random_state=int(1000 + i)
         )
         selected_boot = ds.select(
             features=boot_features,
@@ -78,9 +86,9 @@ def bootstrap_selection(
 
         # Compute metrics on original data
         metrics = compute_metrics(mapped, metadata, cluster_labels_full, features)
-        metrics['jaccard_with_original'] = jaccard(mapped, original_selection)
-        metrics['bootstrap_iteration'] = i
-        metrics['n_samples'] = len(mapped)
+        metrics["jaccard_with_original"] = jaccard(mapped, original_selection)
+        metrics["bootstrap_iteration"] = i
+        metrics["n_samples"] = len(mapped)
         results.append(metrics)
 
     return pd.DataFrame(results)
@@ -89,31 +97,37 @@ def bootstrap_selection(
 def summarize_bootstrap(df_boot, original_metrics):
     """Compute summary statistics (mean, std, CI) for bootstrap results."""
     summary = {}
-    
+
     # Key metrics to summarize
     metrics = [
-        'n_selected', 'clusters_covered', 'temporal_std', 'spatial_mean_km',
-        'wwi_percent', 'jaccard_with_original'
+        "n_selected",
+        "clusters_covered",
+        "temporal_std",
+        "spatial_mean_km",
+        "wwi_percent",
+        "jaccard_with_original",
     ]
-    
+
     for m in metrics:
         if m in df_boot.columns:
-            summary[f'{m}_mean'] = df_boot[m].mean()
-            summary[f'{m}_std'] = df_boot[m].std()
-            summary[f'{m}_ci_lower'] = df_boot[m].quantile(0.025)
-            summary[f'{m}_ci_upper'] = df_boot[m].quantile(0.975)
-            summary[f'{m}_original'] = original_metrics.get(m, np.nan)
-    
+            summary[f"{m}_mean"] = df_boot[m].mean()
+            summary[f"{m}_std"] = df_boot[m].std()
+            summary[f"{m}_ci_lower"] = df_boot[m].quantile(0.025)
+            summary[f"{m}_ci_upper"] = df_boot[m].quantile(0.975)
+            summary[f"{m}_original"] = original_metrics.get(m, np.nan)
+
     return pd.Series(summary)
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Bootstrap UQ for final Optuna selection'
+        description="Bootstrap UQ for final Optuna selection"
     )
-    parser.add_argument('--run-dir', required=True, help='Path to run directory')
-    parser.add_argument('--n-boot', type=int, default=500, help='Number of bootstrap iterations')
-    parser.add_argument('--seed', type=int, default=42, help='Random seed')
+    parser.add_argument("--run-dir", required=True, help="Path to run directory")
+    parser.add_argument(
+        "--n-boot", type=int, default=500, help="Number of bootstrap iterations"
+    )
+    parser.add_argument("--seed", type=int, default=42, help="Random seed")
     args = parser.parse_args()
 
     run_dir = Path(args.run_dir)
@@ -122,39 +136,43 @@ def main():
         return 1
 
     # Load best trial configuration
-    best_trial_file = run_dir / 'results' / 'best_trial.json'
+    best_trial_file = run_dir / "results" / "best_trial.json"
     if not best_trial_file.exists():
         print(f"Error: best_trial.json not found in {run_dir}")
         return 1
 
     import json
+
     with open(best_trial_file) as f:
         best_trial = json.load(f)
 
     # Load best selection config
-    config_file = run_dir / 'config' / 'config_best_selection.yaml'
+    config_file = run_dir / "config" / "config_best_selection.yaml"
     if config_file.exists():
         import yaml
+
         with open(config_file) as f:
             config = yaml.safe_load(f)
-        sel_config = config.get('selection', {})
+        sel_config = config.get("selection", {})
     else:
         # Fallback: extract from best_trial
         sel_config = {}
-        total = best_trial['a'] + best_trial['b'] + best_trial['c']
-        sel_config['alpha_visual'] = best_trial['a'] / total
-        sel_config['beta_spatial'] = best_trial['b'] / total
-        sel_config['gamma_temporal'] = best_trial['c'] / total
-        sel_config['min_distance_km'] = best_trial['min_distance_km']
-        sel_config['n_samples'] = best_trial['n_samples']
-        sel_config['pre_selected_names'] = best_trial.get('pre_selected_names')
-        sel_config['pre_selected_indices'] = best_trial.get('pre_selected_indices')
+        total = best_trial["a"] + best_trial["b"] + best_trial["c"]
+        sel_config["alpha_visual"] = best_trial["a"] / total
+        sel_config["beta_spatial"] = best_trial["b"] / total
+        sel_config["gamma_temporal"] = best_trial["c"] / total
+        sel_config["min_distance_km"] = best_trial["min_distance_km"]
+        sel_config["n_samples"] = best_trial["n_samples"]
+        sel_config["pre_selected_names"] = best_trial.get("pre_selected_names")
+        sel_config["pre_selected_indices"] = best_trial.get("pre_selected_indices")
 
     print(f"\n{'='*60}")
-    print(f"Bootstrap UQ for Final Selection")
+    print("Bootstrap UQ for Final Selection")
     print(f"{'='*60}")
     print(f"Run: {run_dir.name}")
-    print(f"Config: α={sel_config['alpha_visual']:.3f}, β={sel_config['beta_spatial']:.3f}, γ={sel_config['gamma_temporal']:.3f}")
+    print(
+        f"Config: α={sel_config['alpha_visual']:.3f}, β={sel_config['beta_spatial']:.3f}, γ={sel_config['gamma_temporal']:.3f}"
+    )
     print(f"Min distance: {sel_config['min_distance_km']} km")
     print(f"n_samples: {sel_config['n_samples']}")
     print(f"Bootstrap iterations: {args.n_boot}")
@@ -162,16 +180,16 @@ def main():
 
     # Load data
     print("Loading metadata and features...")
-    metadata_path = ROOT / 'outputs' / 'metadata.csv'
+    metadata_path = ROOT / "outputs" / "metadata.csv"
     if not metadata_path.exists():
-        metadata = load_metadata(str(ROOT / 'data' / 'new_all_tiles.csv'))
+        metadata = load_metadata(str(ROOT / "data" / "new_all_tiles.csv"))
     else:
         metadata = pd.read_csv(metadata_path)
 
     features = load_or_extract_features(
-        ROOT / 'outputs',
+        ROOT / "outputs",
         csv_meta=str(metadata_path) if metadata_path.exists() else None,
-        cache=True
+        cache=True,
     )
 
     # Full clustering for metrics
@@ -186,22 +204,22 @@ def main():
     # Compute original selection
     print("Computing original selection...")
     ds = DiversitySelector(
-        n_samples=sel_config['n_samples'],
-        use_multi_criteria=True,
-        random_state=42
+        n_samples=sel_config["n_samples"], use_multi_criteria=True, random_state=42
     )
     original_selection = ds.select(
         features=features,
         metadata=metadata,
-        alpha_visual=sel_config['alpha_visual'],
-        beta_spatial=sel_config['beta_spatial'],
-        gamma_temporal=sel_config['gamma_temporal'],
+        alpha_visual=sel_config["alpha_visual"],
+        beta_spatial=sel_config["beta_spatial"],
+        gamma_temporal=sel_config["gamma_temporal"],
         spatial_constraint=True,
-        min_distance_km=sel_config['min_distance_km'],
-        pre_selected=sel_config.get('pre_selected_indices'),
-        pre_selected_names=sel_config.get('pre_selected_names'),
+        min_distance_km=sel_config["min_distance_km"],
+        pre_selected=sel_config.get("pre_selected_indices"),
+        pre_selected_names=sel_config.get("pre_selected_names"),
     )
-    original_metrics = compute_metrics(original_selection, metadata, cluster_labels_full, features)
+    original_metrics = compute_metrics(
+        original_selection, metadata, cluster_labels_full, features
+    )
 
     print(f"Original selection: {len(original_selection)} samples")
     print(f"  Clusters: {original_metrics['clusters_covered']}")
@@ -211,30 +229,30 @@ def main():
     # Run bootstrap
     print(f"Running {args.n_boot} bootstrap iterations...\n")
     df_boot = bootstrap_selection(
-        alpha=sel_config['alpha_visual'],
-        beta=sel_config['beta_spatial'],
-        gamma=sel_config['gamma_temporal'],
-        min_distance_km=sel_config['min_distance_km'],
-        n_samples=sel_config['n_samples'],
+        alpha=sel_config["alpha_visual"],
+        beta=sel_config["beta_spatial"],
+        gamma=sel_config["gamma_temporal"],
+        min_distance_km=sel_config["min_distance_km"],
+        n_samples=sel_config["n_samples"],
         features=features,
         metadata=metadata,
         original_selection=original_selection,
         cluster_labels_full=cluster_labels_full,
         n_boot=args.n_boot,
         random_seed=args.seed,
-        pre_selected_names=sel_config.get('pre_selected_names'),
-        pre_selected_indices=sel_config.get('pre_selected_indices'),
+        pre_selected_names=sel_config.get("pre_selected_names"),
+        pre_selected_indices=sel_config.get("pre_selected_indices"),
     )
 
     # Save full results
-    results_file = run_dir / 'results' / 'bootstrap_final_selection_full.csv'
+    results_file = run_dir / "results" / "bootstrap_final_selection_full.csv"
     df_boot.to_csv(results_file, index=False)
     print(f"\n✓ Saved full bootstrap results: {results_file}")
 
     # Compute and save summary
     summary = summarize_bootstrap(df_boot, original_metrics)
     summary_df = summary.to_frame().T
-    summary_file = run_dir / 'results' / 'bootstrap_final_selection_summary.csv'
+    summary_file = run_dir / "results" / "bootstrap_final_selection_summary.csv"
     summary_df.to_csv(summary_file, index=False)
     print(f"✓ Saved summary: {summary_file}")
 
@@ -242,18 +260,26 @@ def main():
     print(f"\n{'='*60}")
     print("Bootstrap Summary (95% CI)")
     print(f"{'='*60}")
-    for key in ['n_selected', 'clusters_covered', 'temporal_std', 'spatial_mean_km', 'jaccard_with_original']:
-        if f'{key}_mean' in summary.index:
-            mean = summary[f'{key}_mean']
-            std = summary[f'{key}_std']
-            ci_low = summary[f'{key}_ci_lower']
-            ci_up = summary[f'{key}_ci_upper']
-            orig = summary.get(f'{key}_original', np.nan)
-            print(f"{key:25s}: {mean:7.2f} ± {std:6.2f}  [{ci_low:7.2f}, {ci_up:7.2f}]  (orig: {orig:.2f})")
+    for key in [
+        "n_selected",
+        "clusters_covered",
+        "temporal_std",
+        "spatial_mean_km",
+        "jaccard_with_original",
+    ]:
+        if f"{key}_mean" in summary.index:
+            mean = summary[f"{key}_mean"]
+            std = summary[f"{key}_std"]
+            ci_low = summary[f"{key}_ci_lower"]
+            ci_up = summary[f"{key}_ci_upper"]
+            orig = summary.get(f"{key}_original", np.nan)
+            print(
+                f"{key:25s}: {mean:7.2f} ± {std:6.2f}  [{ci_low:7.2f}, {ci_up:7.2f}]  (orig: {orig:.2f})"
+            )
     print(f"{'='*60}\n")
 
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

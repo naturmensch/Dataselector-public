@@ -1,7 +1,7 @@
-from pathlib import Path
 import sqlite3
+from pathlib import Path
+
 import pandas as pd
-from datetime import datetime
 
 
 class ExperimentStateAnalyzer:
@@ -37,12 +37,18 @@ class ExperimentStateAnalyzer:
                 res["csv_exists"] = True
                 df = pd.read_csv(self.trials_csv)
                 if "state" in df.columns:
-                    res["csv_completed"] = int(df[df["state"].astype(str).str.contains("COMPLETE")].shape[0])
+                    res["csv_completed"] = int(
+                        df[df["state"].astype(str).str.contains("COMPLETE")].shape[0]
+                    )
                 else:
                     res["csv_completed"] = int(df.shape[0])
                 if "value" in df.columns:
                     try:
-                        res["csv_best"] = float(df["value"].max()) if not df["value"].isnull().all() else None
+                        res["csv_best"] = (
+                            float(df["value"].max())
+                            if not df["value"].isnull().all()
+                            else None
+                        )
                     except Exception:
                         res["csv_best"] = None
         except Exception:
@@ -60,13 +66,17 @@ class ExperimentStateAnalyzer:
                 cur = conn.cursor()
                 try:
                     ic = cur.execute("PRAGMA integrity_check;").fetchone()
-                    res["db_integrity_ok"] = bool(ic and (ic[0] == "ok" if isinstance(ic, tuple) else ic == "ok"))
+                    res["db_integrity_ok"] = bool(
+                        ic and (ic[0] == "ok" if isinstance(ic, tuple) else ic == "ok")
+                    )
                 except Exception:
                     res["db_integrity_ok"] = False
 
                 # Count completed trials by state or by trials table row count
                 try:
-                    cur.execute("SELECT trial_id, number, state FROM trials ORDER BY number ASC;")
+                    cur.execute(
+                        "SELECT trial_id, number, state FROM trials ORDER BY number ASC;"
+                    )
                     trials_raw = cur.fetchall()
                     if trials_raw:
                         # Try to count when state column present

@@ -19,16 +19,17 @@ Usage:
     python scripts/run_thesis_pipeline.py --help
 """
 
+import argparse
+import glob
+import json
 import subprocess
 import sys
 import time
-import json
-import glob
-import argparse
+from datetime import datetime
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
-from datetime import datetime
 
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = ROOT / "outputs"
@@ -39,7 +40,9 @@ try:
     metadata_path = ROOT / "data" / "new_all_tiles.csv"
     if metadata_path.exists():
         n_tiles = len(pd.read_csv(metadata_path))
-        n_lhs_thesis_default = max(50, int(2 * np.sqrt(n_tiles)))  # Thesis: mehr Samples
+        n_lhs_thesis_default = max(
+            50, int(2 * np.sqrt(n_tiles))
+        )  # Thesis: mehr Samples
     else:
         n_lhs_thesis_default = 50
 except Exception:
@@ -74,9 +77,7 @@ def run_step(step_name: str, command: list, skip: bool = False):
 
 def find_latest_optuna_file():
     """Finde automatisch die neueste Optuna-Resultatdatei."""
-    optuna_files = sorted(
-        glob.glob(str(OUTPUT_DIR / "optuna_autoscale_best_*.json"))
-    )
+    optuna_files = sorted(glob.glob(str(OUTPUT_DIR / "optuna_autoscale_best_*.json")))
     if optuna_files:
         latest = optuna_files[-1]
         print(f"✅ Gefunden: {Path(latest).name}")
@@ -89,7 +90,9 @@ def find_latest_optuna_file():
 def find_latest_pareto_file():
     """Finde automatisch die neueste Pareto-CSV-Datei."""
     pareto_files = sorted(
-        glob.glob(str(OUTPUT_DIR / "tuning_weights" / "pareto" / "pareto_solutions.csv"))
+        glob.glob(
+            str(OUTPUT_DIR / "tuning_weights" / "pareto" / "pareto_solutions.csv")
+        )
     )
     if pareto_files:
         latest = pareto_files[-1]
@@ -183,7 +186,9 @@ Beispiele:
     if args.dry_run:
         print(f"[DRY-RUN] würde ausführen: {' '.join(cmd_phase1)}")
     else:
-        if not run_step("Phase 1: Exploration (LHS)", cmd_phase1, args.skip_exploration):
+        if not run_step(
+            "Phase 1: Exploration (LHS)", cmd_phase1, args.skip_exploration
+        ):
             all_success = False
             if not args.skip_optimization and not args.skip_validation:
                 print("⚠️  Phase 1 fehlgeschlagen, aber fahre fort...")
@@ -253,7 +258,9 @@ Beispiele:
 
     print("1️⃣  EXPLORATION (Phase 1 - Pareto-Front für Thesis-Plots):")
     print(f"   📁 Plots:  {OUTPUT_DIR / 'tuning_weights' / 'pareto'}")
-    print(f"   📋 CSV:    {OUTPUT_DIR / 'tuning_weights' / 'pareto' / 'pareto_solutions.csv'}")
+    print(
+        f"   📋 CSV:    {OUTPUT_DIR / 'tuning_weights' / 'pareto' / 'pareto_solutions.csv'}"
+    )
 
     print("\n2️⃣  OPTIMIZATION (Phase 2/3 - Best Parameters):")
     optuna_file = find_latest_optuna_file()
@@ -261,7 +268,7 @@ Beispiele:
         print(f"   📁 Best:   {optuna_file}")
         best_params = load_optuna_best(optuna_file)
         if best_params:
-            print(f"   ✅ Parameters:")
+            print("   ✅ Parameters:")
             for key, val in best_params.items():
                 print(f"      - {key}: {val}")
     else:

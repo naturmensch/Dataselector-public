@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Unit tests for apply_bootstrap_best.py script."""
 
+import importlib.util
 import sys
 import tempfile
 from pathlib import Path
@@ -8,7 +9,6 @@ from pathlib import Path
 import pandas as pd
 import pytest
 import yaml
-import importlib.util
 
 # Add project root to path
 ROOT = Path(__file__).resolve().parents[1]

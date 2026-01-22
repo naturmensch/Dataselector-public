@@ -1,7 +1,7 @@
 import os
 import signal
-import time
 import subprocess
+import time
 
 
 def test_run_full_experiment_detach(tmp_path):
@@ -21,7 +21,7 @@ def test_run_full_experiment_detach(tmp_path):
         "1",
         "--yes",
     ]
-    proc = subprocess.run(cmd, check=True)
+    _ = subprocess.run(cmd, check=True)
 
     # Find the most recent pidfile
     pidfiles = sorted([p for p in os.listdir(out_dir) if p.endswith(".pid")])

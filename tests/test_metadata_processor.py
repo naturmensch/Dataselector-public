@@ -1,5 +1,9 @@
-from src.metadata_processor import MetadataProcessor
 import pytest
+
+pytest.importorskip("numba", exc_type=ImportError)
+pytestmark = pytest.mark.integration
+
+from src.metadata_processor import MetadataProcessor
 
 
 def write_csv(tmp_path, content: str) -> str:

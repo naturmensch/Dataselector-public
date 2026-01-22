@@ -1,6 +1,5 @@
-from pathlib import Path
-import scripts.check_protected as cp
 import scripts.archive_workspace as aw
+import scripts.check_protected as cp
 
 
 def test_images_are_protected():

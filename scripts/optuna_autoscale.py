@@ -22,12 +22,10 @@ import numpy as np
 import optuna
 import pandas as pd
 
-# ensure repo root on path
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
+# Project root (Path) - avoid modifying sys.path at import time
+ROOT = Path(__file__).resolve().parents[1]
 
-from src.diversity_selector import DiversitySelector
+# DiversitySelector is imported at runtime in `make_objective` to avoid module-level side-effects
 
 OUT = Path("outputs")
 OUT.mkdir(exist_ok=True)
@@ -46,7 +44,8 @@ def load_or_create_data(n=None, dim=256, seed=123):
         metadata = pd.read_csv(metadata_path)
     else:
         rng = np.random.RandomState(seed)
-        if n is None: n = 673 # Fallback
+        if n is None:
+            n = 673  # Fallback
         features = rng.randn(n, dim).astype("float32")
         metadata = pd.DataFrame(
             {
@@ -63,7 +62,14 @@ def clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
 
-def make_objective(features, metadata, n_samples, min_distance_bounds, pre_selected_names=None, pre_selected_indices=None):
+def make_objective(
+    features,
+    metadata,
+    n_samples,
+    min_distance_bounds,
+    pre_selected_names=None,
+    pre_selected_indices=None,
+):
     def objective(trial: optuna.trial.Trial):
         a = trial.suggest_float("a", *min_distance_bounds["a"])
         b = trial.suggest_float("b", *min_distance_bounds["b"])
@@ -132,7 +138,14 @@ def run_autoscale(
         print(
             f"\n=== Stage {stage_idx+1}/{len(stages_samples)}: n_samples={n_samples} | trials={n_trials_per_stage[stage_idx]} ==="
         )
-        objective = make_objective(features, metadata, n_samples, bounds, pre_selected_names=args.pre_names, pre_selected_indices=args.pre_indices)
+        objective = make_objective(
+            features,
+            metadata,
+            n_samples,
+            bounds,
+            pre_selected_names=args.pre_names,
+            pre_selected_indices=args.pre_indices,
+        )
 
         # Record starting trial count to slice per-stage trials later
         start_trial_count = len(study.trials)
@@ -145,7 +158,8 @@ def run_autoscale(
         # Plot per-stage diagnostics
         try:
             import matplotlib
-            matplotlib.use('Agg')
+
+            matplotlib.use("Agg")
             import matplotlib.pyplot as plt
             import seaborn as sns
 
@@ -340,15 +354,27 @@ if __name__ == "__main__":
     parser.add_argument("--dim", type=int, default=256)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--patience", type=int, default=2)
-    parser.add_argument("--pre-names", type=str, nargs='*', default=None, help='Optional pre-selected tile names (e.g. Hamburg)')
-    parser.add_argument("--pre-indices", type=int, nargs='*', default=None, help='Optional pre-selected tile indices')
+    parser.add_argument(
+        "--pre-names",
+        type=str,
+        nargs="*",
+        default=None,
+        help="Optional pre-selected tile names (e.g. Hamburg)",
+    )
+    parser.add_argument(
+        "--pre-indices",
+        type=int,
+        nargs="*",
+        default=None,
+        help="Optional pre-selected tile indices",
+    )
 
     args = parser.parse_args()
 
     features, metadata = load_or_create_data(
         n=args.n_candidates, dim=args.dim, seed=args.seed
     )
-    
+
     # Resolve actual n if it was None
     actual_n = len(features)
 

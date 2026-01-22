@@ -23,24 +23,19 @@ from pathlib import Path
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT))
-
-# Import functions to test
-# We need to insert project root into sys.path above; importing the script
-# here therefore violates the 'imports at top' rule (E402) but is intentional.
-# ruff: noqa: E402
-from scripts.xxl_KDR146_run_thesis_complete import (
-    phase_1_xxl_hamburg,
-    phase_2_reproducibility,
-    phase_3_final_statistics,
-    phase_4_thesis_summary,
-    run_cmd,
-    run_cmd_with_retry,
-)
 
 # Instrumentation: create simulated runs
 SIM_OUTPUT_DIR = ROOT / "outputs" / "runs"
 SIM_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _import_xxl_module():
+    """Import the heavy thesis orchestrator at runtime and return module."""
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    import scripts.xxl_KDR146_run_thesis_complete as xxl_mod
+
+    return xxl_mod
 
 LOG = []
 

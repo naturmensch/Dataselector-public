@@ -11,21 +11,21 @@ Produces:
 Usage:
   python scripts/compare_samplers_multi_seed.py --samplers qmc tpe cmaes --seeds 42 43 44 45 46 --n-trials 500 --hamburg
 """
+
 from __future__ import annotations
 
 import argparse
 import subprocess
 import sys
-from pathlib import Path
 from datetime import datetime
-from typing import List, Dict
+from pathlib import Path
+from typing import Dict
 
-import pandas as pd
 import numpy as np
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import seaborn as sns
+import pandas as pd
+
+# Defer matplotlib backend selection and pyplot import to runtime to avoid
+# module-level side-effects that break importability and lint rules.
 
 # For statistical tests
 try:
@@ -38,22 +38,39 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 
-def run_single_optuna(sampler: str, seed: int, n_trials: int, n_candidates: int, preselection_flag: str, exp_desc: str, dataset: str = None) -> Dict:
+def run_single_optuna(
+    sampler: str,
+    seed: int,
+    n_trials: int,
+    n_candidates: int,
+    preselection_flag: str,
+    exp_desc: str,
+    dataset: str = None,
+) -> Dict:
     """Run `scripts/optuna_optimize.py` for one sampler/seed and return run metadata."""
     import time
+
     dataset_prefix = f"{dataset}_" if dataset else ""
     exp_name = f"{dataset_prefix}{sampler}_{n_trials}trials_s{seed}"
     cmd = [
         sys.executable,
-        str(ROOT / 'scripts' / 'optuna_optimize.py'),
-        '--n-trials', str(n_trials),
-        '--n-candidates', str(n_candidates),
-        '--n-samples-min', '30',
-        '--n-samples-max', '50',
-        '--sampler', sampler,
-        '--seed', str(seed),
-        '--exp-name', exp_name,
-        '--exp-desc', f"{exp_desc} (sampler={sampler}, seed={seed})",
+        str(ROOT / "scripts" / "optuna_optimize.py"),
+        "--n-trials",
+        str(n_trials),
+        "--n-candidates",
+        str(n_candidates),
+        "--n-samples-min",
+        "30",
+        "--n-samples-max",
+        "50",
+        "--sampler",
+        sampler,
+        "--seed",
+        str(seed),
+        "--exp-name",
+        exp_name,
+        "--exp-desc",
+        f"{exp_desc} (sampler={sampler}, seed={seed})",
     ]
     if preselection_flag:
         cmd.append(preselection_flag)
@@ -65,17 +82,17 @@ def run_single_optuna(sampler: str, seed: int, n_trials: int, n_candidates: int,
         raise RuntimeError(f"Run failed for {sampler} seed {seed}")
 
     # Find latest run dir
-    run_dirs = sorted((ROOT / 'outputs' / 'runs').glob(f'*{exp_name}'))
+    run_dirs = sorted((ROOT / "outputs" / "runs").glob(f"*{exp_name}"))
     if not run_dirs:
         out = proc.stdout or ""
         err = proc.stderr or ""
         msg = f"No run dir found for {exp_name}\nSubprocess stdout:\n{out}\nSubprocess stderr:\n{err}"
         # common hint: missing optuna in environment
-        if 'ModuleNotFoundError' in out or 'ModuleNotFoundError' in err:
+        if "ModuleNotFoundError" in out or "ModuleNotFoundError" in err:
             msg += "\nHint: a ModuleNotFoundError was observed in the subprocess output; ensure required packages (e.g., optuna) are installed in the environment."
         raise FileNotFoundError(msg)
     run_dir = run_dirs[-1]
-    trials_csv = run_dir / 'results' / 'trials.csv'
+    trials_csv = run_dir / "results" / "trials.csv"
 
     # Retry loop for output integrity (filesystem latency)
     for _ in range(5):
@@ -87,38 +104,52 @@ def run_single_optuna(sampler: str, seed: int, n_trials: int, n_candidates: int,
         raise FileNotFoundError(f"trials.csv missing in {run_dir}")
 
     df = pd.read_csv(trials_csv)
-    df = df[df['value'].notna()]
-    best_val = float(df['value'].max()) if len(df) > 0 else float('nan')
-    best_trial = int(df.loc[df['value'].idxmax(), 'trial_number']) if len(df) > 0 else -1
-    cumulative_best = df['value'].expanding().max() if len(df) > 0 else pd.Series(dtype=float)
-    threshold_idx = (cumulative_best >= (best_val * 0.99)).idxmax() if (len(df) > 0 and (cumulative_best >= (best_val*0.99)).any()) else (len(df) - 1)
+    df = df[df["value"].notna()]
+    best_val = float(df["value"].max()) if len(df) > 0 else float("nan")
+    best_trial = (
+        int(df.loc[df["value"].idxmax(), "trial_number"]) if len(df) > 0 else -1
+    )
+    cumulative_best = (
+        df["value"].expanding().max() if len(df) > 0 else pd.Series(dtype=float)
+    )
+    threshold_idx = (
+        (cumulative_best >= (best_val * 0.99)).idxmax()
+        if (len(df) > 0 and (cumulative_best >= (best_val * 0.99)).any())
+        else (len(df) - 1)
+    )
 
     return {
-        'sampler': sampler,
-        'seed': seed,
-        'n_trials': len(df),
-        'best_value': best_val,
-        'best_trial': best_trial,
-        'mean_value': float(df['value'].mean()) if len(df) > 0 else float('nan'),
-        'std_value': float(df['value'].std()) if len(df) > 0 else float('nan'),
-        'convergence_trial': int(threshold_idx),
-        'convergence_ratio': float(threshold_idx / len(df)) if len(df) > 0 else float('nan'),
-        'run_dir': str(run_dir),
+        "sampler": sampler,
+        "seed": seed,
+        "n_trials": len(df),
+        "best_value": best_val,
+        "best_trial": best_trial,
+        "mean_value": float(df["value"].mean()) if len(df) > 0 else float("nan"),
+        "std_value": float(df["value"].std()) if len(df) > 0 else float("nan"),
+        "convergence_trial": int(threshold_idx),
+        "convergence_ratio": (
+            float(threshold_idx / len(df)) if len(df) > 0 else float("nan")
+        ),
+        "run_dir": str(run_dir),
     }
 
 
 def compare_and_analyze(results_df: pd.DataFrame, out_dir: Path):
     out_dir.mkdir(parents=True, exist_ok=True)
     # Save raw
-    raw_csv = out_dir / 'per_run_results.csv'
+    raw_csv = out_dir / "per_run_results.csv"
     results_df.to_csv(raw_csv, index=False)
     print(f"Saved per-run results: {raw_csv}")
 
     # Group by sampler
-    grouped = results_df.groupby('sampler')['best_value'].apply(list).to_dict()
+    grouped = results_df.groupby("sampler")["best_value"].apply(list).to_dict()
 
     # Basic summary
-    summary = results_df.groupby('sampler')['best_value'].agg(['mean', 'std', 'median', 'count']).reset_index()
+    summary = (
+        results_df.groupby("sampler")["best_value"]
+        .agg(["mean", "std", "median", "count"])
+        .reset_index()
+    )
 
     # Bootstrap 95% CI for mean & median per sampler
     rng = np.random.default_rng(42)
@@ -133,11 +164,19 @@ def compare_and_analyze(results_df: pd.DataFrame, out_dir: Path):
             boot_medians.append(np.median(resample))
         mean_lo, mean_hi = np.percentile(boot_means, [2.5, 97.5])
         med_lo, med_hi = np.percentile(boot_medians, [2.5, 97.5])
-        ci_rows.append({'sampler': sampler, 'mean_ci_lo': mean_lo, 'mean_ci_hi': mean_hi, 'median_ci_lo': med_lo, 'median_ci_hi': med_hi})
+        ci_rows.append(
+            {
+                "sampler": sampler,
+                "mean_ci_lo": mean_lo,
+                "mean_ci_hi": mean_hi,
+                "median_ci_lo": med_lo,
+                "median_ci_hi": med_hi,
+            }
+        )
 
     ci_df = pd.DataFrame(ci_rows)
-    summary = summary.merge(ci_df, on='sampler')
-    summary_file = out_dir / 'summary.csv'
+    summary = summary.merge(ci_df, on="sampler")
+    summary_file = out_dir / "summary.csv"
     summary.to_csv(summary_file, index=False)
     print(f"Saved summary: {summary_file}")
 
@@ -145,49 +184,70 @@ def compare_and_analyze(results_df: pd.DataFrame, out_dir: Path):
     stats = []
     samplers = list(grouped.keys())
     for i in range(len(samplers)):
-        for j in range(i+1, len(samplers)):
+        for j in range(i + 1, len(samplers)):
             s1 = samplers[i]
             s2 = samplers[j]
             a = np.array(grouped[s1])
             b = np.array(grouped[s2])
             if mannwhitneyu is None:
-                pval = float('nan')
+                pval = float("nan")
             else:
                 try:
-                    u = mannwhitneyu(a, b, alternative='two-sided')
+                    u = mannwhitneyu(a, b, alternative="two-sided")
                     pval = float(u.pvalue)
                 except Exception:
-                    pval = float('nan')
+                    pval = float("nan")
             # Cohen's d
-            pooled_std = np.sqrt(((a.size - 1) * a.std(ddof=1) ** 2 + (b.size - 1) * b.std(ddof=1) ** 2) / (a.size + b.size - 2)) if (a.size > 1 and b.size > 1) else float('nan')
-            cohen_d = (a.mean() - b.mean()) / pooled_std if pooled_std and not np.isnan(pooled_std) and pooled_std != 0 else float('nan')
-            stats.append({'sampler1': s1, 'sampler2': s2, 'pvalue': pval, 'cohens_d': cohen_d})
+            pooled_std = (
+                np.sqrt(
+                    (
+                        (a.size - 1) * a.std(ddof=1) ** 2
+                        + (b.size - 1) * b.std(ddof=1) ** 2
+                    )
+                    / (a.size + b.size - 2)
+                )
+                if (a.size > 1 and b.size > 1)
+                else float("nan")
+            )
+            cohen_d = (
+                (a.mean() - b.mean()) / pooled_std
+                if pooled_std and not np.isnan(pooled_std) and pooled_std != 0
+                else float("nan")
+            )
+            stats.append(
+                {"sampler1": s1, "sampler2": s2, "pvalue": pval, "cohens_d": cohen_d}
+            )
 
     stats_df = pd.DataFrame(stats)
-    stats_df.to_csv(out_dir / 'pairwise_stats.csv', index=False)
+    stats_df.to_csv(out_dir / "pairwise_stats.csv", index=False)
     print(f"Saved pairwise statistics: {out_dir / 'pairwise_stats.csv'}")
 
     # Plots: boxplot of best values
     fig, ax = plt.subplots(figsize=(8, 6))
     data = [grouped[s] for s in samplers]
     ax.boxplot(data, tick_labels=[s.upper() for s in samplers], patch_artist=True)
-    ax.set_title('Best Value Distribution per Sampler (across seeds)')
-    ax.set_ylabel('Objective Value')
+    ax.set_title("Best Value Distribution per Sampler (across seeds)")
+    ax.set_ylabel("Objective Value")
 
     # Annotate pairwise p-values
     y_max = max([np.max(d) for d in data])
     y_min = min([np.min(d) for d in data])
     y = y_max + (y_max - y_min) * 0.05
-    for idx, row in stats_df.iterrows() if 'stats_df' in locals() else []:
-        s1 = row['sampler1']
-        s2 = row['sampler2']
-        p = row['pvalue']
+    for idx, row in stats_df.iterrows() if "stats_df" in locals() else []:
+        s1 = row["sampler1"]
+        s2 = row["sampler2"]
+        p = row["pvalue"]
         if not np.isnan(p):
             txt = f"p={p:.3f}"
-            ax.text(0.5, y + idx * (y_max - y_min) * 0.02, f"{row['sampler1'].upper()} vs {row['sampler2'].upper()}: {txt}", fontsize=8)
+            ax.text(
+                0.5,
+                y + idx * (y_max - y_min) * 0.02,
+                f"{row['sampler1'].upper()} vs {row['sampler2'].upper()}: {txt}",
+                fontsize=8,
+            )
 
     plt.tight_layout()
-    bp = out_dir / 'best_value_boxplot.png'
+    bp = out_dir / "best_value_boxplot.png"
     plt.savefig(bp, dpi=300)
     plt.close()
     print(f"Saved boxplot: {bp}")
@@ -198,68 +258,92 @@ def compare_and_analyze(results_df: pd.DataFrame, out_dir: Path):
     for sampler in samplers:
         # Collect cumulative arrays
         cumuls = []
-        for idx, row in results_df[results_df['sampler'] == sampler].iterrows():
-            trials_csv = Path(row['run_dir']) / 'results' / 'trials.csv'
+        for idx, row in results_df[results_df["sampler"] == sampler].iterrows():
+            trials_csv = Path(row["run_dir"]) / "results" / "trials.csv"
             if trials_csv.exists():
                 df = pd.read_csv(trials_csv)
-                df = df[df['value'].notna()]
-                cumuls.append(df['value'].expanding().max().values)
+                df = df[df["value"].notna()]
+                cumuls.append(df["value"].expanding().max().values)
         if cumuls:
             # pad to same length
             maxlen = max(len(a) for a in cumuls)
-            arr = np.array([np.pad(a, (0, maxlen - len(a)), constant_values=np.nan) for a in cumuls])
+            arr = np.array(
+                [
+                    np.pad(a, (0, maxlen - len(a)), constant_values=np.nan)
+                    for a in cumuls
+                ]
+            )
             median_curves[sampler] = np.nanmedian(arr, axis=0)
 
     if median_curves:
         fig, ax = plt.subplots(figsize=(10, 6))
         for s, curve in median_curves.items():
             ax.plot(curve, label=s.upper())
-        ax.set_xlabel('Trial Number')
-        ax.set_ylabel('Median Best Objective')
-        ax.set_title('Median Convergence Curves (across seeds)')
+        ax.set_xlabel("Trial Number")
+        ax.set_ylabel("Median Best Objective")
+        ax.set_title("Median Convergence Curves (across seeds)")
         ax.legend()
         plt.tight_layout()
-        conv_file = out_dir / 'median_convergence.png'
+        conv_file = out_dir / "median_convergence.png"
         plt.savefig(conv_file, dpi=300)
         plt.close()
         print(f"Saved convergence plot: {conv_file}")
 
     return {
-        'summary_file': str(summary_file),
-        'pairwise_stats': str(out_dir / 'pairwise_stats.csv'),
-        'plots': [str(bp), str(conv_file) if median_curves else '']
+        "summary_file": str(summary_file),
+        "pairwise_stats": str(out_dir / "pairwise_stats.csv"),
+        "plots": [str(bp), str(conv_file) if median_curves else ""],
     }
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Compare samplers across multiple seeds and datasets')
-    parser.add_argument('--samplers', nargs='+', default=['qmc', 'tpe', 'cmaes'])
-    parser.add_argument('--seeds', nargs='+', type=int, default=[42, 43, 44, 45, 46])
-    parser.add_argument('--n-trials', type=int, default=500)
-    parser.add_argument('--n-candidates', type=int, default=673)
-    parser.add_argument('--datasets', nargs='+', choices=['hamburg','kdr100','full'], default=None, help='Datasets to run on')
-    parser.add_argument('--sequential', action='store_true', help='Run sequentially (default)')
-    parser.add_argument('--output', type=str, default=None)
+    parser = argparse.ArgumentParser(
+        description="Compare samplers across multiple seeds and datasets"
+    )
+    parser.add_argument("--samplers", nargs="+", default=["qmc", "tpe", "cmaes"])
+    parser.add_argument("--seeds", nargs="+", type=int, default=[42, 43, 44, 45, 46])
+    parser.add_argument("--n-trials", type=int, default=500)
+    parser.add_argument("--n-candidates", type=int, default=673)
+    parser.add_argument(
+        "--datasets",
+        nargs="+",
+        choices=["hamburg", "kdr100", "full"],
+        default=None,
+        help="Datasets to run on",
+    )
+    parser.add_argument(
+        "--sequential", action="store_true", help="Run sequentially (default)"
+    )
+    parser.add_argument("--output", type=str, default=None)
     args = parser.parse_args()
 
-    # determine dataset/config
-    datasets = args.datasets or ['full']
+    # Configure matplotlib backend and make pyplot available to helper functions
+    import matplotlib
 
-    timestamp = datetime.now().strftime('%Y%m%d_T%H%M%S')
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    # expose plt at module level so functions can call it
+    globals()["plt"] = plt
+
+    # determine dataset/config
+    datasets = args.datasets or ["full"]
+
+    timestamp = datetime.now().strftime("%Y%m%d_T%H%M%S")
     # Use --output if provided, otherwise default to outputs/runs/
     if args.output:
         global_out_dir = Path(args.output)
     else:
-        global_out_dir = ROOT / 'outputs' / 'runs' / f'sampler_multi_{timestamp}'
+        global_out_dir = ROOT / "outputs" / "runs" / f"sampler_multi_{timestamp}"
     global_out_dir.mkdir(parents=True, exist_ok=True)
 
     all_results = []
     for dataset in datasets:
         print(f"\n=== Running dataset: {dataset} ===\n")
-        if dataset == 'hamburg':
-            preselection_flag = '--hamburg'
+        if dataset == "hamburg":
+            preselection_flag = "--hamburg"
             n_candidates = args.n_candidates
-        elif dataset == 'kdr100':
+        elif dataset == "kdr100":
             preselection_flag = None  # full candidate set, smaller n
             n_candidates = 673
         else:
@@ -272,50 +356,64 @@ def main():
         for sampler in args.samplers:
             for seed in args.seeds:
                 print(f"Starting run: dataset={dataset} sampler={sampler} seed={seed}")
-                meta = run_single_optuna(sampler, seed, args.n_trials, n_candidates, preselection_flag, f"Multi-seed comparison ({dataset})", dataset=dataset)
-                meta['dataset'] = dataset
+                meta = run_single_optuna(
+                    sampler,
+                    seed,
+                    args.n_trials,
+                    n_candidates,
+                    preselection_flag,
+                    f"Multi-seed comparison ({dataset})",
+                    dataset=dataset,
+                )
+                meta["dataset"] = dataset
                 all_results.append(meta)
 
     df_results = pd.DataFrame(all_results)
 
     analysis = compare_and_analyze(df_results, global_out_dir)
-    print('Analysis complete:', analysis)
+    print("Analysis complete:", analysis)
 
     # Determine best sampler (mean best_value across seeds)
     try:
-        best_sampler = df_results.groupby('sampler')['best_value'].mean().idxmax()
-        best_score = float(df_results.groupby('sampler')['best_value'].mean().max())
+        best_sampler = df_results.groupby("sampler")["best_value"].mean().idxmax()
+        best_score = float(df_results.groupby("sampler")["best_value"].mean().max())
     except Exception:
         best_sampler = None
         best_score = None
 
     selected = {
-        'best': best_sampler,
-        'metric': 'mean_best_value',
-        'score': best_score,
-        'n_trials': int(args.n_trials),
-        'seeds': list(args.seeds),
-        'datasets': datasets,
-        'generated_at': datetime.now().isoformat(),
-        'output_dir': str(global_out_dir),
+        "best": best_sampler,
+        "metric": "mean_best_value",
+        "score": best_score,
+        "n_trials": int(args.n_trials),
+        "seeds": list(args.seeds),
+        "datasets": datasets,
+        "generated_at": datetime.now().isoformat(),
+        "output_dir": str(global_out_dir),
     }
 
     # Persist selected sampler artifact to a canonical location for the monitor
     try:
-        sel_file = ROOT / 'outputs' / 'selected_sampler.json'
-        sel_file.write_text(pd.json.dumps(selected) if hasattr(pd, 'json') else __import__('json').dumps(selected, indent=2))
+        sel_file = ROOT / "outputs" / "selected_sampler.json"
+        sel_file.write_text(
+            pd.json.dumps(selected)
+            if hasattr(pd, "json")
+            else __import__("json").dumps(selected, indent=2)
+        )
         print(f"Wrote selected sampler artifact: {sel_file}")
     except Exception as e:
         print(f"Warning: could not write selected_sampler.json: {e}")
 
     # Also write inside the experiment-specific output folder for convenience
     try:
-        (global_out_dir / 'selected_sampler.json').write_text(__import__('json').dumps(selected, indent=2))
+        (global_out_dir / "selected_sampler.json").write_text(
+            __import__("json").dumps(selected, indent=2)
+        )
     except Exception:
         pass
 
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

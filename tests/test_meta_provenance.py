@@ -2,6 +2,10 @@ import json
 
 import numpy as np
 import pandas as pd
+import pytest
+
+pytest.importorskip("numba", exc_type=ImportError)
+pytestmark = pytest.mark.integration
 
 from src import experiments as experiments_module
 

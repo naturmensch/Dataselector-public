@@ -1,4 +1,3 @@
-# ruff: noqa: E402
 """Optuna hyperparameter optimization for Multi-Criteria weights.
 
 REFACTORED: Uses ExperimentManager for professional versioning and reproducibility.
@@ -16,19 +15,17 @@ Saves results to: outputs/runs/<timestamp>_<exp_name>/
 """
 
 import argparse
-from typing import Optional, List
 import os
 import sys
-from pathlib import Path
 from datetime import datetime
-
-# ensure repo root on path
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
+from pathlib import Path
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
+
+# Project root (Path object); avoid modifying sys.path at module import time
+ROOT = Path(__file__).resolve().parents[1]
 
 try:
     import optuna
@@ -41,15 +38,17 @@ except Exception:
         # Avoid hard import failure when module is imported elsewhere
         optuna = None
 
-from src.diversity_selector import DiversitySelector
-from src.experiment_manager import ExperimentManager
-from src.incremental_results import IncrementalCSVWriter, TrialBuffer
-
 OUT_DIR = Path("outputs")
 OUT_DIR.mkdir(exist_ok=True)
 
 
-def load_or_create_data(n: Optional[int] = None, dim=512, seed=123, pre_selected_names: Optional[list] = None, pre_selected_indices: Optional[list] = None):
+def load_or_create_data(
+    n: Optional[int] = None,
+    dim=512,
+    seed=123,
+    pre_selected_names: Optional[list] = None,
+    pre_selected_indices: Optional[list] = None,
+):
     """Load real metadata from `data/new_all_tiles.csv` if available, otherwise
     fall back to synthetic metadata that includes `shortName` and `longName` so
     pre-selection by name works in Optuna seeded runs.
@@ -70,7 +69,7 @@ def load_or_create_data(n: Optional[int] = None, dim=512, seed=123, pre_selected
         canonical_meta = Path("data") / "new_all_tiles.csv"
         if canonical_meta.exists():
             metadata_full = pd.read_csv(canonical_meta)
-            
+
             if n is None:
                 n = len(metadata_full)
 
@@ -80,7 +79,8 @@ def load_or_create_data(n: Optional[int] = None, dim=512, seed=123, pre_selected
             if pre_selected_names is not None:
                 for nm in pre_selected_names:
                     mask = (
-                        metadata_full["shortName"].astype(str).str.lower() == str(nm).lower()
+                        metadata_full["shortName"].astype(str).str.lower()
+                        == str(nm).lower()
                     ) | metadata_full["longName"].astype(str).str.lower().str.contains(
                         str(nm).lower()
                     )
@@ -88,7 +88,9 @@ def load_or_create_data(n: Optional[int] = None, dim=512, seed=123, pre_selected
             if pre_selected_indices is not None:
                 # Try to match against the 'SheetNumber' column if present, otherwise try index
                 if "SheetNumber" in metadata_full.columns:
-                    include_mask |= metadata_full["SheetNumber"].isin(pre_selected_indices)
+                    include_mask |= metadata_full["SheetNumber"].isin(
+                        pre_selected_indices
+                    )
                 else:
                     include_mask |= metadata_full.index.isin(pre_selected_indices)
 
@@ -120,7 +122,8 @@ def load_or_create_data(n: Optional[int] = None, dim=512, seed=123, pre_selected
             features = rng.randn(len(metadata), dim).astype("float32")
         else:
             rng = np.random.RandomState(seed)
-            if n is None: n = 673  # Fallback for synthetic data
+            if n is None:
+                n = 673  # Fallback for synthetic data
             features = rng.randn(n, dim).astype("float32")
             metadata = pd.DataFrame(
                 {
@@ -131,7 +134,9 @@ def load_or_create_data(n: Optional[int] = None, dim=512, seed=123, pre_selected
             )
             # Add synthetic shortName/longName columns so name-based preselection works
             metadata["shortName"] = [f"KDR_{i:03d}" for i in range(len(metadata))]
-            metadata["longName"] = [f"KDR_{i:03d}_Synthetic" for i in range(len(metadata))]
+            metadata["longName"] = [
+                f"KDR_{i:03d}_Synthetic" for i in range(len(metadata))
+            ]
 
     # Guard: ensure shortName/longName exist for preselection
     if "shortName" not in metadata.columns:
@@ -188,6 +193,7 @@ def objective_factory(
             else:
                 # Use adaptive heuristic for initial sample size (dimension-aware rule)
                 from src.pipeline_utils import compute_adaptive_n_initial
+
                 n_samples = compute_adaptive_n_initial(n_dimensions=3)
 
         selector = DiversitySelector(n_samples=n_samples, use_multi_criteria=True)
@@ -231,7 +237,7 @@ def objective_factory(
     return objective
 
 
-def get_optuna_sampler(sampler_name: str = 'qmc', seed: int = 42):
+def get_optuna_sampler(sampler_name: str = "qmc", seed: int = 42):
     """Return an Optuna sampler instance based on a name.
 
     Supported samplers: 'qmc' (QMCSampler/Sobol), 'tpe' (TPESampler), 'cmaes' (CmaEsSampler)
@@ -239,29 +245,31 @@ def get_optuna_sampler(sampler_name: str = 'qmc', seed: int = 42):
     """
     name = sampler_name.lower()
     try:
-        if name == 'qmc':
+        if name == "qmc":
             # Prefer QMCSampler (Sobol) for QMC sampling. Different optuna
             # versions accepted different keyword names, so try them in order.
             try:
                 # Newer optuna (>= 3.x) might accept qmc_type or qmc
-                sampler = optuna.samplers.QMCSampler(seed=seed, qmc_type='sobol')
+                sampler = optuna.samplers.QMCSampler(seed=seed, qmc_type="sobol")
                 return sampler
             except TypeError:
                 try:
-                    sampler = optuna.samplers.QMCSampler(seed=seed, qmc='sobol')
+                    sampler = optuna.samplers.QMCSampler(seed=seed, qmc="sobol")
                     return sampler
                 except TypeError:
                     # Last resort: call without qmc kwargs
                     sampler = optuna.samplers.QMCSampler(seed=seed)
                     return sampler
-        elif name == 'cmaes':
+        elif name == "cmaes":
             return optuna.samplers.CmaEsSampler(seed=seed)
         else:
             # Default to TPE for 'tpe' or unknown learners
             return optuna.samplers.TPESampler(seed=seed, multivariate=True)
     except Exception as e:
         # Fallback: ensure we can always return a working sampler
-        print(f"Warning: could not instantiate sampler '{sampler_name}' ({e}), falling back to TPE.")
+        print(
+            f"Warning: could not instantiate sampler '{sampler_name}' ({e}), falling back to TPE."
+        )
         return optuna.samplers.TPESampler(seed=seed, multivariate=True)
 
 
@@ -277,7 +285,7 @@ def run_optuna(
     min_distance_max: Optional[int] = None,
     seed: int = 42,
     study_name: str = "kdr100_opt",
-    sampler_name: str = 'qmc',
+    sampler_name: str = "qmc",
     pre_selected_names: Optional[List[str]] = None,
     pre_selected_indices: Optional[List[int]] = None,
     exp_name: str = "optuna",
@@ -285,7 +293,7 @@ def run_optuna(
     storage: Optional[str] = None,
 ):
     """Run Optuna optimization with professional experiment management.
-    
+
     Args:
         n_trials: Number of trials
         n_candidates: Number of candidates in the pool
@@ -304,84 +312,108 @@ def run_optuna(
     """
     # Initialize or attach to an experiment manager
     import os
-    em_env = os.environ.get('EXPERIMENT_RUN_DIR')
+
+    em_env = os.environ.get("EXPERIMENT_RUN_DIR")
     if em_env:
         em = ExperimentManager.from_existing(em_env)
         em.log("Attached to pipeline run (optuna stage)")
-        em.manifest.setdefault('metadata', {}).update({
-            "n_trials": n_trials,
-            "n_candidates": n_candidates,
-            "sampler": sampler_name,
-            "seed": seed,
-            "n_samples": n_samples,
-            "n_samples_min": n_samples_min,
-            "n_samples_max": n_samples_max,
-            "min_distance_km": min_distance_km,
-            "min_distance_min": min_distance_min,
-            "min_distance_max": min_distance_max,
-            "pre_selected_names": pre_selected_names,
-            "pre_selected_indices": pre_selected_indices,
-        })
+        em.manifest.setdefault("metadata", {}).update(
+            {
+                "n_trials": n_trials,
+                "n_candidates": n_candidates,
+                "sampler": sampler_name,
+                "seed": seed,
+                "n_samples": n_samples,
+                "n_samples_min": n_samples_min,
+                "n_samples_max": n_samples_max,
+                "min_distance_km": min_distance_km,
+                "min_distance_min": min_distance_min,
+                "min_distance_max": min_distance_max,
+                "pre_selected_names": pre_selected_names,
+                "pre_selected_indices": pre_selected_indices,
+            }
+        )
         em.save_manifest()
     else:
         em = ExperimentManager(
             name=exp_name,
-            description=exp_description or f"Optuna optimization (n_trials={n_trials}, n_candidates={n_candidates})",
+            description=exp_description
+            or f"Optuna optimization (n_trials={n_trials}, n_candidates={n_candidates})",
             base_dir=Path("outputs/runs"),
             metadata={
                 "n_trials": n_trials,
                 "n_candidates": n_candidates,
                 "seed": seed,
                 "sampler": sampler_name,
-            }
+            },
         )
         # Export run dir to environment so downstream modules (e.g., clustering) can persist their config
         try:
             import os as _os
-            _os.environ['EXPERIMENT_RUN_DIR'] = str(em.run_dir)
+
+            _os.environ["EXPERIMENT_RUN_DIR"] = str(em.run_dir)
         except Exception:
             pass
-    
+
     em.log(f"Loading features and metadata (n_candidates={n_candidates}, dim={dim})")
     features, metadata = load_or_create_data(
-        n=n_candidates, dim=dim, seed=seed,
+        n=n_candidates,
+        dim=dim,
+        seed=seed,
         pre_selected_names=pre_selected_names,
-        pre_selected_indices=pre_selected_indices
+        pre_selected_indices=pre_selected_indices,
     )
-    
+
     # Update n_candidates if it was None (auto-detected)
     if n_candidates is None:
         n_candidates = len(metadata)
-    
+
     # Document candidate set and preselection
     try:
-        em.log(f"Documenting candidate set: {len(metadata)} candidates, pre-selection: names={pre_selected_names}, indices={pre_selected_indices}")
+        em.log(
+            f"Documenting candidate set: {len(metadata)} candidates, pre-selection: names={pre_selected_names}, indices={pre_selected_indices}"
+        )
         cand_df = metadata.reset_index().rename(columns={"index": "candidate_index"})
         # Ensure name columns are strings to avoid dtype warnings
-        if 'shortName' in cand_df.columns:
-            cand_df['shortName'] = cand_df['shortName'].astype(str)
-        if 'longName' in cand_df.columns:
-            cand_df['longName'] = cand_df['longName'].astype(str)
+        if "shortName" in cand_df.columns:
+            cand_df["shortName"] = cand_df["shortName"].astype(str)
+        if "longName" in cand_df.columns:
+            cand_df["longName"] = cand_df["longName"].astype(str)
         cand_df["is_preselected"] = False
-        
+
         if pre_selected_names is not None:
             for nm in pre_selected_names:
-                mask = (
-                    cand_df["shortName"].str.lower() == str(nm).lower()
-                ) | cand_df["longName"].str.lower().str.contains(str(nm).lower())
+                mask = (cand_df["shortName"].str.lower() == str(nm).lower()) | cand_df[
+                    "longName"
+                ].str.lower().str.contains(str(nm).lower())
                 cand_df.loc[mask, "is_preselected"] = True
-        
+
         if pre_selected_indices is not None:
             if "SheetNumber" in cand_df.columns:
-                cand_df.loc[cand_df["SheetNumber"].isin(pre_selected_indices), "is_preselected"] = True
+                cand_df.loc[
+                    cand_df["SheetNumber"].isin(pre_selected_indices), "is_preselected"
+                ] = True
             else:
-                cand_df.loc[cand_df["candidate_index"].isin(pre_selected_indices), "is_preselected"] = True
-        
-        cols = [c for c in ["candidate_index", "SheetNumber", "shortName", "longName", "is_preselected"] if c in cand_df.columns]
+                cand_df.loc[
+                    cand_df["candidate_index"].isin(pre_selected_indices),
+                    "is_preselected",
+                ] = True
+
+        cols = [
+            c
+            for c in [
+                "candidate_index",
+                "SheetNumber",
+                "shortName",
+                "longName",
+                "is_preselected",
+            ]
+            if c in cand_df.columns
+        ]
         em.save_results("candidate_set", cand_df[cols], format="csv")
     except Exception as e:
         em.log(f"Warning: could not document candidate set: {e}", level="warning")
-    
+
     # Save Optuna configuration
     optuna_config = {
         "n_trials": n_trials,
@@ -396,18 +428,29 @@ def run_optuna(
         "pre_selected_indices": pre_selected_indices,
     }
     em.save_config("optuna", optuna_config)
-    
+
     # Setup incremental trial saving
     trials_csv_path = em.get_path("results/trials.csv")
     trial_fieldnames = [
-        "trial_number", "datetime_start", "datetime_complete", "duration_sec",
-        "value", "a", "b", "c", "min_distance_km", "n_samples", "state"
+        "trial_number",
+        "datetime_start",
+        "datetime_complete",
+        "duration_sec",
+        "value",
+        "a",
+        "b",
+        "c",
+        "min_distance_km",
+        "n_samples",
+        "state",
     ]
-    trial_writer = IncrementalCSVWriter(trials_csv_path, fieldnames=trial_fieldnames, buffer_size=50)
+    trial_writer = IncrementalCSVWriter(
+        trials_csv_path, fieldnames=trial_fieldnames, buffer_size=50
+    )
     trial_buffer = TrialBuffer(trial_writer)
-    
+
     em.log(f"Initialized incremental trial writer: {trials_csv_path}")
-    
+
     # Determine storage URL if not provided
     if storage is None:
         db_path = em.run_dir / "optuna_study.db"
@@ -416,16 +459,24 @@ def run_optuna(
 
     # Create Optuna study
     sampler = get_optuna_sampler(sampler_name, seed=seed)
-    study = optuna.create_study(direction="maximize", study_name=study_name, sampler=sampler, storage=storage, load_if_exists=True)
-    
+    study = optuna.create_study(
+        direction="maximize",
+        study_name=study_name,
+        sampler=sampler,
+        storage=storage,
+        load_if_exists=True,
+    )
+
     # Validate n_samples configuration
     has_fixed = n_samples is not None
     has_range = (n_samples_min is not None) and (n_samples_max is not None)
     if has_fixed and has_range:
-        raise ValueError("Specify either --n-samples OR the range --n-samples-min/--n-samples-max, not both.")
+        raise ValueError(
+            "Specify either --n-samples OR the range --n-samples-min/--n-samples-max, not both."
+        )
     # Relaxed validation: if neither is specified, objective_factory will use a heuristic default.
     # if not has_fixed and not has_range: ...
-    
+
     # Create objective factory
     objective = objective_factory(
         features,
@@ -439,10 +490,10 @@ def run_optuna(
         pre_selected_names=pre_selected_names,
         pre_selected_indices=pre_selected_indices,
     )
-    
+
     # Setup callback to save trials incrementally
     trial_start_times = {}
-    
+
     def trial_callback(study, trial):
         """Callback after each trial completes."""
         try:
@@ -450,36 +501,50 @@ def run_optuna(
                 "trial_number": trial.number,
                 "datetime_start": trial_start_times.get(trial.number, "N/A"),
                 "datetime_complete": datetime.now().isoformat(),
-                "duration_sec": trial.duration.total_seconds() if trial.duration else None,
+                "duration_sec": (
+                    trial.duration.total_seconds() if trial.duration else None
+                ),
                 "value": trial.value,
                 "a": trial.params.get("a"),
                 "b": trial.params.get("b"),
                 "c": trial.params.get("c"),
                 "min_distance_km": trial.params.get("min_distance_km"),
                 # n_samples may be a trial.param (when range-sampling) or a user_attr (when fixed/adaptive). Prefer param, fall back to user_attr.
-                "n_samples": (trial.params.get("n_samples") if trial.params and trial.params.get("n_samples") is not None else (trial.user_attrs.get("n_samples") if hasattr(trial, 'user_attrs') and trial.user_attrs.get('n_samples') is not None else None)),
+                "n_samples": (
+                    trial.params.get("n_samples")
+                    if trial.params and trial.params.get("n_samples") is not None
+                    else (
+                        trial.user_attrs.get("n_samples")
+                        if hasattr(trial, "user_attrs")
+                        and trial.user_attrs.get("n_samples") is not None
+                        else None
+                    )
+                ),
                 "state": str(trial.state),
             }
             trial_buffer.add_trial(trial_dict)
-            
+
             # Flush every 100 trials
             if (trial.number + 1) % 100 == 0:
                 trial_buffer.flush_to_csv()
                 stats = trial_buffer.get_stats()
-                em.log(f"Trial {trial.number + 1}/{n_trials} - Best: {study.best_value:.4f} - Stats: {stats}")
+                em.log(
+                    f"Trial {trial.number + 1}/{n_trials} - Best: {study.best_value:.4f} - Stats: {stats}"
+                )
         except Exception as e:
             em.log(f"Error in trial callback: {e}", level="error")
-    
+
     # Wrap objective to track start times
     original_objective = objective
+
     def objective_with_timing(trial):
         trial_start_times[trial.number] = datetime.now().isoformat()
         return original_objective(trial)
-    
+
     # Run optimization
     em.log(f"Starting Optuna optimization: {n_trials} trials")
     study.optimize(objective_with_timing, n_trials=n_trials, callbacks=[trial_callback])
-    
+
     # Flush any remaining trials
     trial_buffer.flush_to_csv()
     trial_writer.close()
@@ -487,11 +552,20 @@ def run_optuna(
 
     # Determine if there are any valid completed trials with numeric values
     import math
-    valid_values = [t.value for t in study.trials if t.value is not None and not (isinstance(t.value, float) and math.isnan(t.value))]
+
+    valid_values = [
+        t.value
+        for t in study.trials
+        if t.value is not None
+        and not (isinstance(t.value, float) and math.isnan(t.value))
+    ]
 
     # Save best trial only if we have valid values
     if len(valid_values) == 0:
-        em.log("No valid completed trials found; skipping best trial extraction.", level="warning")
+        em.log(
+            "No valid completed trials found; skipping best trial extraction.",
+            level="warning",
+        )
         best_value = None
         best_trial_number = None
     else:
@@ -505,7 +579,11 @@ def run_optuna(
                 "c": best.params.get("c"),
                 "min_distance_km": best.params.get("min_distance_km"),
                 "n_samples": best.params.get("n_samples"),
-                "datetime": best.datetime_complete.isoformat() if best.datetime_complete else None,
+                "datetime": (
+                    best.datetime_complete.isoformat()
+                    if best.datetime_complete
+                    else None
+                ),
             }
             em.save_results("best_trial", best_dict, format="json")
 
@@ -524,7 +602,9 @@ def run_optuna(
                     "alpha_visual": alpha,
                     "beta_spatial": beta,
                     "gamma_temporal": gamma,
-                    "min_distance_km": int(best.params.get("min_distance_km", min_distance_km)),
+                    "min_distance_km": int(
+                        best.params.get("min_distance_km", min_distance_km)
+                    ),
                     "n_samples": int(best.params.get("n_samples", n_samples or 34)),
                     "pre_selected_names": pre_selected_names,
                     "pre_selected_indices": pre_selected_indices,
@@ -546,38 +626,99 @@ def run_optuna(
             "n_trials_completed": len(study.trials),
             "best_value": best_value,
             "best_trial_number": best_trial_number,
-        }
+        },
     )
-    
+
     # Save manifest
     em.save_manifest()
     em.mark_complete(success=True)
-    
+
     print(em.summary())
-    
+
     return study, em
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Optuna optimization with experiment versioning")
+    parser = argparse.ArgumentParser(
+        description="Optuna optimization with experiment versioning"
+    )
     parser.add_argument("--n-trials", type=int, default=20, help="Number of trials")
-    parser.add_argument("--n-candidates", type=int, default=None, help="Number of candidates (default: all)")
+    parser.add_argument(
+        "--n-candidates",
+        type=int,
+        default=None,
+        help="Number of candidates (default: all)",
+    )
     parser.add_argument("--dim", type=int, default=256, help="Feature dimension")
-    parser.add_argument("--n-samples", type=int, default=None, help="Fixed number of samples to select")
-    parser.add_argument("--n-samples-min", type=int, default=None, help="Lower bound for optimizing n_samples")
-    parser.add_argument("--n-samples-max", type=int, default=None, help="Upper bound for optimizing n_samples")
-    parser.add_argument("--min-distance-km", type=int, default=40, help="Minimum distance constraint")
-    parser.add_argument("--min-distance-min", type=int, default=None, help="Lower bound for min_distance optimization")
-    parser.add_argument("--min-distance-max", type=int, default=None, help="Upper bound for min_distance optimization")
+    parser.add_argument(
+        "--n-samples", type=int, default=None, help="Fixed number of samples to select"
+    )
+    parser.add_argument(
+        "--n-samples-min",
+        type=int,
+        default=None,
+        help="Lower bound for optimizing n_samples",
+    )
+    parser.add_argument(
+        "--n-samples-max",
+        type=int,
+        default=None,
+        help="Upper bound for optimizing n_samples",
+    )
+    parser.add_argument(
+        "--min-distance-km", type=int, default=40, help="Minimum distance constraint"
+    )
+    parser.add_argument(
+        "--min-distance-min",
+        type=int,
+        default=None,
+        help="Lower bound for min_distance optimization",
+    )
+    parser.add_argument(
+        "--min-distance-max",
+        type=int,
+        default=None,
+        help="Upper bound for min_distance optimization",
+    )
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--pre-names", type=str, nargs="*", default=None, help="Pre-selected tile names (e.g. Hamburg)")
-    parser.add_argument("--pre-indices", type=int, nargs="*", default=None, help="Pre-selected tile indices")
-    parser.add_argument("--sampler", choices=["tpe", "qmc", "cmaes"], default="qmc", help="Sampler type")
-    parser.add_argument("--exp-name", type=str, default="optuna", help="Experiment identifier for versioning")
-    parser.add_argument("--exp-desc", type=str, default="", help="Experiment description")
-    parser.add_argument("--hamburg", action="store_true", help="Convenience flag: pre-select Hamburg")
-    parser.add_argument("--KDR146", action="store_true", help="Convenience flag: pre-select KDR_146")
-    parser.add_argument("--optuna-storage", type=str, default=None, help="Optuna storage URL (e.g. sqlite:///path/to/db). Defaults to sqlite in run dir.")
+    parser.add_argument(
+        "--pre-names",
+        type=str,
+        nargs="*",
+        default=None,
+        help="Pre-selected tile names (e.g. Hamburg)",
+    )
+    parser.add_argument(
+        "--pre-indices",
+        type=int,
+        nargs="*",
+        default=None,
+        help="Pre-selected tile indices",
+    )
+    parser.add_argument(
+        "--sampler", choices=["tpe", "qmc", "cmaes"], default="qmc", help="Sampler type"
+    )
+    parser.add_argument(
+        "--exp-name",
+        type=str,
+        default="optuna",
+        help="Experiment identifier for versioning",
+    )
+    parser.add_argument(
+        "--exp-desc", type=str, default="", help="Experiment description"
+    )
+    parser.add_argument(
+        "--hamburg", action="store_true", help="Convenience flag: pre-select Hamburg"
+    )
+    parser.add_argument(
+        "--KDR146", action="store_true", help="Convenience flag: pre-select KDR_146"
+    )
+    parser.add_argument(
+        "--optuna-storage",
+        type=str,
+        default=None,
+        help="Optuna storage URL (e.g. sqlite:///path/to/db). Defaults to sqlite in run dir.",
+    )
 
     args = parser.parse_args()
 
@@ -587,7 +728,7 @@ if __name__ == "__main__":
         pre_names.append("Hamburg")
     if args.KDR146:
         pre_names.append("KDR_146")
-    
+
     args.pre_names = pre_names if pre_names else None
 
     study, em = run_optuna(

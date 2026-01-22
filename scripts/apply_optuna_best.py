@@ -15,11 +15,12 @@ The script returns exit code 0 on success, 1 on failure.
 """
 
 import argparse
+import shutil
 import sys
 from pathlib import Path
+
 import pandas as pd
 import yaml
-import shutil
 
 
 def find_best_trial(df: pd.DataFrame):
@@ -39,10 +40,38 @@ def find_col(df, candidates):
 
 def extract_params_from_trial(df: pd.DataFrame, best_row) -> dict:
     # try to find the user_attrs / params columns for alpha, beta, gamma, min_distance
-    alpha_col = find_col(df, ["user_attrs_alpha", "user_attrs_a", "user_attrs_alpha_value", "user_attrs_alpha"]) or find_col(df, ["params_alpha", "a", "alpha"]) or "alpha"
-    beta_col = find_col(df, ["user_attrs_beta", "user_attrs_b"]) or find_col(df, ["params_beta", "b", "beta"]) or "beta"
-    gamma_col = find_col(df, ["user_attrs_gamma", "user_attrs_c"]) or find_col(df, ["params_gamma", "c", "gamma"]) or "gamma"
-    min_col = find_col(df, ["user_attrs_min_distance_km", "user_attrs_min_distance", "params_min_distance_km", "params_min_distance"])
+    alpha_col = (
+        find_col(
+            df,
+            [
+                "user_attrs_alpha",
+                "user_attrs_a",
+                "user_attrs_alpha_value",
+                "user_attrs_alpha",
+            ],
+        )
+        or find_col(df, ["params_alpha", "a", "alpha"])
+        or "alpha"
+    )
+    beta_col = (
+        find_col(df, ["user_attrs_beta", "user_attrs_b"])
+        or find_col(df, ["params_beta", "b", "beta"])
+        or "beta"
+    )
+    gamma_col = (
+        find_col(df, ["user_attrs_gamma", "user_attrs_c"])
+        or find_col(df, ["params_gamma", "c", "gamma"])
+        or "gamma"
+    )
+    min_col = find_col(
+        df,
+        [
+            "user_attrs_min_distance_km",
+            "user_attrs_min_distance",
+            "params_min_distance_km",
+            "params_min_distance",
+        ],
+    )
 
     def safe_get(col):
         if col and col in best_row.index and pd.notna(best_row[col]):
@@ -92,19 +121,39 @@ def inject_into_config(cfg_path: Path, params: dict, backup: bool = True):
         cfg = yaml.safe_load(f)
     cfg.setdefault("selection", {})
     if params["alpha"] is not None:
-        cfg["selection"]["alpha_visual"] = float(params["alpha"]) if params["alpha"] is not None else cfg["selection"].get("alpha_visual")
+        cfg["selection"]["alpha_visual"] = (
+            float(params["alpha"])
+            if params["alpha"] is not None
+            else cfg["selection"].get("alpha_visual")
+        )
     if params["beta"] is not None:
-        cfg["selection"]["beta_spatial"] = float(params["beta"]) if params["beta"] is not None else cfg["selection"].get("beta_spatial")
+        cfg["selection"]["beta_spatial"] = (
+            float(params["beta"])
+            if params["beta"] is not None
+            else cfg["selection"].get("beta_spatial")
+        )
     if params["gamma"] is not None:
-        cfg["selection"]["gamma_temporal"] = float(params["gamma"]) if params["gamma"] is not None else cfg["selection"].get("gamma_temporal")
+        cfg["selection"]["gamma_temporal"] = (
+            float(params["gamma"])
+            if params["gamma"] is not None
+            else cfg["selection"].get("gamma_temporal")
+        )
     if params["min_distance_km"] is not None:
-        cfg["selection"]["min_distance_km"] = float(params["min_distance_km"]) if params["min_distance_km"] is not None else cfg["selection"].get("min_distance_km")
+        cfg["selection"]["min_distance_km"] = (
+            float(params["min_distance_km"])
+            if params["min_distance_km"] is not None
+            else cfg["selection"].get("min_distance_km")
+        )
     with open(cfg_path, "w") as f:
         yaml.safe_dump(cfg, f, sort_keys=False)
     return bak if backup else None
 
 
-def write_new_config(out_path: Path, params: dict, base_cfg_path: Path = Path("config/pipeline_config.yaml")):
+def write_new_config(
+    out_path: Path,
+    params: dict,
+    base_cfg_path: Path = Path("config/pipeline_config.yaml"),
+):
     with open(base_cfg_path, "r") as f:
         cfg = yaml.safe_load(f)
     cfg.setdefault("selection", {})
@@ -124,10 +173,18 @@ def write_new_config(out_path: Path, params: dict, base_cfg_path: Path = Path("c
 
 def main(argv=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--optuna-csv", required=True, help="Path to optuna_results.csv")
+    parser.add_argument(
+        "--optuna-csv", required=True, help="Path to optuna_results.csv"
+    )
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--inject", action="store_true", help="Inject into config/pipeline_config.yaml (makes backup)")
-    group.add_argument("--write-config", help="Write a separate YAML config with injected values")
+    group.add_argument(
+        "--inject",
+        action="store_true",
+        help="Inject into config/pipeline_config.yaml (makes backup)",
+    )
+    group.add_argument(
+        "--write-config", help="Write a separate YAML config with injected values"
+    )
 
     args = parser.parse_args(argv)
 

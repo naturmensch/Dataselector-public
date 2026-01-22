@@ -49,7 +49,7 @@ def validate(
     if (outdir / "metadata.csv").exists():
         metadata_path = outdir / "metadata.csv"
     if (outdir / "features.npy").exists():
-        _features_path = outdir / "features.npy"
+        # features path intentionally not used in this test-mode helper
 
     from src.io import load_metadata, load_or_extract_features
 

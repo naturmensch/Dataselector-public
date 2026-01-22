@@ -13,8 +13,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.clustering import ClusteringPipeline
-from src.diversity_selector import DiversitySelector
+# Project-level imports are deferred or lazy-initialized to prevent heavy
+# IO and side-effects at module import time. Use `_init_data()` to populate
+# `features_full` and `metadata_full` before running `run_grid()`.
 
 # Configurable parameter grid
 min_distance_vals = [40.0, 45.0, 50.0]
@@ -25,20 +26,31 @@ default_n_clusters = [8, 10, 12]
 OUT = Path("outputs")
 OUT.mkdir(exist_ok=True, parents=True)
 
-from src.io import load_metadata, load_or_extract_features
+# Lazy placeholders
+features_full = None
+metadata_full = None
 
-# Load features and metadata (cached or on-demand)
-features_full = load_or_extract_features(
-    OUT,
-    csv_meta=str(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else None,
-    batch_size=16,
-    cache=True,
-)
-metadata_full = (
-    pd.read_csv(OUT / "metadata.csv")
-    if (OUT / "metadata.csv").exists()
-    else load_metadata("data/new_all_tiles.csv")
-)
+
+def _init_data():
+    """Initialize features_full and metadata_full (called on-demand)."""
+    global features_full, metadata_full
+    if features_full is not None and metadata_full is not None:
+        return
+
+    from src.io import load_metadata, load_or_extract_features
+    from src.clustering import ClusteringPipeline
+
+    features_full = load_or_extract_features(
+        OUT,
+        csv_meta=str(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else None,
+        batch_size=16,
+        cache=True,
+    )
+    metadata_full = (
+        pd.read_csv(OUT / "metadata.csv")
+        if (OUT / "metadata.csv").exists()
+        else load_metadata("data/new_all_tiles.csv")
+    )
 
 
 def run_grid(
@@ -184,8 +196,16 @@ if __name__ == "__main__":
     )
     parser.add_argument("--seed", type=int, default=0, help="Random seed for sampling")
     parser.add_argument("--out", type=str, default=None, help="Output CSV file path")
-    parser.add_argument("--n-samples", type=int, default=40, help="Number of samples to select")
-    parser.add_argument("--n-clusters", type=int, nargs="+", default=None, help="List of n_clusters to test (default: 8 10 12)")
+    parser.add_argument(
+        "--n-samples", type=int, default=40, help="Number of samples to select"
+    )
+    parser.add_argument(
+        "--n-clusters",
+        type=int,
+        nargs="+",
+        default=None,
+        help="List of n_clusters to test (default: 8 10 12)",
+    )
     args = parser.parse_args()
 
     df = run_grid(
