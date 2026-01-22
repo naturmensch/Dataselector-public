@@ -18,12 +18,7 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-import pandas as pd
-
-from src.pipeline_utils import (
-    compute_fine_search_bounds,
-    compute_optuna_bounds,
-)
+# Defer heavy project imports into `main()` to keep module import lightweight for tests
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "outputs"
@@ -254,8 +249,13 @@ def main():
     os.environ["EXPERIMENT_RUN_DIR"] = str(em.run_dir)
     print(em.summary())
 
-    # If user didn't provide n_lhs explicitly, compute using chosen strategy
-    from src.pipeline_utils import compute_adaptive_n_initial
+    # Import project utilities lazily to avoid import-time side-effects during tests
+    import pandas as pd
+    from src.pipeline_utils import (
+        compute_adaptive_n_initial,
+        compute_fine_search_bounds,
+        compute_optuna_bounds,
+    )
 
     def _next_power_of_two(x: int) -> int:
         """Return the smallest power of two >= x."""
