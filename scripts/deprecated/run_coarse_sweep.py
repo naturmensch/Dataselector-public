@@ -1,23 +1,38 @@
 """
-DEPRECATED: Coarse Grid Sweep (moved to `scripts/deprecated/run_coarse_sweep.py`).
+Coarse Grid Sweep: Weights x MinDistance
+Führt systematische Suche durch und erstellt Pareto-Plots.
 
-This script is retained at its original path as a convenience wrapper but is deprecated.
-Please use the adaptive LHS-based Exploration pipeline instead:
+(This file has been moved to `scripts/deprecated/` because the adaptive LHS approach in
+`scripts/tune_weights_and_run.py` / `scripts/run_adaptive_pipeline.py` is preferred.)
 
-  - `python scripts/tune_weights_and_run.py --n-lhs <n>`
-  - or run the full adaptive pipeline: `python scripts/run_adaptive_pipeline.py --yes`
+Note: The original implementation used a manual 3×3×3 grid and is retained here for historical
+reference only. For modern usage prefer the adaptive pipeline (LHS/Sobol) documented in
+`docs/Pipeline_260115.md` and `scripts/tune_weights_and_run.py`.
 
-The new approach (LHS/Sobol) is adaptive, more reproducible, and scientifically preferable.
 """
 
-import sys
+# The original script implementation (preserved verbatim for archival purposes)
+
+import itertools
 from pathlib import Path
 
-print("DEPRECATED: `scripts/run_coarse_sweep.py` has been moved to `scripts/deprecated/` and will be removed in a future release.")
-print("Use `scripts/tune_weights_and_run.py` or `scripts/run_adaptive_pipeline.py --yes` instead.")
+import pandas as pd
 
-# Exit early to avoid running legacy code by accident
-sys.exit(0)
+from src.experiments import ExperimentRunner
+from src.pareto import (
+    compute_pareto_front,
+    export_pareto_report,
+    visualize_pareto_front,
+)
+
+# Setup
+ROOT = Path(__file__).resolve().parents[1]
+DATA_META = ROOT / "data" / "new_all_tiles.csv"
+OUTPUT_DIR = ROOT / "outputs" / "coarse_sweep"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# 1. Grid definieren (konfigurierbar)
+import yaml  # noqa: E402
 
 cfg = yaml.safe_load(open(ROOT / "config" / "pipeline_config.yaml"))
 
