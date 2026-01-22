@@ -8,22 +8,17 @@ Usage:
     python scripts/bootstrap_final_selection.py --run-dir outputs/runs/20260116_T164624_hamburg_full_2000 --n-boot 500
 """
 
-import argparse
 import sys
+import argparse
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
+
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
-import numpy as np  # noqa: E402
-import pandas as pd  # noqa: E402
-from tqdm import trange  # noqa: E402
-
-from src.clustering import ClusteringPipeline  # noqa: E402
-from src.diversity_selector import DiversitySelector  # noqa: E402
-from src.io import load_metadata, load_or_extract_features  # noqa: E402
-from src.metrics import compute_metrics  # noqa: E402
+# Note: Project imports (src.*) are deferred into `main` or helper functions to make
+# this module import-safe for tests and linters (avoid import-time side-effects).
 
 
 def jaccard(a, b):
@@ -55,6 +50,11 @@ def bootstrap_selection(
 
     Returns DataFrame with metrics for each bootstrap iteration.
     """
+    # Local imports to keep module import-safe
+    from tqdm import trange
+    from src.diversity_selector import DiversitySelector
+    from src.metrics import compute_metrics
+
     rng = np.random.default_rng(random_seed)
     N = features.shape[0]
     results = []
@@ -181,6 +181,13 @@ def main():
     # Load data
     print("Loading metadata and features...")
     metadata_path = ROOT / "outputs" / "metadata.csv"
+
+    # Local imports to keep module import-safe
+    from src.io import load_metadata, load_or_extract_features
+    from src.clustering import ClusteringPipeline
+    from src.diversity_selector import DiversitySelector
+    from src.metrics import compute_metrics
+
     if not metadata_path.exists():
         metadata = load_metadata(str(ROOT / "data" / "new_all_tiles.csv"))
     else:
