@@ -29,8 +29,7 @@ except ImportError:
 
 # Config
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+# Avoid modifying sys.path at import time; runtime imports will handle project modules
 
 DATA_META = ROOT / "data" / "new_all_tiles.csv"
 OUTPUT_DIR = ROOT / "outputs" / "tuning_weights"

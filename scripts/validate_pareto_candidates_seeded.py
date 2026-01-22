@@ -10,11 +10,7 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
-import sys  # noqa: E402
-
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
+# Avoid modifying sys.path at import time; import project modules at runtime when needed
 from src.diversity_selector import DiversitySelector  # noqa: E402
 from src.metrics import compute_metrics  # noqa: E402
 

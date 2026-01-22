@@ -25,8 +25,7 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+# Do not modify sys.path at import time; rely on PYTHONPATH when executing as script
 
 import matplotlib  # noqa: E402
 import pandas as pd  # noqa: E402

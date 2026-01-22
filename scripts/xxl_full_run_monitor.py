@@ -29,9 +29,8 @@ from pathlib import Path
 from typing import Optional
 
 ROOT = Path(__file__).resolve().parents[1]
-# Ensure ROOT is in sys.path so we can import scripts modules directly
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+# Do NOT modify sys.path at module import time; imports that require project root should
+# be performed inside `main()` or by setting PYTHONPATH when running the script.
 LOG_FILE = ROOT / "outputs" / "XXL_FULL_RUN.log"
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 
