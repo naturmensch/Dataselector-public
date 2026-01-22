@@ -150,39 +150,40 @@ def main() -> int:
             LOG.append("Phase 1 failed")
             return 1
 
-    # Phase 2: reproducibility seeds
-    ok = phase_2_reproducibility(
-        seeds=[43, 44], n_trials=10, n_candidates=5, pass_params=True
-    )
-    LOG.append(f"Phase 2 returned: {ok}")
-    if not ok:
-        LOG.append("Phase 2 failed")
-        return 1
+        # Phase 2: reproducibility seeds
+        ok = phase_2_reproducibility(
+            seeds=[43, 44], n_trials=10, n_candidates=5, pass_params=True
+        )
+        LOG.append(f"Phase 2 returned: {ok}")
+        if not ok:
+            LOG.append("Phase 2 failed")
+            return 1
 
-    # Phase 3: statistics extraction should find the xxl final run created above
-    ok = phase_3_final_statistics()
-    LOG.append(f"Phase 3 returned: {ok}")
-    if not ok:
-        LOG.append("Phase 3 failed")
-        return 1
+        # Phase 3: statistics extraction should find the xxl final run created above
+        ok = phase_3_final_statistics()
+        LOG.append(f"Phase 3 returned: {ok}")
+        if not ok:
+            LOG.append("Phase 3 failed")
+            return 1
 
-    # Phase 4: summary generation
-    ok = phase_4_thesis_summary()
-    LOG.append(f"Phase 4 returned: {ok}")
-    if not ok:
-        LOG.append("Phase 4 failed")
-        return 1
+        # Phase 4: summary generation
+        ok = phase_4_thesis_summary()
+        LOG.append(f"Phase 4 returned: {ok}")
+        if not ok:
+            LOG.append("Phase 4 failed")
+            return 1
 
-    elapsed = time.time() - start
-    LOG.append(f"Instrumented run complete in {elapsed:.2f}s")
+        elapsed = time.time() - start
+        LOG.append(f"Instrumented run complete in {elapsed:.2f}s")
 
-    # Dump LOG to outputs for inspection
-    out_file = ROOT / "outputs" / "INSTRUMENTED_LIMITED_RUN_LOG.txt"
-    out_file.parent.mkdir(parents=True, exist_ok=True)
-    out_file.write_text("\n".join(LOG))
-    print("\n".join(LOG))
-    print(f"Wrote log to: {out_file}")
-    return 0
+        # Dump LOG to outputs for inspection
+        out_file = ROOT / "outputs" / "INSTRUMENTED_LIMITED_RUN_LOG.txt"
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+        out_file.write_text("\n".join(LOG))
+        print("\n".join(LOG))
+        print(f"Wrote log to: {out_file}")
+        return 0
+
     finally:
         # Always restore the original functions to avoid persistent side-effects
         try:

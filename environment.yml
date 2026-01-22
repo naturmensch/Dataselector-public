@@ -16,6 +16,12 @@ dependencies:
   - seaborn
   - pyyaml
   - tqdm
+  # Geospatial stack (install from conda-forge)
+  - geopandas
+  - pyproj
+  - shapely
+  - fiona
+  - rtree
   - pip
   - pip:
     - -r requirements-cpu.txt
