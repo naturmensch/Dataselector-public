@@ -19,7 +19,6 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-import optuna
 import pandas as pd
 
 # Project root (Path) - avoid modifying sys.path at import time
@@ -70,7 +69,7 @@ def make_objective(
     pre_selected_names=None,
     pre_selected_indices=None,
 ):
-    def objective(trial: optuna.trial.Trial):
+    def objective(trial):
         a = trial.suggest_float("a", *min_distance_bounds["a"])
         b = trial.suggest_float("b", *min_distance_bounds["b"])
         c = trial.suggest_float("c", *min_distance_bounds["c"])
@@ -120,6 +119,13 @@ def make_objective(
 def run_autoscale(
     n_trials_per_stage, stages_samples, features, metadata, patience=2, tol=None
 ):
+    # Optuna is an optional heavy dependency; import lazily and fail with a clear message when missing
+    try:  # pragma: no cover - environment dependent
+        import optuna
+    except Exception:
+        print("Error: optuna is required to run optuna_autoscale. Install optuna in your environment.")
+        raise SystemExit(2)
+
     # Initialize global search bounds
     bounds = {
         "a": (0.01, 1.0),
