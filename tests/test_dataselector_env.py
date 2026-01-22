@@ -1,7 +1,9 @@
 import os
 import shutil
-
-import scripts.xxl_full_run_monitor as monitor
+from pathlib import Path
+from tests._helpers.load_script import load_script
+ROOT = Path(__file__).resolve().parents[1]
+monitor = load_script(ROOT / "scripts" / "xxl_full_run_monitor.py", module_name="scripts.xxl_full_run_monitor_test")
 
 
 def test_init_env_runner_prefers_mamba(monkeypatch, tmp_path):
