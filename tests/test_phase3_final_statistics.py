@@ -1,8 +1,10 @@
 import json
 
 import pandas as pd
-
-from scripts.xxl_KDR146_run_thesis_complete import _extract_xxl_final_statistics
+from pathlib import Path
+from tests._helpers.load_script import load_script
+ROOT = Path(__file__).resolve().parents[1]
+xxl = load_script(ROOT / "scripts" / "xxl_KDR146_run_thesis_complete.py", module_name="scripts.xxl_KDR146_run_thesis_complete_test")
 
 
 def test_extract_statistics_handles_missing_n_samples(tmp_path):
@@ -27,7 +29,7 @@ def test_extract_statistics_handles_missing_n_samples(tmp_path):
     trials_csv = results_dir / "trials.csv"
     df.to_csv(trials_csv, index=False)
 
-    result = _extract_xxl_final_statistics(tmp_path)
+    result = xxl._extract_xxl_final_statistics(tmp_path)
     assert result is not None, "Extraction should succeed even with missing n_samples"
     assert result["best_trial"] == 2
     assert result["best_params"]["n_samples"] is None

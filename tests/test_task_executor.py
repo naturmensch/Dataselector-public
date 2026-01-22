@@ -1,4 +1,9 @@
-from scripts.recovery import Task, TaskExecutor
+from pathlib import Path
+from tests._helpers.load_script import load_script
+ROOT = Path(__file__).resolve().parents[1]
+recovery = load_script(ROOT / "scripts" / "recovery.py", module_name="scripts.recovery_test")
+Task = recovery.Task
+TaskExecutor = recovery.TaskExecutor
 
 
 class FakeHookRunner:

@@ -1,4 +1,8 @@
-from scripts.recovery import RecoveryPlanner
+from pathlib import Path
+from tests._helpers.load_script import load_script
+ROOT = Path(__file__).resolve().parents[1]
+recovery = load_script(ROOT / "scripts" / "recovery.py", module_name="scripts.recovery_test")
+RecoveryPlanner = recovery.RecoveryPlanner
 
 
 def test_planner_reconstruct_then_finalize():

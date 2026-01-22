@@ -3,7 +3,10 @@ from pathlib import Path
 
 import pandas as pd
 
-import scripts.xxl_KDR146_run_thesis_complete as xxl
+from pathlib import Path
+from tests._helpers.load_script import load_script
+ROOT = Path(__file__).resolve().parents[1]
+xxl = load_script(ROOT / "scripts" / "xxl_KDR146_run_thesis_complete.py", module_name="scripts.xxl_KDR146_run_thesis_complete_test")
 
 
 def _make_fake_xxl_run(

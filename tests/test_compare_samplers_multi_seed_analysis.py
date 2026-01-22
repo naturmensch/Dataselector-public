@@ -1,6 +1,8 @@
+from pathlib import Path
+from tests._helpers.load_script import load_script
+ROOT = Path(__file__).resolve().parents[1]
+mod = load_script(ROOT / "scripts" / "compare_samplers_multi_seed.py", module_name="scripts.compare_samplers_multi_seed_test")
 import pandas as pd
-
-from scripts.compare_samplers_multi_seed import compare_and_analyze
 
 
 def test_compare_and_analyze(tmp_path):
@@ -17,7 +19,7 @@ def test_compare_and_analyze(tmp_path):
     out = tmp_path / "out"
     out.mkdir()
 
-    _ = compare_and_analyze(df, out)
+    _ = mod.compare_and_analyze(df, out)
 
     assert (out / "per_run_results.csv").exists()
     assert (out / "summary.csv").exists()

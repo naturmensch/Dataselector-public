@@ -1,8 +1,11 @@
 import sqlite3
 
 import pandas as pd
-
-from scripts.monitor_state import ExperimentStateAnalyzer
+from pathlib import Path
+from tests._helpers.load_script import load_script
+ROOT = Path(__file__).resolve().parents[1]
+monitor_state = load_script(ROOT / "scripts" / "monitor_state.py", module_name="scripts.monitor_state_test")
+ExperimentStateAnalyzer = monitor_state.ExperimentStateAnalyzer
 
 
 def test_csv_inspection(tmp_path):

@@ -1,7 +1,9 @@
 import json
 import sys
-
-import scripts.xxl_KDR146_run_thesis_complete as xxl
+from pathlib import Path
+from tests._helpers.load_script import load_script
+ROOT = Path(__file__).resolve().parents[1]
+xxl = load_script(ROOT / "scripts" / "xxl_KDR146_run_thesis_complete.py", module_name="scripts.xxl_KDR146_run_thesis_complete_test")
 
 
 def test_cli_finalize_phase(monkeypatch, tmp_path):
