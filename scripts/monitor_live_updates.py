@@ -64,38 +64,44 @@ def proc_info(patterns=["compare_samplers_multi_seed", "optuna_optimize"]):
     return "\n".join(info)
 
 
-print(
-    "Starting live monitor (updates every 60s). To stop: kill this process or Ctrl-C."
-)
-while True:
-    ts = datetime.now().isoformat()
-    print("\n" + "=" * 80)
-    print(f"[{ts}] Live monitor snapshot")
-    print("-" * 80)
-    print("XXL_FULL_RUN.log (tail):")
-    print(tail(LOG, 20))
-    print("-" * 80)
-    latest_pre = None
-    prefiles = sorted(ROOT.glob("outputs/pre_run_*.log"))
-    if prefiles:
-        latest_pre = prefiles[-1]
-        print(f"Pre-run log ({latest_pre.name}) tail:")
-        print(tail(latest_pre, 20))
-    else:
-        print("No pre-run log present yet")
+def main(poll_interval: int = 60):
+    """Run the live monitor loop. This keeps module import-time free of blocking side-effects."""
+    print(
+        "Starting live monitor (updates every {poll_interval}s). To stop: kill this process or Ctrl-C."
+    )
+    while True:
+        ts = datetime.now().isoformat()
+        print("\n" + "=" * 80)
+        print(f"[{ts}] Live monitor snapshot")
+        print("-" * 80)
+        print("XXL_FULL_RUN.log (tail):")
+        print(tail(LOG, 20))
+        print("-" * 80)
+        latest_pre = None
+        prefiles = sorted(ROOT.glob("outputs/pre_run_*.log"))
+        if prefiles:
+            latest_pre = prefiles[-1]
+            print(f"Pre-run log ({latest_pre.name}) tail:")
+            print(tail(latest_pre, 20))
+        else:
+            print("No pre-run log present yet")
 
-    print("-" * 80)
-    print("Active processes matching compare_samplers/optuna:")
-    print(proc_info())
-    print("-" * 80)
-    print("Selected sampler artifact:")
-    if SEL.exists():
-        try:
-            print(SEL.read_text())
-        except Exception:
-            print("Could not read selected_sampler.json")
-    else:
-        print("NOT PRESENT")
+        print("-" * 80)
+        print("Active processes matching compare_samplers/optuna:")
+        print(proc_info())
+        print("-" * 80)
+        print("Selected sampler artifact:")
+        if SEL.exists():
+            try:
+                print(SEL.read_text())
+            except Exception:
+                print("Could not read selected_sampler.json")
+        else:
+            print("NOT PRESENT")
 
-    print("=" * 80)
-    time.sleep(60)
+        print("=" * 80)
+        time.sleep(poll_interval)
+
+
+if __name__ == "__main__":
+    main()

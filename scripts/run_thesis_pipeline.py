@@ -34,19 +34,9 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = ROOT / "outputs"
 
-# Compute adaptive default for n_lhs based on dataset size
-# Faustregel: Thesis nutzt mehr Samples für bessere Visualisierungen (2× sqrt)
-try:
-    metadata_path = ROOT / "data" / "new_all_tiles.csv"
-    if metadata_path.exists():
-        n_tiles = len(pd.read_csv(metadata_path))
-        n_lhs_thesis_default = max(
-            50, int(2 * np.sqrt(n_tiles))
-        )  # Thesis: mehr Samples
-    else:
-        n_lhs_thesis_default = 50
-except Exception:
-    n_lhs_thesis_default = 50
+# NOTE: Do not perform dataset I/O at import time. The thesis default for `n_lhs`
+# will be computed inside `main()` if the user does not provide `--n-lhs`.
+n_lhs_thesis_default = 50  # conservative fallback if metadata cannot be read at runtime
 
 
 def run_step(step_name: str, command: list, skip: bool = False):
@@ -133,11 +123,12 @@ Beispiele:
   python scripts/run_thesis_pipeline.py --skip-exploration --skip-optimization
         """,
     )
+    # Note: default is None; compute adaptive default at runtime to avoid import-time I/O
     parser.add_argument(
         "--n-lhs",
         type=int,
-        default=n_lhs_thesis_default,
-        help=f"Anzahl LHS-Samples für Phase 1 (default: {n_lhs_thesis_default}, adaptive basierend auf Datensatz-Größe)",
+        default=None,
+        help=f"Anzahl LHS-Samples für Phase 1 (computed from dataset if omitted; fallback: {n_lhs_thesis_default})",
     )
     parser.add_argument(
         "--skip-exploration",
@@ -161,6 +152,24 @@ Beispiele:
     )
 
     args = parser.parse_args()
+
+    # If user didn't provide n_lhs, compute an adaptive default now (deferred I/O)
+    if args.n_lhs is None:
+        try:
+            import pandas as pd
+            import numpy as np
+
+            metadata_path = ROOT / "data" / "new_all_tiles.csv"
+            if metadata_path.exists():
+                n_tiles = len(pd.read_csv(metadata_path))
+                args.n_lhs = max(50, int(2 * np.sqrt(n_tiles)))
+                print(f"📊 Adaptive n_lhs computed from dataset: {args.n_lhs}")
+            else:
+                args.n_lhs = n_lhs_thesis_default
+                print(f"⚠️ Metadata not found; using fallback n_lhs={args.n_lhs}")
+        except Exception:
+            args.n_lhs = n_lhs_thesis_default
+            print(f"⚠️ Could not compute adaptive n_lhs; using fallback n_lhs={args.n_lhs}")
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
