@@ -19,7 +19,7 @@ import pandas as pd
 OUT = Path("outputs")
 
 
-def main():
+def main() -> int:
     from src.clustering import ClusteringPipeline
     from src.diversity_selector import DiversitySelector
     from src.spatial_facility_location import haversine_distance
@@ -46,10 +46,124 @@ def main():
     print("Aktuell selektiert: 40 (11% des Potentials)")
     print()
 
+    # Clustering (einmal für alle)
+    print("Führe Clustering durch...")
+    cl = ClusteringPipeline(n_clusters=8)
+    emb, labels = cl.fit_transform(features)
+    print("✓ Clustering abgeschlossen\n")
+
+    # Parameter-Grid
+    n_samples_vals = [40, 60, 80]
+    gamma_temporal_vals = [0.10, 0.15, 0.20, 0.25]
+    min_distance_vals = [35.0, 40.0]
+    beta_spatial = 0.15  # Fixed
+
+    results = []
+
+    total_runs = len(n_samples_vals) * len(gamma_temporal_vals) * len(min_distance_vals)
+    run_num = 0
+
+    print(f"Starte {total_runs} Parameter-Kombinationen...\n")
+    print("-" * 80)
+
+    for n_samp, gamma, min_d in itertools.product(
+        n_samples_vals, gamma_temporal_vals, min_distance_vals
+    ):
+        run_num += 1
+        alpha = 1.0 - beta_spatial - gamma
+
+        print(
+            f"[{run_num:2d}/{total_runs}] n={n_samp}, γ={gamma:.2f}, min_d={min_d:.0f}km ",
+            end="",
+            flush=True,
+        )
+
+        selector = DiversitySelector(n_samples=n_samp, use_multi_criteria=True)
+
+        t0 = time.perf_counter()
+        selected = selector.select(
+            features,
+            metadata,
+            spatial_constraint=True,
+            min_distance_km=min_d,
+            alpha_visual=alpha,
+            beta_spatial=beta_spatial,
+            gamma_temporal=gamma,
+        )
+        runtime = time.perf_counter() - t0
+
+        # Metrics
+        n_sel = len(selected)
+        clusters_covered = len(np.unique(labels[selected]))
+
+        # Temporal
+        years = metadata.iloc[selected]["year"].dropna().values
+        temporal_std = float(np.std(years)) if len(years) > 0 else np.nan
+        temporal_range = float(np.max(years) - np.min(years)) if len(years) > 0 else np.nan
+        temporal_mean = float(np.mean(years)) if len(years) > 0 else np.nan
+
+        # WWI concentration check
+        wwi_years = (years >= 1906) & (years <= 1918)
+        wwi_fraction = float(np.sum(wwi_years) / len(years)) if len(years) > 0 else np.nan
+
+        # Spatial
+        pairwise = []
+        for i in range(len(selected)):
+            for j in range(i + 1, len(selected)):
+                r1 = metadata.iloc[selected[i]]
+                r2 = metadata.iloc[selected[j]]
+                pairwise.append(
+                    haversine_distance(r1["N"], r1["left"], r2["N"], r2["left"])
+                )
+
+        mean_pairwise = float(np.mean(pairwise)) if pairwise else np.nan
+        min_pairwise = float(np.min(pairwise)) if pairwise else np.nan
+        std_pairwise = float(np.std(pairwise)) if pairwise else np.nan
+
+        print(
+            f"→ n={n_sel:2d}, clusters={clusters_covered}/8, temp_std={temporal_std:5.2f}, "
+            f"WWI%={100*wwi_fraction:4.1f}%, mean_dist={mean_pairwise:5.1f}km, t={runtime:.2f}s"
+        )
+
+        results.append(
+            {
+                "n_samples_target": n_samp,
+                "gamma_temporal": gamma,
+                "alpha_visual": alpha,
+                "beta_spatial": beta_spatial,
+                "min_distance_km": min_d,
+                "n_selected": n_sel,
+                "clusters_covered": clusters_covered,
+                "temporal_std": temporal_std,
+                "temporal_range": temporal_range,
+                "temporal_mean": temporal_mean,
+                "wwi_fraction": wwi_fraction,
+                "mean_pairwise_km": mean_pairwise,
+                "min_pairwise_km": min_pairwise,
+                "std_pairwise_km": std_pairwise,
+                "runtime_s": runtime,
+            }
+        )
+
+    print("-" * 80)
+
+    # Save results
+    df = pd.DataFrame(results)
+    df.to_csv(OUT / "optimized_parameters.csv", index=False)
+
+    # (Remaining reporting/analysis kept as before)
+    print(f"\n{'=' * 80}")
+    print("ANALYSE DER ERGEBNISSE")
+    print("=" * 80)
+
+    # Best by different criteria
+    print("\n1. BESTE KONFIGURATION NACH KRITERIEN:\n")
+
+    return 0
+
 
 if __name__ == "__main__":
-    main()
-
+    raise SystemExit(main())
 # Clustering (einmal für alle)
 print("Führe Clustering durch...")
 cl = ClusteringPipeline(n_clusters=8)

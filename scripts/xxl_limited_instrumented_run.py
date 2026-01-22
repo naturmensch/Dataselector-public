@@ -73,9 +73,9 @@ def make_fake_run(
     return run_dir
 
 
-# Monkeypatch the heavy command runner to instead simulate runs
-_original_run_cmd = run_cmd
-_original_run_cmd_with_retry = run_cmd_with_retry
+# Placeholders for originals; actual monkeypatching applied at runtime inside `main()` to avoid import-time side-effects
+_original_run_cmd = None
+_original_run_cmd_with_retry = None
 
 
 def _sim_run_cmd(cmd: str, cwd=None, fail_ok: bool = False) -> int:
@@ -111,23 +111,44 @@ def _sim_run_cmd_with_retry(
     return _sim_run_cmd(cmd, cwd=cwd, fail_ok=fail_ok)
 
 
-# Apply monkeypatch
-import scripts.xxl_KDR146_run_thesis_complete as xxl_mod  # noqa: E402
+def apply_monkeypatch():
+    """Attach simulation functions to the thesis orchestrator at runtime.
 
-xxl_mod.run_cmd = _sim_run_cmd
-xxl_mod.run_cmd_with_retry = _sim_run_cmd_with_retry
+    This is done inside `main()` so importing this module does not mutate other
+    modules during tests or static analysis.
+    """
+    global _original_run_cmd, _original_run_cmd_with_retry
+    xxl_mod = _import_xxl_module()
+
+    _original_run_cmd = getattr(xxl_mod, "run_cmd", None)
+    _original_run_cmd_with_retry = getattr(xxl_mod, "run_cmd_with_retry", None)
+
+    xxl_mod.run_cmd = _sim_run_cmd
+    xxl_mod.run_cmd_with_retry = _sim_run_cmd_with_retry
+
+
+def restore_monkeypatch():
+    """Restore previously patched functions if available."""
+    xxl_mod = _import_xxl_module()
+    if _original_run_cmd is not None:
+        xxl_mod.run_cmd = _original_run_cmd
+    if _original_run_cmd_with_retry is not None:
+        xxl_mod.run_cmd_with_retry = _original_run_cmd_with_retry
 
 
 def main() -> int:
     LOG.append("Starting instrumented limited run")
+    # Apply runtime monkeypatch so we don't mutate xxl module at import time
+    apply_monkeypatch()
     start = time.time()
 
-    # Phase 1: small n_trials and candidates
-    ok = phase_1_xxl_hamburg(n_trials=10, n_candidates=5, pass_params=True)
-    LOG.append(f"Phase 1 returned: {ok}")
-    if not ok:
-        LOG.append("Phase 1 failed")
-        return 1
+    try:
+        # Phase 1: small n_trials and candidates
+        ok = phase_1_xxl_hamburg(n_trials=10, n_candidates=5, pass_params=True)
+        LOG.append(f"Phase 1 returned: {ok}")
+        if not ok:
+            LOG.append("Phase 1 failed")
+            return 1
 
     # Phase 2: reproducibility seeds
     ok = phase_2_reproducibility(
@@ -162,6 +183,12 @@ def main() -> int:
     print("\n".join(LOG))
     print(f"Wrote log to: {out_file}")
     return 0
+    finally:
+        # Always restore the original functions to avoid persistent side-effects
+        try:
+            restore_monkeypatch()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":
