@@ -9,9 +9,8 @@ profile = "black"
 line-length = 88
 
 [tool.ruff.lint]
-# Tests intentionally import local scripts and manipulate sys.path; ignore
-# E402 (module level import not at top) there.
-per-file-ignores = { "tests/*" = ["E402"] }
+# Temporary per-file-ignores for tests have been removed after targeted refactors.
+# If any test still needs to skip E402, add an explicit per-file-ignores entry for that test only.
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]
