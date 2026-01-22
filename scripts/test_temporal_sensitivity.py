@@ -10,8 +10,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.clustering import ClusteringPipeline
-from src.diversity_selector import DiversitySelector
 
 
 def main() -> None:
@@ -26,6 +24,10 @@ def main() -> None:
     metadata = load_metadata(
         csv_meta if csv_meta is not None else "data/new_all_tiles.csv"
     )
+
+    # Runtime imports (deferred to avoid import-time side-effects)
+    from src.clustering import ClusteringPipeline
+    from src.diversity_selector import DiversitySelector
 
     print("=" * 80)
     print("TEMPORAL WEIGHT SENSITIVITY TEST (Constraint-Integrated)")

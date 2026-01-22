@@ -14,9 +14,6 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 # Avoid modifying sys.path at import time; import project modules at runtime when needed
-from src.diversity_selector import DiversitySelector
-from src.metrics import compute_metrics
-
 OUTDIR = ROOT / "outputs" / "validation"
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
@@ -86,6 +83,9 @@ def validate(
     from src.visualizer import Visualizer
 
     viz = Visualizer(output_dir=str(outdir / "plots"))
+
+    from src.diversity_selector import DiversitySelector
+    from src.metrics import compute_metrics
 
     for _, row in pareto.iterrows():
         alpha, beta, gamma = row["alpha"], row["beta"], row["gamma"]
