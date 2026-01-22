@@ -1,4 +1,7 @@
-from scripts import check_protected as cp
+from pathlib import Path
+from tests._helpers.load_script import load_script
+ROOT = Path(__file__).resolve().parents[1]
+cp = load_script(ROOT / "scripts" / "check_protected.py", module_name="scripts.check_protected_test")
 
 
 def test_get_protected_paths_env(monkeypatch):

@@ -1,5 +1,8 @@
-import scripts.archive_workspace as aw
-import scripts.check_protected as cp
+from pathlib import Path
+from tests._helpers.load_script import load_script
+ROOT = Path(__file__).resolve().parents[1]
+aw = load_script(ROOT / "scripts" / "archive_workspace.py", module_name="scripts.archive_workspace_test")
+cp = load_script(ROOT / "scripts" / "check_protected.py", module_name="scripts.check_protected_test")
 
 
 def test_images_are_protected():

@@ -1,7 +1,8 @@
 import json
 from pathlib import Path
-
-import scripts.archive_workspace as aw
+from tests._helpers.load_script import load_script
+ROOT = Path(__file__).resolve().parents[1]
+aw = load_script(ROOT / "scripts" / "archive_workspace.py", module_name="scripts.archive_workspace_test")
 
 
 def touch(p: Path):
