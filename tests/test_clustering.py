@@ -1,11 +1,13 @@
-# flake8: noqa: E402  # module-level `pytest.importorskip` used to guard optional deps (numba)
 import numpy as np
 import pytest
 
-pytest.importorskip("numba", exc_type=ImportError)
+from src.clustering import ClusteringPipeline
+
 pytestmark = pytest.mark.integration
 
-from src.clustering import ClusteringPipeline
+@pytest.fixture(autouse=True)
+def _require_numba():
+    pytest.importorskip("numba", exc_type=ImportError)
 
 
 def test_errors_before_running():

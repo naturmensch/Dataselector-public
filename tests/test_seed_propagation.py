@@ -1,10 +1,13 @@
 import pytest
-
-pytest.importorskip("numba", exc_type=ImportError)
-pytestmark = pytest.mark.integration
-
 import subprocess
 from pathlib import Path
+
+pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(autouse=True)
+def skip_if_no_numba():
+    pytest.importorskip("numba", exc_type=ImportError)
 
 
 def test_run_adaptive_pipeline_seed_propagation(tmp_path):

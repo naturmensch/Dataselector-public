@@ -1,8 +1,11 @@
-# flake8: noqa: E402  # module-level pytest.importorskip used to guard optional deps
 import pytest
 
-pytest.importorskip("numba", exc_type=ImportError)
 pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(autouse=True)
+def skip_if_no_numba():
+    pytest.importorskip("numba", exc_type=ImportError)
 
 import json
 

@@ -2,10 +2,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
-pytest.importorskip("numba", exc_type=ImportError)
 pytestmark = pytest.mark.integration
 
-from src.experiments import ExperimentRunner
+
+@pytest.fixture(scope="module")
+def ExperimentRunner():
+    pytest.importorskip("numba", exc_type=ImportError)
+    import importlib
+
+    mod = importlib.import_module("src.experiments")
+    return mod.ExperimentRunner
 
 
 def _fake_meta():
@@ -19,7 +25,7 @@ def _fake_meta():
     )
 
 
-def test_early_stopping(monkeypatch, tmp_path):
+def test_early_stopping(monkeypatch, tmp_path, ExperimentRunner):
     runner = ExperimentRunner(output_dir=str(tmp_path))
 
     # Monkeypatch loading and feature extraction to be lightweight

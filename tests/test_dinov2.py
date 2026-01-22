@@ -1,12 +1,14 @@
-# flake8: noqa: E402  # module-level `pytest.importorskip` used for optional deps (numba/torch)
 import numpy as np
 import pytest
 from PIL import Image
 
-pytest.importorskip("numba", exc_type=ImportError)
+from src.feature_extractor import FeatureExtractor, preprocess_historical_image
+
 pytestmark = pytest.mark.integration
 
-from src.feature_extractor import FeatureExtractor, preprocess_historical_image
+@pytest.fixture(autouse=True)
+def _require_numba():
+    pytest.importorskip("numba", exc_type=ImportError)
 
 
 def test_dinov2_initialization():

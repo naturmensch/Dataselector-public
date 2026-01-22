@@ -1,10 +1,16 @@
 import pandas as pd
 import pytest
 
-pytest.importorskip("numba", exc_type=ImportError)
 pytestmark = pytest.mark.integration
 
-from src.multi_criteria_facility_location import MultiCriteriaFacilityLocation
+
+@pytest.fixture(scope="module")
+def MultiCriteriaFacilityLocation():
+    pytest.importorskip("numba", exc_type=ImportError)
+    import importlib
+
+    mod = importlib.import_module("src.multi_criteria_facility_location")
+    return mod.MultiCriteriaFacilityLocation
 
 
 def _make_meta():
@@ -17,7 +23,7 @@ def _make_meta():
     )
 
 
-def test_valid_weights_do_not_raise():
+def test_valid_weights_do_not_raise(MultiCriteriaFacilityLocation):
     meta = _make_meta()
     # weights sum to 1.0
     m = MultiCriteriaFacilityLocation(
@@ -32,7 +38,7 @@ def test_valid_weights_do_not_raise():
     assert m.gamma == pytest.approx(0.15)
 
 
-def test_invalid_weights_raise_value_error():
+def test_invalid_weights_raise_value_error(MultiCriteriaFacilityLocation):
     meta = _make_meta()
     with pytest.raises(ValueError) as excinfo:
         MultiCriteriaFacilityLocation(

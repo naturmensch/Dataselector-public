@@ -1,11 +1,14 @@
 import pytest
-
-pytest.importorskip("numba", exc_type=ImportError)
-pytestmark = pytest.mark.integration
-
 import os
 import subprocess
 import sys
+
+pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(autouse=True)
+def skip_if_no_numba():
+    pytest.importorskip("numba", exc_type=ImportError)
 
 
 def test_help_shows_no_hard_default_34():

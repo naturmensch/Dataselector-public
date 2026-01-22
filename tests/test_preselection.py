@@ -1,14 +1,45 @@
 import pytest
 
-pytest.importorskip("numba", exc_type=ImportError)
 pytestmark = pytest.mark.integration
 
-from src.diversity_selector import DiversitySelector
-from src.io import load_metadata, load_or_extract_features
-from src.spatial_facility_location import haversine_distance
+
+@pytest.fixture(scope="module")
+def DiversitySelector():
+    pytest.importorskip("numba", exc_type=ImportError)
+    import importlib
+
+    mod = importlib.import_module("src.diversity_selector")
+    return mod.DiversitySelector
 
 
-def test_preselection_includes_seed(tmp_path, mock_features_path):
+@pytest.fixture(scope="module")
+def load_metadata():
+    pytest.importorskip("numba", exc_type=ImportError)
+    import importlib
+
+    mod = importlib.import_module("src.io")
+    return mod.load_metadata
+
+
+@pytest.fixture(scope="module")
+def load_or_extract_features():
+    pytest.importorskip("numba", exc_type=ImportError)
+    import importlib
+
+    mod = importlib.import_module("src.io")
+    return mod.load_or_extract_features
+
+
+@pytest.fixture(scope="module")
+def haversine_distance():
+    pytest.importorskip("numba", exc_type=ImportError)
+    import importlib
+
+    mod = importlib.import_module("src.spatial_facility_location")
+    return mod.haversine_distance
+
+
+def test_preselection_includes_seed(tmp_path, mock_features_path, load_metadata, load_or_extract_features, DiversitySelector, haversine_distance):
     # Use the mock features path to avoid expensive extraction
     # Copy mock features to tmp_path so load_or_extract_features finds them
     import shutil
@@ -43,7 +74,7 @@ def test_preselection_includes_seed(tmp_path, mock_features_path):
     assert len(selected) == 5
 
 
-def test_preselection_respects_min_distance(tmp_path, mock_features_path):
+def test_preselection_respects_min_distance(tmp_path, mock_features_path, load_metadata, load_or_extract_features, DiversitySelector, haversine_distance):
     # Use the mock features path to avoid expensive extraction
     # Copy mock features to tmp_path so load_or_extract_features finds them
     import shutil

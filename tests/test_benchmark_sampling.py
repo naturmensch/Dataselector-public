@@ -2,8 +2,12 @@ import pytest
 import importlib.util
 from pathlib import Path
 
-pytest.importorskip("numba", exc_type=ImportError)
 pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(autouse=True)
+def skip_if_no_numba():
+    pytest.importorskip("numba", exc_type=ImportError)
 
 
 def test_benchmark_small(tmp_path):

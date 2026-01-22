@@ -1,12 +1,29 @@
-# flake8: noqa: E402  # module-level `pytest.importorskip` used to skip tests when optional deps absent
 import pytest
+from pathlib import Path
 
-pytest.importorskip("optuna")
 pytestmark = pytest.mark.integration
-from scripts.optuna_optimize import get_optuna_sampler
 
 
-def test_get_optuna_sampler_qmc():
+@pytest.fixture(autouse=True)
+def skip_if_no_optuna():
+    pytest.importorskip("optuna")
+
+
+from tests._helpers.load_script import load_script
+
+
+@pytest.fixture(scope="module")
+def optuna_optimize_mod():
+    ROOT = Path(__file__).resolve().parents[1]
+    return load_script(ROOT / "scripts" / "optuna_optimize.py", module_name="scripts.optuna_optimize")
+
+
+@pytest.fixture
+def get_optuna_sampler(optuna_optimize_mod):
+    return optuna_optimize_mod.get_optuna_sampler
+
+
+def test_get_optuna_sampler_qmc(get_optuna_sampler):
     sampler = get_optuna_sampler("qmc", seed=123)
     # Check that sampler exposes the expected class name (QMCSampler) or falls back to TPE
     assert sampler is not None
@@ -14,13 +31,13 @@ def test_get_optuna_sampler_qmc():
     assert "qmcsampler" in name or "tpesampler" in name
 
 
-def test_get_optuna_sampler_cmaes():
+def test_get_optuna_sampler_cmaes(get_optuna_sampler):
     sampler = get_optuna_sampler("cmaes", seed=123)
     assert sampler is not None
     assert sampler.__class__.__name__.lower() == "cmaessampler"
 
 
-def test_get_optuna_sampler_tpe():
+def test_get_optuna_sampler_tpe(get_optuna_sampler):
     sampler = get_optuna_sampler("tpe", seed=123)
     assert sampler is not None
     assert sampler.__class__.__name__.lower() == "tpesampler"
@@ -49,7 +66,7 @@ class DummyTPE:
         self.kwargs = kwargs
 
 
-def test_qmc_accepts_qmc_type(monkeypatch):
+def test_qmc_accepts_qmc_type(monkeypatch, get_optuna_sampler):
     import optuna
 
     monkeypatch.setattr(optuna.samplers, "QMCSampler", FakeSampler)
@@ -60,7 +77,7 @@ def test_qmc_accepts_qmc_type(monkeypatch):
     assert "qmc_type" in s.kwargs or "qmc" in s.kwargs
 
 
-def test_qmc_fallback_to_qmc_kw(monkeypatch):
+def test_qmc_fallback_to_qmc_kw(monkeypatch, get_optuna_sampler):
     import optuna
 
     monkeypatch.setattr(optuna.samplers, "QMCSampler", FakeSamplerRejectQMC)
@@ -69,7 +86,7 @@ def test_qmc_fallback_to_qmc_kw(monkeypatch):
     assert isinstance(s, FakeSamplerRejectQMC)
 
 
-def test_qmc_all_rejects_fall_back_to_tpe(monkeypatch):
+def test_qmc_all_rejects_fall_back_to_tpe(monkeypatch, get_optuna_sampler):
     import optuna
 
     monkeypatch.setattr(optuna.samplers, "QMCSampler", AlwaysErrorSampler)

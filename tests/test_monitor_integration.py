@@ -5,10 +5,16 @@ from unittest.mock import MagicMock, patch
 
 # Ensure repo root on path
 ROOT = Path(__file__).resolve().parents[1]
-import scripts.xxl_full_run_monitor as monitor  # noqa: E402
+from tests._helpers.load_script import load_script
 
 
-def test_monitor_loop_detects_phases_and_writes_report(monkeypatch, tmp_path):
+@pytest.fixture()
+def monitor():
+    ROOT = Path(__file__).resolve().parents[1]
+    return load_script(ROOT / "scripts" / "xxl_full_run_monitor.py", module_name="scripts.xxl_full_run_monitor")
+
+
+def test_monitor_loop_detects_phases_and_writes_report(monkeypatch, tmp_path, monitor):
     """Integration-style test: simulate child run and log lines for phases; expect a report."""
     monkeypatch.setattr(
         sys, "argv", ["monitor.py", "--poll-interval", "0", "--no-new-session"]

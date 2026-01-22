@@ -1,20 +1,22 @@
-# flake8: noqa: E402  # deliberately performs sys.path manipulation / dynamic imports for script tests
 """Tests for the sampler comparison script."""
 
 import pickle
-import sys
 from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-
 from unittest.mock import MagicMock, patch
 
-from scripts import compare_samplers
+from tests._helpers.load_script import load_script
 
 
-def test_run_single_sampler_picklable():
+@pytest.fixture(scope="module")
+def compare_samplers():
+    ROOT = Path(__file__).resolve().parents[1]
+    return load_script(ROOT / "scripts" / "compare_samplers.py", module_name="scripts.compare_samplers_test")
+
+
+def test_run_single_sampler_picklable(compare_samplers):
     """Ensure the worker function can be pickled for multiprocessing."""
     try:
         pickle.dumps(compare_samplers.run_single_sampler)
@@ -22,12 +24,12 @@ def test_run_single_sampler_picklable():
         pytest.fail(f"run_single_sampler is not picklable: {e}")
 
 
-def test_compare_samplers_importable():
+def test_compare_samplers_importable(compare_samplers):
     """Ensure the module can be imported without side effects."""
     assert hasattr(compare_samplers, "run_sampler_comparison")
 
 
-def test_run_single_sampler_validates_output(tmp_path, monkeypatch):
+def test_run_single_sampler_validates_output(tmp_path, monkeypatch, compare_samplers):
     """Test that run_single_sampler returns None if trials.csv is missing/empty."""
     # Mock ROOT to point to tmp_path
     monkeypatch.setattr(compare_samplers, "ROOT", tmp_path)
@@ -62,7 +64,7 @@ def test_run_single_sampler_validates_output(tmp_path, monkeypatch):
         )
 
 
-def test_parallel_execution_smoke(monkeypatch, tmp_path):
+def test_parallel_execution_smoke(monkeypatch, tmp_path, compare_samplers):
     """Smoke test verifying that multiprocessing Pool is utilized."""
     mock_pool = MagicMock()
     mock_context = MagicMock()
@@ -85,7 +87,7 @@ def test_parallel_execution_smoke(monkeypatch, tmp_path):
     assert mock_pool.starmap.called
 
 
-def test_parallel_execution_cpu_count_fallback(monkeypatch, tmp_path):
+def test_parallel_execution_cpu_count_fallback(monkeypatch, tmp_path, compare_samplers):
     """Test that run_sampler_comparison handles cpu_count failure gracefully."""
     mock_pool = MagicMock()
     mock_context = MagicMock()

@@ -1,15 +1,19 @@
 import pandas as pd
 import pytest
 
-pytest.importorskip("numba", exc_type=ImportError)
-pytestmark = pytest.mark.integration
-
 from src.pipeline_utils import (
     compute_adaptive_n_initial,
     compute_bootstrap_candidates,
     compute_fine_search_bounds,
     compute_optuna_bounds,
 )
+
+pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(autouse=True)
+def skip_if_no_numba():
+    pytest.importorskip("numba", exc_type=ImportError)
 
 
 def test_compute_fine_search_bounds(tmp_path):

@@ -4,10 +4,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
-pytest.importorskip("numba", exc_type=ImportError)
 pytestmark = pytest.mark.integration
 
-from src.diversity_selector import DiversitySelector
+
+@pytest.fixture(scope="module")
+def DiversitySelector():
+    pytest.importorskip("numba", exc_type=ImportError)
+    import importlib
+
+    mod = importlib.import_module("src.diversity_selector")
+    return mod.DiversitySelector
 
 
 def make_metadata(n):
@@ -26,7 +32,7 @@ def make_features(n, dim=64):
     return rng.randn(n, dim)
 
 
-def test_end_to_end_selection_and_export(tmp_path):
+def test_end_to_end_selection_and_export(tmp_path, DiversitySelector):
     n_candidates = 100
     n_select = 10
     features = make_features(n_candidates)
@@ -49,7 +55,7 @@ def test_end_to_end_selection_and_export(tmp_path):
     assert "selection_rank" in df.columns
 
 
-def test_all_three_modes_run():
+def test_all_three_modes_run(DiversitySelector):
     n_candidates = 80
     features = make_features(n_candidates)
     metadata = make_metadata(n_candidates)
@@ -78,7 +84,7 @@ def test_all_three_modes_run():
     assert len(res_multi) == 7
 
 
-def test_coverage_statistics():
+def test_coverage_statistics(DiversitySelector):
     n = 50
     features = make_features(n)
     metadata = make_metadata(n)

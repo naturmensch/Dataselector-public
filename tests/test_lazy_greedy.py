@@ -1,13 +1,19 @@
 import numpy as np
 import pytest
 
-pytest.importorskip("numba", exc_type=ImportError)
 pytestmark = pytest.mark.integration
 
-from src.diversity_selector import DiversitySelector
+
+@pytest.fixture(scope="module")
+def DiversitySelector():
+    pytest.importorskip("numba", exc_type=ImportError)
+    import importlib
+
+    mod = importlib.import_module("src.diversity_selector")
+    return mod.DiversitySelector
 
 
-def test_lazy_greedy_basic():
+def test_lazy_greedy_basic(DiversitySelector):
     n_candidates = 200
     n_select = 15
     rng = np.random.RandomState(0)
@@ -22,7 +28,7 @@ def test_lazy_greedy_basic():
     assert len(res) == n_select
 
 
-def test_lazy_greedy_matches_standard():
+def test_lazy_greedy_matches_standard(DiversitySelector):
     n_candidates = 150
     n_select = 12
     rng = np.random.RandomState(1)
@@ -46,7 +52,7 @@ def test_lazy_greedy_matches_standard():
     assert abs(score_lazy - score_std) < 1e-6
 
 
-def test_selector_requires_n_samples():
+def test_selector_requires_n_samples(DiversitySelector):
     import pytest
 
     features = np.random.randn(10, 5)

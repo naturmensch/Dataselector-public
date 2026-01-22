@@ -3,12 +3,26 @@ from pathlib import Path
 
 import pytest
 
-optuna = pytest.importorskip("optuna")
 
-from scripts.xxl_full_run_monitor import _resume_run  # noqa: E402
+@pytest.fixture(autouse=True)
+def skip_if_no_optuna():
+    pytest.importorskip("optuna")
+
+from tests._helpers.load_script import load_script
 
 
-def test_resume_dry_run(tmp_path, monkeypatch):
+@pytest.fixture(scope="module")
+def monitor_mod():
+    ROOT = Path(__file__).resolve().parents[1]
+    return load_script(ROOT / "scripts" / "xxl_full_run_monitor.py", module_name="scripts.xxl_full_run_monitor")
+
+
+@pytest.fixture
+def _resume_run(monitor_mod):
+    return monitor_mod._resume_run
+
+
+def test_resume_dry_run(tmp_path, monkeypatch, _resume_run):
     # create run dir under project's outputs/runs so monitor can find it by name
     run_dir_name = "pytest_test_resume_" + tmp_path.name
     run_dir = Path("outputs") / "runs" / run_dir_name
@@ -49,7 +63,7 @@ def test_resume_dry_run(tmp_path, monkeypatch):
     assert res["remaining"] == max(0, cfg["n_trials"] - res["completed"])
 
 
-def test_resume_executes(monkeypatch, tmp_path):
+def test_resume_executes(monkeypatch, tmp_path, _resume_run):
     # create run dir under project's outputs/runs so monitor can find it by name
     run_dir_name = "pytest_test_resume_exec_" + tmp_path.name
     run_dir = Path("outputs") / "runs" / run_dir_name
@@ -122,7 +136,7 @@ def test_resume_executes(monkeypatch, tmp_path):
     assert meta["completed_after"] is not None or meta["ok"]
 
 
-def test_staged_resume_after_optuna_complete(monkeypatch, tmp_path):
+def test_staged_resume_after_optuna_complete(monkeypatch, tmp_path, _resume_run):
     # Create run dir with optuna already completed (no remaining trials)
     run_dir_name = "pytest_test_resume_staged_" + tmp_path.name
     # Use isolated ROOT for this test to avoid picking up real outputs/artifacts

@@ -5,8 +5,14 @@ from pathlib import Path
 
 import pytest
 
-optuna = pytest.importorskip("optuna")
-import pandas as pd  # noqa: E402
+pytestmark = pytest.mark.smoke
+
+
+@pytest.fixture(autouse=True)
+def skip_if_no_optuna():
+    pytest.importorskip("optuna")
+
+import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -51,6 +57,8 @@ def test_optuna_storage_creation(tmp_path):
 
     # Check if we can load the study
     storage = f"sqlite:///{db_path}"
+    import optuna
+
     study = optuna.load_study(study_name="kdr100_opt", storage=storage)
     assert len(study.trials) == 2
 
@@ -96,6 +104,8 @@ def test_import_script(tmp_path):
     assert res.returncode == 0, f"Import failed: {res.stderr}"
 
     # Verify import
+    import optuna
+
     study = optuna.load_study(study_name="test_import", storage=storage)
     assert len(study.trials) == 2
     assert study.best_value == 0.6

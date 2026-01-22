@@ -1,9 +1,12 @@
 import pytest
+import subprocess
 
-pytest.importorskip("numba", exc_type=ImportError)
 pytestmark = pytest.mark.integration
 
-import subprocess
+
+@pytest.fixture(autouse=True)
+def skip_if_no_numba():
+    pytest.importorskip("numba", exc_type=ImportError)
 
 
 def test_skip_optuna_and_skip_flags_dryrun(tmp_path):

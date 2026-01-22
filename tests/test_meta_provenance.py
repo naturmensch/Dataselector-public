@@ -4,13 +4,18 @@ import numpy as np
 import pandas as pd
 import pytest
 
-pytest.importorskip("numba", exc_type=ImportError)
 pytestmark = pytest.mark.integration
 
-from src import experiments as experiments_module
+
+@pytest.fixture(scope="module")
+def experiments_module():
+    pytest.importorskip("numba", exc_type=ImportError)
+    import importlib
+
+    return importlib.import_module("src.experiments")
 
 
-def test_meta_provenance_includes_versions(tmp_path, monkeypatch):
+def test_meta_provenance_includes_versions(tmp_path, monkeypatch, experiments_module):
     # Create minimal metadata CSV
     meta_df = pd.DataFrame(
         {

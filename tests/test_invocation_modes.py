@@ -1,9 +1,4 @@
 import pytest
-
-pytest.importorskip("numba", exc_type=ImportError)
-pytest.importorskip("optuna", exc_type=ImportError)
-pytestmark = pytest.mark.integration
-
 import os
 import subprocess
 import sys
@@ -11,7 +6,19 @@ from pathlib import Path
 
 import pandas as pd
 
+pytestmark = pytest.mark.integration
+
 ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.fixture(autouse=True)
+def skip_if_no_numba():
+    pytest.importorskip("numba", exc_type=ImportError)
+
+
+@pytest.fixture(autouse=True)
+def skip_if_no_optuna():
+    pytest.importorskip("optuna", exc_type=ImportError)
 
 
 def run_cmd(cmd, cwd, env):

@@ -1,31 +1,24 @@
-# flake8: noqa: E402  # dynamic imports and runtime path manipulation required for script tests
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import importlib.util
-import sys
 import pandas as pd
 import pytest
 
-# Load script module without modifying sys.path and register it under the
-# package name so string-based monkeypatch targets still work.
-ROOT = Path(__file__).resolve().parents[1]
-spec = importlib.util.spec_from_file_location(
-    "scripts.compare_samplers_multi_seed", ROOT / "scripts" / "compare_samplers_multi_seed.py"
-)
-compare_mod = importlib.util.module_from_spec(spec)
-# register into sys.modules under the package-style name so other code can
-# refer to it via 'scripts.compare_samplers_multi_seed'
-sys.modules[spec.name] = compare_mod
-spec.loader.exec_module(compare_mod)
-# Also set as attribute on the `scripts` package so string-based monkeypatch targets
-# like 'scripts.compare_samplers_multi_seed.ROOT' will resolve correctly.
-import scripts as _scripts_pkg
-setattr(_scripts_pkg, "compare_samplers_multi_seed", compare_mod)
-run_single_optuna = compare_mod.run_single_optuna
+from tests._helpers.load_script import load_script
 
 
-def test_run_single_optuna_no_run_dir_includes_subprocess_output(tmp_path, monkeypatch):
+@pytest.fixture(scope="module")
+def compare_mod():
+    ROOT = Path(__file__).resolve().parents[1]
+    return load_script(ROOT / "scripts" / "compare_samplers_multi_seed.py", module_name="scripts.compare_samplers_multi_seed")
+
+
+@pytest.fixture()
+def run_single_optuna(compare_mod):
+    return compare_mod.run_single_optuna
+
+
+def test_run_single_optuna_no_run_dir_includes_subprocess_output(tmp_path, monkeypatch, run_single_optuna):
     """If the subprocess completes but no run dir is created, the FileNotFoundError should include stdout/stderr."""
     # Ensure outputs/runs does not contain the expected run
     monkeypatch.setattr("scripts.compare_samplers_multi_seed.ROOT", tmp_path)
@@ -45,7 +38,7 @@ def test_run_single_optuna_no_run_dir_includes_subprocess_output(tmp_path, monke
         assert "Subprocess stdout" in msg and "Subprocess stderr" in msg
 
 
-def test_run_single_optuna_success(tmp_path, monkeypatch):
+def test_run_single_optuna_success(tmp_path, monkeypatch, run_single_optuna):
     """Test successful run with mocked subprocess and file system."""
     # Mock ROOT to point to tmp_path (patch both the loaded module and any existing package-loaded module)
     monkeypatch.setattr(compare_mod, "ROOT", tmp_path)
@@ -72,7 +65,7 @@ def test_run_single_optuna_success(tmp_path, monkeypatch):
         assert res["run_dir"] == str(run_dir)
 
 
-def test_run_single_optuna_missing_trials_csv(tmp_path, monkeypatch):
+def test_run_single_optuna_missing_trials_csv(tmp_path, monkeypatch, run_single_optuna):
     """Test that missing trials.csv raises FileNotFoundError after retries."""
     monkeypatch.setattr("scripts.compare_samplers_multi_seed.ROOT", tmp_path)
 

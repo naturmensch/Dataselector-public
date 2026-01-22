@@ -1,13 +1,17 @@
 import pytest
-
-pytest.importorskip("optuna")
-pytestmark = pytest.mark.integration
-
 from pathlib import Path
 
 import pandas as pd
+from tests._helpers.load_script import load_script
 
-import scripts.xxl_full_run_monitor as monitor
+pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(scope="module")
+def monitor():
+    pytest.importorskip("optuna")
+    ROOT = Path(__file__).resolve().parents[1]
+    return load_script(ROOT / "scripts" / "xxl_full_run_monitor.py", module_name="scripts.xxl_full_run_monitor_test")
 
 
 def _make_run_with_trials(
@@ -40,7 +44,7 @@ def _make_run_with_trials(
     return run_dir
 
 
-def test_resume_uses_existing_trials_csv(monkeypatch, tmp_path):
+def test_resume_uses_existing_trials_csv(monkeypatch, tmp_path, monitor):
     # Prepare run with trials.csv and config
     _run_dir = _make_run_with_trials(tmp_path, n_trials=3)
 
@@ -66,7 +70,7 @@ def test_resume_uses_existing_trials_csv(monkeypatch, tmp_path):
     )
 
 
-def test_resume_attempts_reconstruction_then_succeeds(monkeypatch, tmp_path):
+def test_resume_attempts_reconstruction_then_succeeds(monkeypatch, tmp_path, monitor):
     # Prepare run dir without DB or trials.csv
     run_dir = tmp_path / "outputs" / "runs" / "20260119_T000000_hamburg_xxl_final"
     (run_dir / "results").mkdir(parents=True, exist_ok=True)

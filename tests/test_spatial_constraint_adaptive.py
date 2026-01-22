@@ -2,10 +2,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
-pytest.importorskip("numba", exc_type=ImportError)
 pytestmark = pytest.mark.integration
 
-from src.diversity_selector import DiversitySelector
+
+@pytest.fixture(scope="module")
+def DiversitySelector():
+    pytest.importorskip("numba", exc_type=ImportError)
+    import importlib
+
+    mod = importlib.import_module("src.diversity_selector")
+    return mod.DiversitySelector
 
 
 def make_grid_metadata(n, lon_start=6.0, lat=50.0, lon_step=0.28):
@@ -17,7 +23,7 @@ def make_grid_metadata(n, lon_start=6.0, lat=50.0, lon_step=0.28):
     )
 
 
-def test_adaptive_min_distance_reaches_n_samples():
+def test_adaptive_min_distance_reaches_n_samples(DiversitySelector):
     selector = DiversitySelector(n_samples=5, use_multi_criteria=False)
     features = np.random.randn(10, 2048)
     metadata = make_grid_metadata(10)
@@ -38,7 +44,7 @@ def test_adaptive_min_distance_reaches_n_samples():
     ), f"Adaptive fallback failed to reach 5 samples, got {len(result)}"
 
 
-def test_adaptive_fallback_allows_duplicates():
+def test_adaptive_fallback_allows_duplicates(DiversitySelector):
     # Zwei identische Punkte, min_distance zu groß, adaptive fallback auf 0
     coords = [
         (52.52, 13.405),

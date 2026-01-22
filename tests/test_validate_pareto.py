@@ -4,9 +4,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-pytest.importorskip("numba", exc_type=ImportError)
-pytestmark = pytest.mark.integration
 import importlib.util
+
+pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(autouse=True)
+def skip_if_no_numba():
+    pytest.importorskip("numba", exc_type=ImportError)
 
 
 def _make_pareto_csv(tmp_path):
