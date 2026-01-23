@@ -46,8 +46,9 @@ def _init_data():
         batch_size=16,
         cache=True,
     )
+    # Load metadata via loader so any projected coordinates are attached
     metadata_full = (
-        pd.read_csv(OUT / "metadata.csv")
+        load_metadata(str(OUT / "metadata.csv"))
         if (OUT / "metadata.csv").exists()
         else load_metadata("data/new_all_tiles.csv")
     )
@@ -77,6 +78,9 @@ def run_grid(
 
         features = features_full[idxs]
         metadata = metadata_full.iloc[idxs].reset_index(drop=True)
+        # preserve projected coords if available
+        if getattr(metadata_full, "gdf_metric", None) is not None:
+            metadata.gdf_metric = metadata_full.gdf_metric.iloc[idxs].reset_index(drop=True)
 
     results = []
 

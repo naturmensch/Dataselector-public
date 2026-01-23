@@ -40,7 +40,7 @@ def validate(
     from src.io import load_metadata, load_or_extract_features
 
     metadata = (
-        pd.read_csv(metadata_path)
+        load_metadata(str(metadata_path))
         if metadata_path.exists()
         else load_metadata("data/new_all_tiles.csv")
     )

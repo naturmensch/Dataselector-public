@@ -31,8 +31,9 @@ def main() -> int:
         batch_size=16,
         cache=True,
     )
+    # Use loader so any projected coordinates are attached
     metadata = (
-        pd.read_csv(OUT / "metadata.csv")
+        load_metadata(str(OUT / "metadata.csv"))
         if (OUT / "metadata.csv").exists()
         else load_metadata("data/new_all_tiles.csv")
     )
@@ -108,13 +109,19 @@ def main() -> int:
 
         # Spatial
         pairwise = []
+        use_metric = getattr(metadata, "gdf_metric", None) is not None
         for i in range(len(selected)):
             for j in range(i + 1, len(selected)):
-                r1 = metadata.iloc[selected[i]]
-                r2 = metadata.iloc[selected[j]]
-                pairwise.append(
-                    haversine_distance(r1["N"], r1["left"], r2["N"], r2["left"])
-                )
+                if use_metric:
+                    a = metadata.gdf_metric.loc[selected[i], ["_proj_x", "_proj_y"]].values.astype(float)
+                    b = metadata.gdf_metric.loc[selected[j], ["_proj_x", "_proj_y"]].values.astype(float)
+                    pairwise.append(float((((a - b) ** 2).sum()) ** 0.5 / 1000.0))
+                else:
+                    r1 = metadata.iloc[selected[i]]
+                    r2 = metadata.iloc[selected[j]]
+                    pairwise.append(
+                        haversine_distance(r1["N"], r1["left"], r2["N"], r2["left"])
+                    )
 
         mean_pairwise = float(np.mean(pairwise)) if pairwise else np.nan
         min_pairwise = float(np.min(pairwise)) if pairwise else np.nan

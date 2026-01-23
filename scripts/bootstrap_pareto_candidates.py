@@ -57,6 +57,9 @@ def bootstrap_candidate(
         sample_idx = rng.integers(0, N, size=N)
         boot_features = features[sample_idx]
         boot_meta = metadata.iloc[sample_idx].reset_index(drop=True)
+        # Preserve projected coords in the bootstrap sample if present
+        if getattr(metadata, "gdf_metric", None) is not None:
+            boot_meta.gdf_metric = metadata.gdf_metric.iloc[sample_idx].reset_index(drop=True)
 
         # clustering on boot features (not used for metrics -- metrics computed on original mapping)
         clustering = ClusteringPipeline(n_clusters=8)
@@ -116,7 +119,7 @@ def main(
     metadata = (
         load_metadata(str(Path(ROOT) / "data" / "new_all_tiles.csv"))
         if (Path(ROOT) / "outputs" / "metadata.csv").exists() is False
-        else pd.read_csv(Path(ROOT) / "outputs" / "metadata.csv")
+        else load_metadata(str(Path(ROOT) / "outputs" / "metadata.csv"))
     )
     features = load_or_extract_features(
         Path(ROOT) / "outputs",
