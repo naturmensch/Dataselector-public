@@ -51,8 +51,28 @@ make venv
 
 ### 3. Dependencies installieren
 
+For quick local development you can use pip/venv; for reproducible scientific runs prefer the conda-lock workflow described below.
+
+Quick (venv) install (not fully reproducible):
+
 ```bash
-pip install -r requirements.txt
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-cpu.txt
+pip install -e .
+```
+
+Recommended reproducible install (conda-lock + pip extras):
+
+```bash
+# 1) Use the generated lockfile for your platform
+# Example (Linux 64-bit):
+conda-lock install --name dataselector locks/conda-lock-linux-64.lock
+conda activate dataselector
+
+# 2) Install pip-only extras (PyTorch CPU wheel sourced from the official PyTorch index)
+# requirements-cpu.txt contains `--index-url https://download.pytorch.org/whl/cpu`
+pip install -r requirements-cpu.txt
 ```
 
 ### Development environment (recommended: mamba / conda)
@@ -69,6 +89,7 @@ if command -v mamba >/dev/null 2>&1; then PM=mamba; else PM=conda; fi
 $PM env create -f environment.yml -n dataselector
 conda activate dataselector
 
+# For reproducible installs prefer the generated lockfile (see above)
 # Optional: install pip extras (keeps parity with venv setup)
 pip install -r requirements-cpu.txt
 ```
