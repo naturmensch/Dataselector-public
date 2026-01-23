@@ -14,6 +14,7 @@ import csv
 import time
 from pathlib import Path
 
+
 def main() -> int:
     OUT = Path("outputs")
     OUT.mkdir(exist_ok=True, parents=True)
@@ -28,7 +29,9 @@ def main() -> int:
     features = load_or_extract_features(
         out_dir=OUT, csv_meta=csv_meta, batch_size=16, cache=True
     )
-    metadata = load_metadata(csv_meta if csv_meta is not None else "data/new_all_tiles.csv")
+    _metadata = load_metadata(
+        csv_meta if csv_meta is not None else "data/new_all_tiles.csv"
+    )
 
     # subset size for quick timing
     SUBSET_N = min(200, len(features))
@@ -41,7 +44,7 @@ def main() -> int:
     try:
         t0 = time.perf_counter()
         cl = ClusteringPipeline(n_clusters=8, umap_random_state=None, umap_n_jobs=-1)
-        emb = cl.fit_transform(feat_sub)[0]
+        _emb = cl.fit_transform(feat_sub)[0]
         t = time.perf_counter() - t0
         print(f"UTOPIAN success: {t:.3f}s")
         results.append({"mode": "utopian", "seed": None, "n_jobs": -1, "time_s": t})
@@ -54,8 +57,10 @@ def main() -> int:
         print(f"Testing seed={s} (deterministic, single-thread) ...")
         try:
             t0 = time.perf_counter()
-            cl = ClusteringPipeline(n_clusters=8, umap_random_state=int(s), umap_n_jobs=1)
-            emb = cl.fit_transform(feat_sub)[0]
+            cl = ClusteringPipeline(
+                n_clusters=8, umap_random_state=int(s), umap_n_jobs=1
+            )
+            _emb = cl.fit_transform(feat_sub)[0]
             t = time.perf_counter() - t0
             print(f"  seed {s} success: {t:.3f}s")
             results.append({"mode": "seeded", "seed": int(s), "n_jobs": 1, "time_s": t})

@@ -6,9 +6,9 @@ from shapely.geometry import Point
 from src.spatial_facility_location import haversine_distance
 
 
-def utm_distance_km(lat1, lon1, lat2, lon2, crs='EPSG:25832'):
+def utm_distance_km(lat1, lon1, lat2, lon2, crs="EPSG:25832"):
     gdf = gpd.GeoDataFrame(
-        geometry=[Point(lon1, lat1), Point(lon2, lat2)], crs='EPSG:4326'
+        geometry=[Point(lon1, lat1), Point(lon2, lat2)], crs="EPSG:4326"
     )
     gdf = gdf.to_crs(crs)
     x = gdf.geometry.x
@@ -28,4 +28,6 @@ def test_berlin_cologne_agree_within_reasonable_tolerance():
 
     # Difference should be small relative to distance; allow 0.5% or 1 km whichever is larger
     allowed = max(0.005 * ((hav + utm) / 2.0), 1.0)
-    assert abs(hav - utm) < allowed, f"Haversine {hav} vs UTM {utm} differ more than {allowed} km"
+    assert (
+        abs(hav - utm) < allowed
+    ), f"Haversine {hav} vs UTM {utm} differ more than {allowed} km"

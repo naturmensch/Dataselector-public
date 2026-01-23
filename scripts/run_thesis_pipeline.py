@@ -28,9 +28,6 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-import numpy as np
-import pandas as pd
-
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = ROOT / "outputs"
 
@@ -156,8 +153,8 @@ Beispiele:
     # If user didn't provide n_lhs, compute an adaptive default now (deferred I/O)
     if args.n_lhs is None:
         try:
-            import pandas as pd
             import numpy as np
+            import pandas as pd
 
             metadata_path = ROOT / "data" / "new_all_tiles.csv"
             if metadata_path.exists():
@@ -169,7 +166,9 @@ Beispiele:
                 print(f"⚠️ Metadata not found; using fallback n_lhs={args.n_lhs}")
         except Exception:
             args.n_lhs = n_lhs_thesis_default
-            print(f"⚠️ Could not compute adaptive n_lhs; using fallback n_lhs={args.n_lhs}")
+            print(
+                f"⚠️ Could not compute adaptive n_lhs; using fallback n_lhs={args.n_lhs}"
+            )
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 

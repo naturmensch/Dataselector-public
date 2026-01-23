@@ -3,15 +3,15 @@
 
 Generates a JSON report and simple plots saved to outputs/.
 """
-from pathlib import Path
 import json
+from pathlib import Path
 
+import geopandas as gpd
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import geopandas as gpd
-from shapely.geometry import Point
-import matplotlib.pyplot as plt
 import seaborn as sns
+from shapely.geometry import Point
 
 from src.spatial_facility_location import haversine_distance
 
@@ -86,7 +86,9 @@ def summarize_and_plot(hav: np.ndarray, utm: np.ndarray, df: pd.DataFrame):
         per_tile.append(
             {
                 "index": int(i),
-                "sheet": df.iloc[i].shortName if "shortName" in df.columns else df.index[i],
+                "sheet": df.iloc[i].shortName
+                if "shortName" in df.columns
+                else df.index[i],
                 "median_abs_diff_km": float(np.median(vals)),
                 "mean_abs_diff_km": float(np.mean(vals)),
                 "max_abs_diff_km": float(np.max(vals)),
@@ -99,7 +101,9 @@ def summarize_and_plot(hav: np.ndarray, utm: np.ndarray, df: pd.DataFrame):
         json.dump({"per_tile": per_tile}, fh, indent=2)
 
     # add top outliers to report
-    per_tile_sorted = sorted(per_tile, key=lambda x: x["median_abs_diff_km"], reverse=True)
+    per_tile_sorted = sorted(
+        per_tile, key=lambda x: x["median_abs_diff_km"], reverse=True
+    )
     report["top_10_median_abs_diff"] = per_tile_sorted[:10]
 
     # Scatter plot Haversine vs UTM
@@ -128,7 +132,9 @@ def summarize_and_plot(hav: np.ndarray, utm: np.ndarray, df: pd.DataFrame):
     try:
         gdf = gpd.GeoDataFrame(
             df,
-            geometry=[Point(xy) for xy in zip(df["left"].to_numpy(), df["N"].to_numpy())],
+            geometry=[
+                Point(xy) for xy in zip(df["left"].to_numpy(), df["N"].to_numpy())
+            ],
             crs="EPSG:4326",
         )
         per_median = np.array([p["median_abs_diff_km"] for p in per_tile])
@@ -137,7 +143,9 @@ def summarize_and_plot(hav: np.ndarray, utm: np.ndarray, df: pd.DataFrame):
 
         plt.figure(figsize=(8, 6))
         ax = plt.gca()
-        gdf.plot(column="median_abs_diff_km", cmap="YlOrRd", legend=True, markersize=8, ax=ax)
+        gdf.plot(
+            column="median_abs_diff_km", cmap="YlOrRd", legend=True, markersize=8, ax=ax
+        )
         plt.title("Median |Haversine - UTM| per Tile (km)")
         heatmap_path = OUT_DIR / "distance_comparison_heatmap.png"
         plt.tight_layout()

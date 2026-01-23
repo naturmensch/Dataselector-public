@@ -2,10 +2,9 @@
 
 import pickle
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
-
-from unittest.mock import MagicMock, patch
 
 from tests._helpers.load_script import load_script
 
@@ -13,7 +12,10 @@ from tests._helpers.load_script import load_script
 @pytest.fixture(scope="module")
 def compare_samplers():
     ROOT = Path(__file__).resolve().parents[1]
-    return load_script(ROOT / "scripts" / "compare_samplers.py", module_name="scripts.compare_samplers_test")
+    return load_script(
+        ROOT / "scripts" / "compare_samplers.py",
+        module_name="scripts.compare_samplers_test",
+    )
 
 
 def test_run_single_sampler_picklable(compare_samplers):

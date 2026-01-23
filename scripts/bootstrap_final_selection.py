@@ -8,8 +8,8 @@ Usage:
     python scripts/bootstrap_final_selection.py --run-dir outputs/runs/20260116_T164624_hamburg_full_2000 --n-boot 500
 """
 
-import sys
 import argparse
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -52,6 +52,7 @@ def bootstrap_selection(
     """
     # Local imports to keep module import-safe
     from tqdm import trange
+
     from src.diversity_selector import DiversitySelector
     from src.metrics import compute_metrics
 
@@ -183,9 +184,9 @@ def main():
     metadata_path = ROOT / "outputs" / "metadata.csv"
 
     # Local imports to keep module import-safe
-    from src.io import load_metadata, load_or_extract_features
     from src.clustering import ClusteringPipeline
     from src.diversity_selector import DiversitySelector
+    from src.io import load_metadata, load_or_extract_features
     from src.metrics import compute_metrics
 
     if not metadata_path.exists():

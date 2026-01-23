@@ -4,10 +4,13 @@ from pathlib import Path
 import pytest
 import yaml
 
-from pathlib import Path
 from tests._helpers.load_script import load_script
+
 ROOT = Path(__file__).resolve().parents[1]
-gen = load_script(ROOT / "scripts" / "generate_experiment_report.py", module_name="scripts.generate_experiment_report_test")
+gen = load_script(
+    ROOT / "scripts" / "generate_experiment_report.py",
+    module_name="scripts.generate_experiment_report_test",
+)
 
 
 def make_fake_run_dir(tmpdir: Path):

@@ -38,9 +38,9 @@ LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 USE_DATASELECTOR_ENV: bool = True  # default: use the dataselector environment
 DATASELECTOR_ENV_NAME: str = os.environ.get("DATASELECTOR_ENV_NAME", "dataselector")
 ENV_RUNNER_CMD: str | None = None  # e.g. 'mamba run -n dataselector --'
-ENV_RUNNER_LIST: list[str] | None = (
-    None  # e.g. ['mamba', 'run', '-n', 'dataselector', '--']
-)
+ENV_RUNNER_LIST: list[
+    str
+] | None = None  # e.g. ['mamba', 'run', '-n', 'dataselector', '--']
 ENV_RUNNER_NAME: str | None = None
 
 MAIN_SCRIPT = ROOT / "scripts" / "xxl_KDR146_run_thesis_complete.py"
@@ -1144,9 +1144,9 @@ def _resume_run(
                 # Use human-readable phase names in resume_meta (match dry-run output)
                 entry = {"name": t.name, "cmd": None, "result": r}
                 if t.name == "optuna":
-                    entry["cmd"] = (
-                        f"{sys.executable} -m scripts.optuna_optimize --n-trials {t.params.get('n_trials')}"
-                    )
+                    entry[
+                        "cmd"
+                    ] = f"{sys.executable} -m scripts.optuna_optimize --n-trials {t.params.get('n_trials')}"
                     # After optuna, reconstruct trials from DB
                     try:
                         _reconstruct_trials_from_db(run_dir, active_log)
@@ -1158,14 +1158,14 @@ def _resume_run(
                     # normalize executed phase name to match dry-run naming
                     entry["name"] = "reproducibility"
                     seeds = ",".join(str(s) for s in t.params.get("seeds", []))
-                    entry["cmd"] = (
-                        f"{sys.executable} -m scripts.xxl_KDR146_run_thesis_complete --phase repro --seeds {seeds} --n-trials {configured_n} --n-candidates {n_candidates_calculated}"
-                    )
+                    entry[
+                        "cmd"
+                    ] = f"{sys.executable} -m scripts.xxl_KDR146_run_thesis_complete --phase repro --seeds {seeds} --n-trials {configured_n} --n-candidates {n_candidates_calculated}"
                 elif t.name == "finalize":
                     n_samples = t.params.get("n_samples")
-                    entry["cmd"] = (
-                        f"{sys.executable} -m scripts.xxl_KDR146_run_thesis_complete --phase finalize --run-dir {run_dir}"
-                    )
+                    entry[
+                        "cmd"
+                    ] = f"{sys.executable} -m scripts.xxl_KDR146_run_thesis_complete --phase finalize --run-dir {run_dir}"
                     if n_samples:
                         entry["cmd"] += f" --n-samples {n_samples}"
                 elif t.name == "reconstruct":
@@ -1957,7 +1957,9 @@ def main():
     # Write report into the monitor_reports folder under the XXL run dir if available, else into outputs/monitor_reports (timestamped)
     report_text = "\n".join(report_lines)
     # Prefer forced timestamp for deterministic tests
-    report_ts = os.environ.get("MONITOR_FORCE_TS") or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    report_ts = os.environ.get("MONITOR_FORCE_TS") or datetime.now(
+        timezone.utc
+    ).strftime("%Y%m%dT%H%M%SZ")
     if latest_xxl:
         reports_dir = latest_xxl / "monitor_reports"
     else:

@@ -92,8 +92,16 @@ def main(hamburg_run: str | Path = None, kdr100_run: str | Path = None) -> int:
     This function can be called programmatically or via CLI. Defaults use
     historical run paths but callers may override them.
     """
-    hamb = Path(hamburg_run) if hamburg_run is not None else (ROOT / "outputs" / "runs" / "20260117_T160726_adaptive_full")
-    kdr = Path(kdr100_run) if kdr100_run is not None else (ROOT / "outputs" / "runs" / "20260117_T160740_adaptive_full")
+    hamb = (
+        Path(hamburg_run)
+        if hamburg_run is not None
+        else (ROOT / "outputs" / "runs" / "20260117_T160726_adaptive_full")
+    )
+    kdr = (
+        Path(kdr100_run)
+        if kdr100_run is not None
+        else (ROOT / "outputs" / "runs" / "20260117_T160740_adaptive_full")
+    )
 
     hamburg = load_and_analyze(hamb, "Hamburg (800 candidates)")
     kdr100 = load_and_analyze(kdr, "KDR100 (673 candidates)")
@@ -116,9 +124,13 @@ def main(hamburg_run: str | Path = None, kdr100_run: str | Path = None) -> int:
     report.append(
         f"  - KDR100: {kdr100['best_value']:.6f} @ Trial #{int(kdr100['best_trial'])}"
     )
-    report.append("- **Sampler**: CMA-ES (Covariance Matrix Adaptation Evolution Strategy)")
+    report.append(
+        "- **Sampler**: CMA-ES (Covariance Matrix Adaptation Evolution Strategy)"
+    )
     report.append("- **Trials per run**: 2000 (Optuna, with 200 bootstrap resamples)")
-    report.append("- **Exploration**: Sobol (20 samples) → Fine Sweep (5 bounds) → Optuna")
+    report.append(
+        "- **Exploration**: Sobol (20 samples) → Fine Sweep (5 bounds) → Optuna"
+    )
     report.append("")
 
     # Detailed sections
@@ -145,7 +157,9 @@ def main(hamburg_run: str | Path = None, kdr100_run: str | Path = None) -> int:
         report.append("")
 
         report.append("**Best Trial Parameters**:")
-        report.append(f"  - Weight a (tile density): {data['best_params'].get('a', 'N/A')}")
+        report.append(
+            f"  - Weight a (tile density): {data['best_params'].get('a', 'N/A')}"
+        )
         report.append(
             f"  - Weight b (spatial spread): {data['best_params'].get('b', 'N/A')}"
         )
@@ -178,8 +192,14 @@ def main(hamburg_run: str | Path = None, kdr100_run: str | Path = None) -> int:
         "best_value": [hamburg["best_value"], kdr100["best_value"]],
         "mean_value": [hamburg["mean_value"], kdr100["mean_value"]],
         "std_value": [hamburg["std_value"], kdr100["std_value"]],
-        "convergence_trial": [hamburg["convergence_trial"], kdr100["convergence_trial"]],
-        "convergence_ratio": [hamburg["convergence_ratio"], kdr100["convergence_ratio"]],
+        "convergence_trial": [
+            hamburg["convergence_trial"],
+            kdr100["convergence_trial"],
+        ],
+        "convergence_ratio": [
+            hamburg["convergence_ratio"],
+            kdr100["convergence_ratio"],
+        ],
         "bootstrap_ci_lo": [hamburg["boot_ci_lo"], kdr100["boot_ci_lo"]],
         "bootstrap_ci_hi": [hamburg["boot_ci_hi"], kdr100["boot_ci_hi"]],
     }

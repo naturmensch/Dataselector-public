@@ -5,10 +5,14 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+
 from tests._helpers.load_script import load_script
-from pathlib import Path
+
 ROOT = Path(__file__).resolve().parents[1]
-monitor = load_script(ROOT / "scripts" / "xxl_full_run_monitor.py", module_name="scripts.xxl_full_run_monitor_test")
+monitor = load_script(
+    ROOT / "scripts" / "xxl_full_run_monitor.py",
+    module_name="scripts.xxl_full_run_monitor_test",
+)
 
 
 class FakeStudy:

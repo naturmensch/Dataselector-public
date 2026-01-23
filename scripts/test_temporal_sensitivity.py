@@ -11,7 +11,6 @@ import numpy as np
 import pandas as pd
 
 
-
 def main() -> None:
     OUT = Path("outputs")
     from src.io import load_metadata, load_or_extract_features
@@ -88,9 +87,14 @@ def main() -> None:
                 for j in range(i + 1, len(selected)):
                     if use_metric:
                         from src.io import get_metric_gdf
+
                         gdf = get_metric_gdf(meta)
-                        a = gdf.loc[selected[i], ["_proj_x", "_proj_y"]].values.astype(float)
-                        b = gdf.loc[selected[j], ["_proj_x", "_proj_y"]].values.astype(float)
+                        a = gdf.loc[selected[i], ["_proj_x", "_proj_y"]].values.astype(
+                            float
+                        )
+                        b = gdf.loc[selected[j], ["_proj_x", "_proj_y"]].values.astype(
+                            float
+                        )
                         pairwise.append(float((((a - b) ** 2).sum()) ** 0.5 / 1000.0))
                     else:
                         from src.spatial_facility_location import haversine_distance

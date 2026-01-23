@@ -6,7 +6,12 @@ from src.experiment_manager import ExperimentManager
 
 
 def test_heartbeat_writes_manifest(tmp_path: Path):
-    em = ExperimentManager(name="hbtest", description="heartbeat test", base_dir=tmp_path, capture_provenance=False)
+    em = ExperimentManager(
+        name="hbtest",
+        description="heartbeat test",
+        base_dir=tmp_path,
+        capture_provenance=False,
+    )
     # start a fast heartbeat
     em.start_heartbeat(interval_seconds=1)
     # wait to allow at least one heartbeat

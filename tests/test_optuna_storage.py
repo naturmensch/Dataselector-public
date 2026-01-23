@@ -3,6 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 pytestmark = pytest.mark.smoke
@@ -12,7 +13,6 @@ pytestmark = pytest.mark.smoke
 def skip_if_no_optuna():
     pytest.importorskip("optuna")
 
-import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 

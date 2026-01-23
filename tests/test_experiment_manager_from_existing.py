@@ -1,4 +1,9 @@
+import json
+
+import pandas as pd
 import pytest
+
+from src.experiment_manager import ExperimentManager
 
 pytestmark = pytest.mark.integration
 
@@ -6,12 +11,6 @@ pytestmark = pytest.mark.integration
 @pytest.fixture(autouse=True)
 def skip_if_no_numba():
     pytest.importorskip("numba", exc_type=ImportError)
-
-import json
-
-import pandas as pd
-
-from src.experiment_manager import ExperimentManager
 
 
 def test_from_existing_loads_manifest(tmp_path):

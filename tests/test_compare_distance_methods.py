@@ -1,9 +1,12 @@
-import json
-import numpy as np
-import pandas as pd
 from pathlib import Path
 
-from scripts.compare_distance_methods import compute_haversine_matrix, compute_utm_matrix
+import numpy as np
+import pandas as pd
+
+from scripts.compare_distance_methods import (
+    compute_haversine_matrix,
+    compute_utm_matrix,
+)
 
 DATA_CSV = Path(__file__).resolve().parents[1] / "data" / "new_all_tiles.csv"
 

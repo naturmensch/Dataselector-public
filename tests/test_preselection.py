@@ -39,7 +39,14 @@ def haversine_distance():
     return mod.haversine_distance
 
 
-def test_preselection_includes_seed(tmp_path, mock_features_path, load_metadata, load_or_extract_features, DiversitySelector, haversine_distance):
+def test_preselection_includes_seed(
+    tmp_path,
+    mock_features_path,
+    load_metadata,
+    load_or_extract_features,
+    DiversitySelector,
+    haversine_distance,
+):
     # Use the mock features path to avoid expensive extraction
     # Copy mock features to tmp_path so load_or_extract_features finds them
     import shutil
@@ -74,7 +81,14 @@ def test_preselection_includes_seed(tmp_path, mock_features_path, load_metadata,
     assert len(selected) == 5
 
 
-def test_preselection_respects_min_distance(tmp_path, mock_features_path, load_metadata, load_or_extract_features, DiversitySelector, haversine_distance):
+def test_preselection_respects_min_distance(
+    tmp_path,
+    mock_features_path,
+    load_metadata,
+    load_or_extract_features,
+    DiversitySelector,
+    haversine_distance,
+):
     # Use the mock features path to avoid expensive extraction
     # Copy mock features to tmp_path so load_or_extract_features finds them
     import shutil

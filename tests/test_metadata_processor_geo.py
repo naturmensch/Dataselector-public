@@ -1,13 +1,16 @@
 import sys
 import types
+
 import pandas as pd
-import pytest
+
 from src.metadata_processor import MetadataProcessor
 
 
 def _make_csv(tmp_path):
     p = tmp_path / "test.csv"
-    p.write_text("longName,N,left\nKDR_1_1901.png,52.52,13.405\nKDR_2_1910.png,48.1351,11.5820\n")
+    p.write_text(
+        "longName,N,left\nKDR_1_1901.png,52.52,13.405\nKDR_2_1910.png,48.1351,11.5820\n"
+    )
     return str(p)
 
 
@@ -29,8 +32,8 @@ def test_load_csv_without_geopandas(tmp_path, monkeypatch):
     monkeypatch.setattr(builtins, "__import__", fake_import)
 
     mp = MetadataProcessor(csv_path)
-    df = mp.load_csv()
-    assert isinstance(df, pd.DataFrame)
+    _df = mp.load_csv()
+    assert isinstance(_df, pd.DataFrame)
     # geopandas not installed: gdf should be None
     assert mp.gdf is None
     assert mp.crs_unit == "degree"
@@ -65,7 +68,7 @@ def test_load_csv_with_geopandas_monkeypatch(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "shapely.geometry", geom_mod)
 
     mp = MetadataProcessor(csv_path)
-    df = mp.load_csv()
+    _df = mp.load_csv()
 
     # Now gdf should be set and contain geometry
     assert mp.gdf is not None

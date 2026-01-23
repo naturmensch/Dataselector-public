@@ -1,9 +1,10 @@
 def main():
+    from pathlib import Path
+
     import matplotlib
+    import matplotlib.pyplot as plt
     import numpy as np
     import pandas as pd
-    from pathlib import Path
-    import matplotlib.pyplot as plt
 
     matplotlib.use("Agg")
 
@@ -48,10 +49,20 @@ def main():
 
     # Right: Distribution
     ax2.hist(
-        h["value"], bins=50, alpha=0.6, label="Hamburg", color="#2E86AB", edgecolor="black"
+        h["value"],
+        bins=50,
+        alpha=0.6,
+        label="Hamburg",
+        color="#2E86AB",
+        edgecolor="black",
     )
     ax2.hist(
-        k["value"], bins=50, alpha=0.6, label="KDR100", color="#A23B72", edgecolor="black"
+        k["value"],
+        bins=50,
+        alpha=0.6,
+        label="KDR100",
+        color="#A23B72",
+        edgecolor="black",
     )
     ax2.axvline(
         h["value"].max(),

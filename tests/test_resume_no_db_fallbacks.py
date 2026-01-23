@@ -1,7 +1,8 @@
-import pytest
 from pathlib import Path
 
 import pandas as pd
+import pytest
+
 from tests._helpers.load_script import load_script
 
 pytestmark = pytest.mark.integration
@@ -11,7 +12,10 @@ pytestmark = pytest.mark.integration
 def monitor():
     pytest.importorskip("optuna")
     ROOT = Path(__file__).resolve().parents[1]
-    return load_script(ROOT / "scripts" / "xxl_full_run_monitor.py", module_name="scripts.xxl_full_run_monitor_test")
+    return load_script(
+        ROOT / "scripts" / "xxl_full_run_monitor.py",
+        module_name="scripts.xxl_full_run_monitor_test",
+    )
 
 
 def _make_run_with_trials(

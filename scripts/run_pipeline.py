@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -13,9 +15,6 @@ __all__ = ["should_run_tuning"]
 Usage:
     python scripts/run_pipeline.py [--tune] [--force-tune] [--tune-ttl DAYS] [--interactive]
 """
-
-import argparse
-import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 

@@ -57,7 +57,9 @@ def validate(
         csv_meta=(
             str(outdir / "metadata.csv")
             if (outdir / "metadata.csv").exists()
-            else str(metadata_path) if metadata_path.exists() else None
+            else str(metadata_path)
+            if metadata_path.exists()
+            else None
         ),
         batch_size=16,
         cache=True,

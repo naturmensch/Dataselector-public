@@ -22,8 +22,8 @@ OUT = Path("outputs")
 def main() -> int:
     from src.clustering import ClusteringPipeline
     from src.diversity_selector import DiversitySelector
-    from src.spatial_facility_location import haversine_distance
     from src.io import load_metadata, load_or_extract_features
+    from src.spatial_facility_location import haversine_distance
 
     features = load_or_extract_features(
         OUT,
@@ -100,12 +100,16 @@ def main() -> int:
         # Temporal
         years = metadata.iloc[selected]["year"].dropna().values
         temporal_std = float(np.std(years)) if len(years) > 0 else np.nan
-        temporal_range = float(np.max(years) - np.min(years)) if len(years) > 0 else np.nan
+        temporal_range = (
+            float(np.max(years) - np.min(years)) if len(years) > 0 else np.nan
+        )
         temporal_mean = float(np.mean(years)) if len(years) > 0 else np.nan
 
         # WWI concentration check
         wwi_years = (years >= 1906) & (years <= 1918)
-        wwi_fraction = float(np.sum(wwi_years) / len(years)) if len(years) > 0 else np.nan
+        wwi_fraction = (
+            float(np.sum(wwi_years) / len(years)) if len(years) > 0 else np.nan
+        )
 
         # Spatial
         pairwise = []
@@ -113,8 +117,12 @@ def main() -> int:
         for i in range(len(selected)):
             for j in range(i + 1, len(selected)):
                 if use_metric:
-                    a = metadata.gdf_metric.loc[selected[i], ["_proj_x", "_proj_y"]].values.astype(float)
-                    b = metadata.gdf_metric.loc[selected[j], ["_proj_x", "_proj_y"]].values.astype(float)
+                    a = metadata.gdf_metric.loc[
+                        selected[i], ["_proj_x", "_proj_y"]
+                    ].values.astype(float)
+                    b = metadata.gdf_metric.loc[
+                        selected[j], ["_proj_x", "_proj_y"]
+                    ].values.astype(float)
                     pairwise.append(float((((a - b) ** 2).sum()) ** 0.5 / 1000.0))
                 else:
                     r1 = metadata.iloc[selected[i]]
@@ -292,12 +300,5 @@ def _print_analysis(df: "pd.DataFrame") -> None:
     print(f"\nResults saved to: {OUT / 'optimized_parameters.csv'}")
 
 
-
-
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
-
-
-

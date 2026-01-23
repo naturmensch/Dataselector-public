@@ -26,9 +26,9 @@ def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
 
     # Runtime imports to avoid heavy deps at import-time
-    from src.io import load_metadata, load_or_extract_features
     from src.clustering import ClusteringPipeline
     from src.diversity_selector import DiversitySelector
+    from src.io import load_metadata, load_or_extract_features
     from src.metrics import compute_metrics
 
     # Load cached features & metadata

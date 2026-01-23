@@ -27,9 +27,8 @@ import pandas as pd
 # Project root (Path object); avoid modifying sys.path at module import time
 ROOT = Path(__file__).resolve().parents[1]
 # Ensure project root is on sys.path so 'src' package resolves both for module and script invocations
-import sys as _sys
-if str(ROOT) not in _sys.path:
-    _sys.path.insert(0, str(ROOT))
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 try:
     import optuna
@@ -135,7 +134,9 @@ def load_or_create_data(
                 full_metric = mp.ensure_metric_crs()
                 if full_metric is not None:
                     # Subset the full projected frame to the sampled rows and reindex to metadata
-                    metadata.gdf_metric = full_metric.loc[original_indices].reset_index(drop=True)
+                    metadata.gdf_metric = full_metric.loc[original_indices].reset_index(
+                        drop=True
+                    )
             except Exception:
                 # Best effort: if geopandas unavailable or mapping fails, proceed without gdf_metric
                 pass
@@ -337,12 +338,14 @@ def run_optuna(
         storage: Optuna storage URL (e.g. sqlite:///...). If None, defaults to sqlite in run dir.
     """
     # Initialize or attach to an experiment manager
-    import os
+
     # Ensure ExperimentManager is available in this runtime context
     try:
         from src.experiment_manager import ExperimentManager
     except Exception as e:
-        raise RuntimeError("ExperimentManager import failed. Ensure project is installed or PYTHONPATH includes the repo root") from e
+        raise RuntimeError(
+            "ExperimentManager import failed. Ensure project is installed or PYTHONPATH includes the repo root"
+        ) from e
 
     em_env = os.environ.get("EXPERIMENT_RUN_DIR")
     if em_env:

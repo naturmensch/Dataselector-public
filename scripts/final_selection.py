@@ -5,12 +5,14 @@ Usage:
     PYTHONPATH=. python scripts/final_selection.py
 """
 
+
 def main():
+    import argparse
     import time
     from pathlib import Path
-    import argparse
-    import yaml
+
     import pandas as pd
+    import yaml
 
     ROOT = Path(__file__).resolve().parents[1]
     if str(ROOT) not in __import__("sys").path:
@@ -18,9 +20,9 @@ def main():
 
     from src.clustering import ClusteringPipeline
     from src.diversity_selector import DiversitySelector
+    from src.io import load_metadata, load_or_extract_features
     from src.metrics import compute_metrics
     from src.visualizer import Visualizer
-    from src.io import load_metadata, load_or_extract_features
 
     OUT = ROOT / "outputs" / "final_selection"
     OUT.mkdir(parents=True, exist_ok=True)
@@ -32,7 +34,9 @@ def main():
         action="store_true",
         help="Use bootstrap-best config from outputs/pipeline_config.bootstrap.yaml",
     )
-    parser.add_argument("--n-samples", type=int, default=None, help="Override n_samples")
+    parser.add_argument(
+        "--n-samples", type=int, default=None, help="Override n_samples"
+    )
     parser.add_argument(
         "--min-distance-km", type=float, default=None, help="Override min_distance_km"
     )
@@ -59,7 +63,9 @@ def main():
         cfg = {}
 
     n_samples = (
-        args.n_samples if args.n_samples else cfg.get("selection", {}).get("n_samples", 34)
+        args.n_samples
+        if args.n_samples
+        else cfg.get("selection", {}).get("n_samples", 34)
     )
     alpha = cfg.get("selection", {}).get("alpha_visual", 0.7)
     beta = cfg.get("selection", {}).get("beta_spatial", 0.05)
@@ -76,7 +82,9 @@ def main():
     features = load_or_extract_features(
         OUT_ROOT,
         csv_meta=(
-            str(OUT_ROOT / "metadata.csv") if (OUT_ROOT / "metadata.csv").exists() else None
+            str(OUT_ROOT / "metadata.csv")
+            if (OUT_ROOT / "metadata.csv").exists()
+            else None
         ),
         batch_size=16,
         cache=True,
@@ -153,7 +161,6 @@ def main():
     )
     # include extra info (preselection)
     metrics.update(metrics_extra)
-
 
     # Visualizations
     viz = Visualizer(output_dir=str(OUT))

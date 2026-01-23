@@ -19,7 +19,9 @@ def main():
         import optuna
         from optuna.trial import TrialState, create_trial
     except Exception:  # pragma: no cover - environment dependent
-        print("Error: optuna is required to run this script. Install optuna in your environment.")
+        print(
+            "Error: optuna is required to run this script. Install optuna in your environment."
+        )
         raise SystemExit(2)
 
     parser = argparse.ArgumentParser(description="Import trials CSV to Optuna storage")

@@ -7,7 +7,9 @@ from src.metrics import compute_metrics
 
 def test_compute_metrics_uses_projected_coords_when_available():
     df = pd.DataFrame({"N": [0.0, 0.0], "left": [0.0, 0.0], "year": [2000, 2000]})
-    gdf_metric = pd.DataFrame({"_proj_x": [0.0, 1000.0], "_proj_y": [0.0, 0.0]}, index=df.index)
+    gdf_metric = pd.DataFrame(
+        {"_proj_x": [0.0, 1000.0], "_proj_y": [0.0, 0.0]}, index=df.index
+    )
     # attach projected dataframe as attribute like load_metadata does (use attrs)
     df.attrs["gdf_metric"] = gdf_metric
 

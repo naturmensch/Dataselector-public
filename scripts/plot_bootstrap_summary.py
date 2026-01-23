@@ -2,8 +2,8 @@
 
 from pathlib import Path
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "outputs" / "fine_sweep"
@@ -11,6 +11,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 
 if __name__ == "__main__":
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 

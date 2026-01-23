@@ -1,9 +1,15 @@
 import json
 from pathlib import Path
+
 import pandas as pd
+
 from tests._helpers.load_script import load_script
+
 ROOT = Path(__file__).resolve().parents[1]
-monitor = load_script(ROOT / "scripts" / "xxl_full_run_monitor.py", module_name="scripts.xxl_full_run_monitor_test")
+monitor = load_script(
+    ROOT / "scripts" / "xxl_full_run_monitor.py",
+    module_name="scripts.xxl_full_run_monitor_test",
+)
 
 
 def test_monitor_auto_resume_finalizes_from_trials_csv(monkeypatch, tmp_path):

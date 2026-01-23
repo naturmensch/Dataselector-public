@@ -5,6 +5,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+
 def _generate_report():
     ROOT = Path(__file__).resolve().parents[1]
     LOG_DIR = ROOT / "outputs"
@@ -22,7 +23,9 @@ def _generate_report():
             [
                 p
                 for p in runs_root.iterdir()
-                if p.is_dir() and "hamburg" in p.name.lower() and "xxl" in p.name.lower()
+                if p.is_dir()
+                and "hamburg" in p.name.lower()
+                and "xxl" in p.name.lower()
             ]
         )
         if runs_root.exists()

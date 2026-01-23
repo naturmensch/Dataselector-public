@@ -37,6 +37,7 @@ def _import_xxl_module():
 
     return xxl_mod
 
+
 LOG = []
 
 
@@ -143,15 +144,16 @@ def main() -> int:
     start = time.time()
 
     try:
+        xxl_mod = _import_xxl_module()
         # Phase 1: small n_trials and candidates
-        ok = phase_1_xxl_hamburg(n_trials=10, n_candidates=5, pass_params=True)
+        ok = xxl_mod.phase_1_xxl_hamburg(n_trials=10, n_candidates=5, pass_params=True)
         LOG.append(f"Phase 1 returned: {ok}")
         if not ok:
             LOG.append("Phase 1 failed")
             return 1
 
         # Phase 2: reproducibility seeds
-        ok = phase_2_reproducibility(
+        ok = xxl_mod.phase_2_reproducibility(
             seeds=[43, 44], n_trials=10, n_candidates=5, pass_params=True
         )
         LOG.append(f"Phase 2 returned: {ok}")
@@ -160,14 +162,14 @@ def main() -> int:
             return 1
 
         # Phase 3: statistics extraction should find the xxl final run created above
-        ok = phase_3_final_statistics()
+        ok = xxl_mod.phase_3_final_statistics()
         LOG.append(f"Phase 3 returned: {ok}")
         if not ok:
             LOG.append("Phase 3 failed")
             return 1
 
         # Phase 4: summary generation
-        ok = phase_4_thesis_summary()
+        ok = xxl_mod.phase_4_thesis_summary()
         LOG.append(f"Phase 4 returned: {ok}")
         if not ok:
             LOG.append("Phase 4 failed")

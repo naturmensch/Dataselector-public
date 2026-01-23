@@ -6,6 +6,7 @@ from src.feature_extractor import FeatureExtractor, preprocess_historical_image
 
 pytestmark = pytest.mark.integration
 
+
 @pytest.fixture(autouse=True)
 def _require_numba():
     pytest.importorskip("numba", exc_type=ImportError)

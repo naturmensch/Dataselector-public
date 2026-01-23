@@ -3,21 +3,25 @@ from pathlib import Path
 
 import pytest
 
+from tests._helpers.load_script import load_script
+
 
 @pytest.fixture(autouse=True)
 def skip_if_no_optuna():
     pytest.importorskip("optuna")
 
+
 # Make optuna module available in this namespace for tests that directly call it
 optuna = pytest.importorskip("optuna")
-
-from tests._helpers.load_script import load_script
 
 
 @pytest.fixture(scope="module")
 def monitor_mod():
     ROOT = Path(__file__).resolve().parents[1]
-    return load_script(ROOT / "scripts" / "xxl_full_run_monitor.py", module_name="scripts.xxl_full_run_monitor")
+    return load_script(
+        ROOT / "scripts" / "xxl_full_run_monitor.py",
+        module_name="scripts.xxl_full_run_monitor",
+    )
 
 
 @pytest.fixture

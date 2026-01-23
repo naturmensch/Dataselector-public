@@ -13,6 +13,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+# Matplotlib placeholder assigned by _ensure_matplotlib()
+plt = None
+
 
 def _ensure_matplotlib():
     import matplotlib
@@ -25,6 +28,8 @@ def _ensure_matplotlib():
 
 def plot_convergence_from_csv(csv_path: Path, output_dir: Path):
     """Analysiere Konvergenz aus CSV-Datei."""
+    # Ensure matplotlib backend and `plt` is available
+    _ensure_matplotlib()
     df = pd.read_csv(csv_path)
 
     if "value" not in df.columns:
@@ -114,6 +119,8 @@ def plot_convergence_from_csv(csv_path: Path, output_dir: Path):
 
 def plot_convergence_from_study(study_path: Path, output_dir: Path):
     """Analysiere Konvergenz aus Optuna Study (pickle)."""
+    # Ensure matplotlib backend and `plt` is available
+    _ensure_matplotlib()
     # optuna is not required for reading a pickled study; remove import to satisfy linters
     try:
         import optuna  # noqa: F401
@@ -224,8 +231,6 @@ def main():
     if args.study_db:
         # Load from database
         try:
-            import optuna
-
             # Attempt to plot convergence from the provided DB path. The direct `load_study`
             # call is unnecessary here and was removed to avoid an unused-variable lint.
             result = plot_convergence_from_study(Path(args.study_db), args.output_dir)

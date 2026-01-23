@@ -1,9 +1,9 @@
+import importlib.util
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
-import importlib.util
 
 pytestmark = pytest.mark.integration
 
@@ -11,8 +11,6 @@ pytestmark = pytest.mark.integration
 @pytest.fixture(autouse=True)
 def skip_if_no_numba():
     pytest.importorskip("numba", exc_type=ImportError)
-
-
 
 
 def _write_meta(path: Path, csv_hash: str, days_ago: int = 0):

@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+
 from src.multi_criteria_facility_location import MultiCriteriaFacilityLocation
 from src.spatial_facility_location import SpatialConstrainedFacilityLocation
 
@@ -25,10 +26,17 @@ def test_multi_criteria_uses_projected_coords():
     proj_y = [0.0, 100000.0, 200000.0]
 
     meta = DummyMetadata(latitudes, longitudes, years, proj_x=proj_x, proj_y=proj_y)
-    m = MultiCriteriaFacilityLocation(n_samples=2, metadata=meta, alpha_visual=0.5, beta_spatial=0.25, gamma_temporal=0.25, min_distance_km=50.0)
+    m = MultiCriteriaFacilityLocation(
+        n_samples=2,
+        metadata=meta,
+        alpha_visual=0.5,
+        beta_spatial=0.25,
+        gamma_temporal=0.25,
+        min_distance_km=50.0,
+    )
 
     X = np.random.RandomState(0).randn(3, 4)  # dummy visual features
-    dcombined = m._compute_pairwise_distances(X)
+    _dcombined = m._compute_pairwise_distances(X)
 
     # Check that spatial km matrix was set and equals approx expected distances (100 km steps)
     sp_km = m._spatial_km
@@ -47,7 +55,9 @@ def test_spatial_selector_respects_min_distance():
 
     meta = DummyMetadata(latitudes, longitudes, years, proj_x=proj_x, proj_y=proj_y)
 
-    sel = SpatialConstrainedFacilityLocation(n_samples=2, metadata=meta, min_distance_km=50.0)
+    sel = SpatialConstrainedFacilityLocation(
+        n_samples=2, metadata=meta, min_distance_km=50.0
+    )
     # features to pass (not used for spatial constraint logic heavily)
     X = np.zeros((3, 2))
     # When fitting, the selector must avoid selecting the two close points

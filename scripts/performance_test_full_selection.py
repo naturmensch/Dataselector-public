@@ -1,12 +1,13 @@
 def main():
     import time
     from pathlib import Path
+
     import numpy as np
 
     from src.clustering import ClusteringPipeline
     from src.diversity_selector import DiversitySelector
-    from src.spatial_facility_location import haversine_distance
     from src.io import load_metadata, load_or_extract_features
+    from src.spatial_facility_location import haversine_distance
 
     OUT = Path("outputs")
 
@@ -15,7 +16,9 @@ def main():
     features = load_or_extract_features(
         out_dir=OUT, csv_meta=csv_meta, batch_size=16, cache=False
     )
-    metadata = load_metadata(csv_meta if csv_meta is not None else "data/new_all_tiles.csv")
+    metadata = load_metadata(
+        csv_meta if csv_meta is not None else "data/new_all_tiles.csv"
+    )
 
     print("=" * 80)
     print("MULTI-CRITERIA PERFORMANCE TEST: n_samples=673 (Full Dataset)")
@@ -45,27 +48,34 @@ def main():
     years = metadata.iloc[selected]["year"].dropna().values
     temporal_std = float(np.std(years)) if len(years) > 0 else np.nan
     temporal_range = float(np.max(years) - np.min(years)) if len(years) > 0 else np.nan
-    temporal_mean = float(np.mean(years)) if len(years) > 0 else np.nan
+    _temporal_mean = float(np.mean(years)) if len(years) > 0 else np.nan
     wwi_years = (years >= 1906) & (years <= 1918)
     wwi_fraction = float(np.sum(wwi_years) / len(years)) if len(years) > 0 else np.nan
 
     # Prefer projected coordinates if available
     from src.io import get_metric_gdf
+
     use_metric = get_metric_gdf(metadata) is not None
     pairwise = []
     for i in range(len(selected)):
         for j in range(i + 1, len(selected)):
             if use_metric:
-                a = metadata.gdf_metric.loc[selected[i], ["_proj_x", "_proj_y"]].values.astype(float)
-                b = metadata.gdf_metric.loc[selected[j], ["_proj_x", "_proj_y"]].values.astype(float)
+                a = metadata.gdf_metric.loc[
+                    selected[i], ["_proj_x", "_proj_y"]
+                ].values.astype(float)
+                b = metadata.gdf_metric.loc[
+                    selected[j], ["_proj_x", "_proj_y"]
+                ].values.astype(float)
                 pairwise.append(float((((a - b) ** 2).sum()) ** 0.5 / 1000.0))
             else:
                 r1 = metadata.iloc[selected[i]]
                 r2 = metadata.iloc[selected[j]]
-                pairwise.append(haversine_distance(r1["N"], r1["left"], r2["N"], r2["left"]))
+                pairwise.append(
+                    haversine_distance(r1["N"], r1["left"], r2["N"], r2["left"])
+                )
     mean_pairwise = float(np.mean(pairwise)) if pairwise else np.nan
     min_pairwise = float(np.min(pairwise)) if pairwise else np.nan
-    std_pairwise = float(np.std(pairwise)) if pairwise else np.nan
+    _std_pairwise = float(np.std(pairwise)) if pairwise else np.nan
 
     print("\nErgebnisse:")
     print(f"  n_selected: {n_sel} (erwartet: 673)")
@@ -78,7 +88,9 @@ def main():
     print(f"  Runtime: {runtime:.2f}s")
 
     # Save selection
-    metadata.iloc[selected].to_csv(OUT / "multi_criteria_full_selection.csv", index=False)
+    metadata.iloc[selected].to_csv(
+        OUT / "multi_criteria_full_selection.csv", index=False
+    )
 
     print("\nSelection saved to: outputs/multi_criteria_full_selection.csv")
 

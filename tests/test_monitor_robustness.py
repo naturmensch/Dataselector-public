@@ -1,10 +1,11 @@
+import importlib.util
 import json
 import subprocess
 import sys
+import types
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import importlib.util
 import pytest
 
 optuna = pytest.importorskip("optuna")
@@ -17,11 +18,9 @@ spec = importlib.util.spec_from_file_location(
 monitor = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(monitor)
 # Also register module under package-style name expected by tests/patches
-import sys as _sys
-import types as _types
-_sys.modules.setdefault("scripts", _types.ModuleType("scripts"))
-_sys.modules["scripts"].xxl_full_run_monitor = monitor
-_sys.modules["scripts.xxl_full_run_monitor"] = monitor
+sys.modules.setdefault("scripts", types.ModuleType("scripts"))
+sys.modules["scripts"].xxl_full_run_monitor = monitor
+sys.modules["scripts.xxl_full_run_monitor"] = monitor
 
 
 def test_monitor_args_no_new_session(monkeypatch, tmp_path):
@@ -39,7 +38,6 @@ def test_monitor_args_no_new_session(monkeypatch, tmp_path):
         patch("subprocess.Popen", return_value=mock_popen) as mock_subprocess,
         patch("os.getpgid", return_value=12345),
     ):
-
         monitor.main()
 
         args, kwargs = mock_subprocess.call_args
@@ -72,7 +70,6 @@ def test_monitor_pid_file_creation(monkeypatch, tmp_path):
             patch("time.sleep"),
             patch("os.getpgid", return_value=12345),
         ):
-
             monitor.main()
 
             pid_file = tmp_path / "XXL_FULL_RUN_TEST_TS.pid"
@@ -122,7 +119,6 @@ def test_monitor_trials_stability_logic(monkeypatch, tmp_path):
         patch("scripts.xxl_full_run_monitor.datetime") as mock_dt,
         patch("os.getpgid", return_value=12345),
     ):
-
         mock_dt.now.return_value.strftime.return_value = "TS"
         mock_dt.now.return_value.isoformat.return_value = "ISO"
         mock_dt.fromtimestamp.return_value.isoformat.return_value = "ISO"
@@ -157,7 +153,6 @@ def test_monitor_trials_stability_logic(monkeypatch, tmp_path):
         patch("os.getpgid", return_value=12345),
         patch("time.sleep", side_effect=KeyboardInterrupt),
     ):  # Trigger interrupt immediately
-
         monitor.main()
 
         # Check that both signals were sent
@@ -186,7 +181,6 @@ def test_monitor_passes_child_dry_run(monkeypatch, tmp_path):
         patch("scripts.xxl_full_run_monitor.datetime") as mock_dt,
         patch("os.getpgid", return_value=1111),
     ):
-
         mock_dt.now.return_value.strftime.return_value = "TS"
         mock_dt.now.return_value.isoformat.return_value = "ISO"
         mock_dt.fromtimestamp.return_value.isoformat.return_value = "ISO"
@@ -233,7 +227,6 @@ def test_run_hook_uses_monitor_python(monkeypatch, tmp_path):
         patch("scripts.xxl_full_run_monitor.datetime") as mock_dt,
         patch("os.getpgid", return_value=2222),
     ):
-
         mock_dt.now.return_value.strftime.return_value = "TS"
         mock_dt.now.return_value.isoformat.return_value = "ISO"
         mock_dt.fromtimestamp.return_value.isoformat.return_value = "ISO"
@@ -269,7 +262,6 @@ def test_monitor_log_truncation_handling(monkeypatch, tmp_path):
         patch("scripts.xxl_full_run_monitor.datetime") as mock_dt,
         patch("os.getpgid", return_value=12345),
     ):
-
         mock_dt.now.return_value.strftime.return_value = "TS"
         mock_dt.now.return_value.isoformat.return_value = "ISO"
         mock_dt.fromtimestamp.return_value.isoformat.return_value = "ISO"
@@ -308,7 +300,6 @@ def test_monitor_config_validation(monkeypatch, tmp_path):
         patch("scripts.xxl_full_run_monitor.datetime") as mock_dt,
         patch("os.getpgid", return_value=7777),
     ):
-
         mock_dt.now.return_value.strftime.return_value = "TEST_TS"
         mock_dt.now.return_value.isoformat.return_value = "ISO"
         mock_dt.fromtimestamp.return_value.isoformat.return_value = "ISO"
@@ -366,7 +357,6 @@ def test_monitor_attempts_reconstruction(monkeypatch, tmp_path):
         patch("scripts.xxl_full_run_monitor.datetime") as mock_dt,
         patch("os.getpgid", return_value=4444),
     ):
-
         mock_dt.now.return_value.strftime.return_value = "TEST_TS"
         mock_dt.now.return_value.isoformat.return_value = "ISO"
         mock_dt.fromtimestamp.return_value.isoformat.return_value = "ISO"
@@ -420,7 +410,6 @@ def test_monitor_no_reconstruct_flag(monkeypatch, tmp_path):
         patch("scripts.xxl_full_run_monitor.datetime") as mock_dt,
         patch("os.getpgid", return_value=5555),
     ):
-
         mock_dt.now.return_value.strftime.return_value = "TEST_TS"
         mock_dt.now.return_value.isoformat.return_value = "ISO"
         mock_dt.fromtimestamp.return_value.isoformat.return_value = "ISO"
@@ -476,7 +465,6 @@ def test_monitor_hooks(monkeypatch, tmp_path):
         patch("os.getpgid", return_value=8888),
         patch("scripts.xxl_full_run_monitor.datetime") as mock_dt,
     ):
-
         mock_dt.now.return_value.strftime.return_value = "TS"
         mock_dt.now.return_value.isoformat.return_value = "ISO"
         mock_dt.fromtimestamp.return_value.isoformat.return_value = "ISO"

@@ -1,10 +1,15 @@
 import json
+from pathlib import Path
 
 import pandas as pd
-from pathlib import Path
+
 from tests._helpers.load_script import load_script
+
 ROOT = Path(__file__).resolve().parents[1]
-xxl = load_script(ROOT / "scripts" / "xxl_KDR146_run_thesis_complete.py", module_name="scripts.xxl_KDR146_run_thesis_complete_test")
+xxl = load_script(
+    ROOT / "scripts" / "xxl_KDR146_run_thesis_complete.py",
+    module_name="scripts.xxl_KDR146_run_thesis_complete_test",
+)
 
 
 def test_extract_statistics_handles_missing_n_samples(tmp_path):

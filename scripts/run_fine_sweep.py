@@ -103,7 +103,9 @@ def main(argv: list | None = None) -> int:
                 n_lhs = run_cfg.get("n_lhs")
                 if n_lhs:
                     n_samples_cfg = int(n_lhs)
-                    print(f"ℹ️ Verwende n_samples aus run config (n_lhs): {n_samples_cfg}")
+                    print(
+                        f"ℹ️ Verwende n_samples aus run config (n_lhs): {n_samples_cfg}"
+                    )
 
             if n_samples_cfg is None:
                 expl_cfg_path = em.get_path("config") / "config_exploration.yaml"
@@ -228,10 +230,14 @@ def main(argv: list | None = None) -> int:
         print(f"Info: {n_infeasible} infeasible runs removed from Pareto computation.")
     feasible_df = full_df[feasible_mask].reset_index(drop=True)
     pareto_front = compute_pareto_front(feasible_df)
-    export_pareto_report(pareto_front, output_path=str(OUTPUT_DIR / "pareto_solutions.csv"))
+    export_pareto_report(
+        pareto_front, output_path=str(OUTPUT_DIR / "pareto_solutions.csv")
+    )
     # also save filtered results for reproducibility
     feasible_df.to_csv(OUTPUT_DIR / "fine_sweep_results_feasible.csv", index=False)
-    visualize_pareto_front(feasible_df, pareto_front, output_dir=str(OUTPUT_DIR / "plots"))
+    visualize_pareto_front(
+        feasible_df, pareto_front, output_dir=str(OUTPUT_DIR / "plots")
+    )
     print("Fine sweep + Pareto finished")
 
     return 0

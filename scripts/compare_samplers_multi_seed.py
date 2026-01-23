@@ -223,6 +223,7 @@ def compare_and_analyze(results_df: pd.DataFrame, out_dir: Path):
 
     # Plots: boxplot of best values
     import matplotlib.pyplot as plt
+
     fig, ax = plt.subplots(figsize=(8, 6))
     data = [grouped[s] for s in samplers]
     ax.boxplot(data, tick_labels=[s.upper() for s in samplers], patch_artist=True)

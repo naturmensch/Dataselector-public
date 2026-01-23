@@ -11,9 +11,9 @@ Usage:
     mod = load_script(Path("scripts/my_script.py"), module_name="scripts.my_script")
     # call mod.main(...) or inspect mod.__dict__
 """
-from pathlib import Path
 import importlib.util
 import sys
+from pathlib import Path
 from types import ModuleType
 
 

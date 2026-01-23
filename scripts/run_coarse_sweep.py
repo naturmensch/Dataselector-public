@@ -10,9 +10,6 @@ Please use the adaptive LHS-based Exploration pipeline instead:
 The new approach (LHS/Sobol) is adaptive, more reproducible, and scientifically preferable.
 """
 
-import sys
-from pathlib import Path
-
 
 def main() -> int:
     """Deprecation wrapper: prints a helpful message and exits with code 0 when run as a script.
@@ -32,4 +29,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

@@ -38,7 +38,6 @@ def _init_data():
         return
 
     from src.io import load_metadata, load_or_extract_features
-    from src.clustering import ClusteringPipeline
 
     features_full = load_or_extract_features(
         OUT,
@@ -79,10 +78,13 @@ def run_grid(
         features = features_full[idxs]
         metadata = metadata_full.iloc[idxs].reset_index(drop=True)
         # preserve projected coords if available
-        from src.io import get_metric_gdf, attach_metric_gdf
+        from src.io import attach_metric_gdf, get_metric_gdf
 
         if get_metric_gdf(metadata_full) is not None:
-            attach_metric_gdf(metadata, get_metric_gdf(metadata_full).iloc[idxs].reset_index(drop=True))
+            attach_metric_gdf(
+                metadata,
+                get_metric_gdf(metadata_full).iloc[idxs].reset_index(drop=True),
+            )
 
     results = []
 
@@ -100,6 +102,10 @@ def run_grid(
         }
 
         try:
+            # Lazily import heavy project classes to avoid import-time side-effects
+            from src.clustering import ClusteringPipeline
+            from src.diversity_selector import DiversitySelector
+
             # Clustering
             cl = ClusteringPipeline(n_clusters=nc)
             emb, labels = cl.fit_transform(features)
@@ -157,8 +163,12 @@ def run_grid(
             for i in range(len(idxs)):
                 for j in range(i + 1, len(idxs)):
                     if use_metric:
-                        a = metadata.gdf_metric.loc[idxs[i], ["_proj_x", "_proj_y"]].values.astype(float)
-                        b = metadata.gdf_metric.loc[idxs[j], ["_proj_x", "_proj_y"]].values.astype(float)
+                        a = metadata.gdf_metric.loc[
+                            idxs[i], ["_proj_x", "_proj_y"]
+                        ].values.astype(float)
+                        b = metadata.gdf_metric.loc[
+                            idxs[j], ["_proj_x", "_proj_y"]
+                        ].values.astype(float)
                         pairwise.append(float((((a - b) ** 2).sum()) ** 0.5 / 1000.0))
                     else:
                         r1 = metadata.iloc[idxs[i]]

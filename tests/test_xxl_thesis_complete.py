@@ -2,8 +2,8 @@
 Tests for XXL Thesis Complete Pipeline (Corrected Parameters)
 """
 
-import json
 import importlib.util
+import json
 from pathlib import Path
 
 import numpy as np
@@ -13,7 +13,8 @@ import pytest
 # Load the thesis run script directly (avoid sys.path modifications)
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location(
-    "xxl_KDR146_run_thesis_complete", ROOT / "scripts" / "xxl_KDR146_run_thesis_complete.py"
+    "xxl_KDR146_run_thesis_complete",
+    ROOT / "scripts" / "xxl_KDR146_run_thesis_complete.py",
 )
 xxl_mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(xxl_mod)

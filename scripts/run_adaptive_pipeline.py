@@ -18,6 +18,8 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
+import pandas as pd
+
 # Defer heavy project imports into `main()` to keep module import lightweight for tests
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -219,7 +221,10 @@ def main():
     parser.add_argument(
         "--seed", type=int, default=42, help="Global seed to pass to all stages"
     )
-    args, _ = (
+    (
+        args,
+        _,
+    ) = (
         parser.parse_known_args()
     )  # ignore unknown pytest args when imported during tests
 
@@ -261,7 +266,7 @@ def main():
     print(em.summary())
 
     # Import project utilities lazily to avoid import-time side-effects during tests
-    import pandas as pd
+
     from src.pipeline_utils import (
         compute_adaptive_n_initial,
         compute_fine_search_bounds,

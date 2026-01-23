@@ -1,8 +1,14 @@
 from pathlib import Path
-from tests._helpers.load_script import load_script
-ROOT = Path(__file__).resolve().parents[1]
-mod = load_script(ROOT / "scripts" / "compare_samplers_multi_seed.py", module_name="scripts.compare_samplers_multi_seed_test")
+
 import pandas as pd
+
+from tests._helpers.load_script import load_script
+
+ROOT = Path(__file__).resolve().parents[1]
+mod = load_script(
+    ROOT / "scripts" / "compare_samplers_multi_seed.py",
+    module_name="scripts.compare_samplers_multi_seed_test",
+)
 
 
 def test_compare_and_analyze(tmp_path):

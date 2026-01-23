@@ -5,6 +5,7 @@ from src.clustering import ClusteringPipeline
 
 pytestmark = pytest.mark.integration
 
+
 @pytest.fixture(autouse=True)
 def _require_numba():
     pytest.importorskip("numba", exc_type=ImportError)

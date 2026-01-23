@@ -7,9 +7,12 @@ proxy for space-filling quality across multiple trials and sample sizes.
 import argparse
 from pathlib import Path
 
-import matplotlib
 import numpy as np
 import pandas as pd
+
+# Matplotlib and sampling strategy placeholders set at runtime
+plt = None
+ss = None
 
 # Defer matplotlib backend and project imports to runtime to avoid import-time side-effects
 
@@ -32,6 +35,8 @@ def _ensure_runtime_deps():
 
 # Ensure the plotting and project imports are available when running as script
 
+
+# Ensure the plotting and project imports are available when running as script
 
 
 def min_pairwise_distance(samples: np.ndarray) -> float:
@@ -83,6 +88,7 @@ def benchmark_space_filling(sample_sizes, n_trials=10, dim=3, seed=42):
 
 
 def main():
+    _ensure_runtime_deps()
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--sample-sizes",

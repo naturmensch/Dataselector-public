@@ -19,7 +19,9 @@ load_metadata = None
 load_or_extract_features = None
 ClusteringPipeline = None
 try:
-    from src.io import load_metadata as _lm, load_or_extract_features as _lof
+    from src.io import load_metadata as _lm
+    from src.io import load_or_extract_features as _lof
+
     load_metadata = _lm
     load_or_extract_features = _lof
 except Exception:
@@ -28,12 +30,11 @@ except Exception:
 try:
     # Allow tests to monkeypatch ClusteringPipeline at module level
     from src.clustering import ClusteringPipeline as _cls
+
     ClusteringPipeline = _cls
 except Exception:
     # Keep None; will be imported lazily inside main
     pass
-
-
 
 
 def jaccard(a, b):
@@ -60,6 +61,7 @@ def bootstrap_candidate(
 ):
     # Local imports to keep module import-safe
     from tqdm import trange
+
     from src.clustering import ClusteringPipeline
     from src.diversity_selector import DiversitySelector
     from src.metrics import compute_metrics
@@ -69,18 +71,24 @@ def bootstrap_candidate(
     results = []
 
     for i in range(n_boot):
-        for _ in trange(1, desc=f"Boot candidate {alpha:.2f},{beta:.2f},{gamma:.2f} (iter {i+1})", leave=False):
+        for _ in trange(
+            1,
+            desc=f"Boot candidate {alpha:.2f},{beta:.2f},{gamma:.2f} (iter {i+1})",
+            leave=False,
+        ):
             pass
 
         sample_idx = rng.integers(0, N, size=N)
         boot_features = features[sample_idx]
         boot_meta = metadata.iloc[sample_idx].reset_index(drop=True)
         # Preserve projected coords in the bootstrap sample if present
-        from src.io import get_metric_gdf, attach_metric_gdf
+        from src.io import attach_metric_gdf, get_metric_gdf
 
         gdf_metric = get_metric_gdf(metadata)
         if gdf_metric is not None:
-            attach_metric_gdf(boot_meta, gdf_metric.iloc[sample_idx].reset_index(drop=True))
+            attach_metric_gdf(
+                boot_meta, gdf_metric.iloc[sample_idx].reset_index(drop=True)
+            )
 
         # clustering on boot features (not used for metrics -- metrics computed on original mapping)
         clustering = ClusteringPipeline(n_clusters=8)
@@ -131,7 +139,8 @@ def main(
 ):
     # Local imports to keep module import-safe, but prefer module-level hooks if tests patched them
     if load_metadata is None or load_or_extract_features is None:
-        from src.io import load_metadata as _load_metadata_fn, load_or_extract_features as _load_or_extract_features_fn
+        from src.io import load_metadata as _load_metadata_fn
+        from src.io import load_or_extract_features as _load_or_extract_features_fn
     else:
         _load_metadata_fn = load_metadata
         _load_or_extract_features_fn = load_or_extract_features

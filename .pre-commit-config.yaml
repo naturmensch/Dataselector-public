@@ -11,7 +11,8 @@ repos:
       - id: isort
 
   - repo: https://github.com/charliermarsh/ruff-pre-commit
-    rev: v0.21.0
+    # Pin to a stable ruff-pre-commit release compatible with our environment
+    rev: v0.3.0
     hooks:
       - id: ruff
         args: [--fix]

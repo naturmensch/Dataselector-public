@@ -1,6 +1,5 @@
-import os
 import pandas as pd
-import numpy as np
+
 from src.visualizer import Visualizer
 
 
@@ -22,7 +21,9 @@ def test_plot_spatial_distribution_with_projected_coords(tmp_path):
 
     m = Meta()
     # create projected coordinates in meters (three points)
-    m.gdf_metric = pd.DataFrame({"_proj_x": [0.0, 0.0, 0.0], "_proj_y": [0.0, 100000.0, 200000.0]})
+    m.gdf_metric = pd.DataFrame(
+        {"_proj_x": [0.0, 0.0, 0.0], "_proj_y": [0.0, 100000.0, 200000.0]}
+    )
     viz = Visualizer(output_dir=str(tmp_path))
     out = tmp_path / "spatial_proj.png"
     fig = viz.plot_spatial_distribution(m, selected_indices=[0, 2], save_path=str(out))

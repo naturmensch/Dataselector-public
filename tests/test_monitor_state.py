@@ -1,10 +1,14 @@
 import sqlite3
+from pathlib import Path
 
 import pandas as pd
-from pathlib import Path
+
 from tests._helpers.load_script import load_script
+
 ROOT = Path(__file__).resolve().parents[1]
-monitor_state = load_script(ROOT / "scripts" / "monitor_state.py", module_name="scripts.monitor_state_test")
+monitor_state = load_script(
+    ROOT / "scripts" / "monitor_state.py", module_name="scripts.monitor_state_test"
+)
 ExperimentStateAnalyzer = monitor_state.ExperimentStateAnalyzer
 
 

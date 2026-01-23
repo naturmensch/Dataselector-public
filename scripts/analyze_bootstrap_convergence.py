@@ -12,6 +12,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+# Matplotlib placeholder set by _ensure_matplotlib() at runtime
+plt = None
+
 
 def _ensure_matplotlib():
     import matplotlib

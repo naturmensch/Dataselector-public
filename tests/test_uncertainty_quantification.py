@@ -1,6 +1,7 @@
-import pytest
-import numpy as np
 from pathlib import Path
+
+import numpy as np
+import pytest
 
 from tests._helpers.load_script import load_script
 
@@ -13,7 +14,10 @@ def skip_if_no_torch():
 @pytest.fixture(scope="module")
 def uq_mod():
     ROOT = Path(__file__).resolve().parents[1]
-    return load_script(ROOT / "scripts" / "uncertainty_quantification.py", module_name="scripts.uncertainty_quantification_test")
+    return load_script(
+        ROOT / "scripts" / "uncertainty_quantification.py",
+        module_name="scripts.uncertainty_quantification_test",
+    )
 
 
 @pytest.fixture

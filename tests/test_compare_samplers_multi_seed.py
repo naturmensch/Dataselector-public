@@ -10,7 +10,10 @@ from tests._helpers.load_script import load_script
 @pytest.fixture(scope="module")
 def compare_mod():
     ROOT = Path(__file__).resolve().parents[1]
-    return load_script(ROOT / "scripts" / "compare_samplers_multi_seed.py", module_name="scripts.compare_samplers_multi_seed")
+    return load_script(
+        ROOT / "scripts" / "compare_samplers_multi_seed.py",
+        module_name="scripts.compare_samplers_multi_seed",
+    )
 
 
 @pytest.fixture()
@@ -18,7 +21,9 @@ def run_single_optuna(compare_mod):
     return compare_mod.run_single_optuna
 
 
-def test_run_single_optuna_no_run_dir_includes_subprocess_output(tmp_path, monkeypatch, run_single_optuna):
+def test_run_single_optuna_no_run_dir_includes_subprocess_output(
+    tmp_path, monkeypatch, run_single_optuna
+):
     """If the subprocess completes but no run dir is created, the FileNotFoundError should include stdout/stderr."""
     # Ensure outputs/runs does not contain the expected run
     monkeypatch.setattr("scripts.compare_samplers_multi_seed.ROOT", tmp_path)
@@ -38,12 +43,18 @@ def test_run_single_optuna_no_run_dir_includes_subprocess_output(tmp_path, monke
         assert "Subprocess stdout" in msg and "Subprocess stderr" in msg
 
 
-def test_run_single_optuna_success(tmp_path, monkeypatch, run_single_optuna, compare_mod):
+def test_run_single_optuna_success(
+    tmp_path, monkeypatch, run_single_optuna, compare_mod
+):
     """Test successful run with mocked subprocess and file system."""
     # Mock ROOT to point to tmp_path (patch both the loaded module and any existing package-loaded module)
     monkeypatch.setattr(compare_mod, "ROOT", tmp_path)
-    monkeypatch.setattr("scripts.compare_samplers_multi_seed.ROOT", tmp_path, raising=False)
-    monkeypatch.setattr("scripts.compare_samplers_multi_seed.ROOT", tmp_path, raising=False)
+    monkeypatch.setattr(
+        "scripts.compare_samplers_multi_seed.ROOT", tmp_path, raising=False
+    )
+    monkeypatch.setattr(
+        "scripts.compare_samplers_multi_seed.ROOT", tmp_path, raising=False
+    )
 
     # Setup dummy run dir structure
     exp_name = "hamburg_cmaes_10trials_s42"

@@ -13,8 +13,6 @@ Behavior:
 
 import argparse
 import json
-import os
-import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -25,7 +23,7 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 # Ensure 'src' package is importable when script is executed from outside repo root
 try:
-    import src  # type: ignore
+    pass  # type: ignore
 except Exception:
     import sys as _sys
 
@@ -137,7 +135,9 @@ def run_autoscale(
     try:  # pragma: no cover - environment dependent
         import optuna
     except Exception:
-        print("Error: optuna is required to run optuna_autoscale. Install optuna in your environment.")
+        print(
+            "Error: optuna is required to run optuna_autoscale. Install optuna in your environment."
+        )
         raise SystemExit(2)
 
     # Initialize global search bounds

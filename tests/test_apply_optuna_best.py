@@ -1,11 +1,15 @@
 from pathlib import Path
-from tests._helpers.load_script import load_script
-ROOT = Path(__file__).resolve().parents[1]
-mod = load_script(ROOT / "scripts" / "apply_optuna_best.py", module_name="scripts.apply_optuna_best_test")
 
 import pandas as pd
 import yaml
 
+from tests._helpers.load_script import load_script
+
+ROOT = Path(__file__).resolve().parents[1]
+mod = load_script(
+    ROOT / "scripts" / "apply_optuna_best.py",
+    module_name="scripts.apply_optuna_best_test",
+)
 
 
 def make_dummy_optuna_csv(path: Path):
@@ -45,7 +49,9 @@ def test_extract_and_write_config(tmp_path):
 
     # write new config
     out_cfg = tmp_path / "pipeline_config.optuna.yaml"
-    mod.write_new_config(out_cfg, params, base_cfg_path=Path("config/pipeline_config.yaml"))
+    mod.write_new_config(
+        out_cfg, params, base_cfg_path=Path("config/pipeline_config.yaml")
+    )
     assert out_cfg.exists()
     cfg = yaml.safe_load(out_cfg.read_text())
     sel = cfg.get("selection", {})
