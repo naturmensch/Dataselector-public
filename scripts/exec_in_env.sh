@@ -93,12 +93,30 @@ REQ_TXT="${REPO_ROOT}/requirements.txt"
 
 # check for environment existence (conda env list)
 env_exists_conda() {
-    if cmd_exists mamba || cmd_exists conda; then
-        if cmd_exists mamba; then
-            mamba env list --json 2>/dev/null | grep -q "\"${ENV_NAME}\"" && return 0 || return 1
-        else
-            conda env list --json 2>/dev/null | grep -q "\"${ENV_NAME}\"" && return 0 || return 1
+    # Check both mamba and conda env lists (some systems have mismatched outputs)
+    found=1
+    if cmd_exists mamba; then
+        if mamba env list --json 2>/dev/null | grep -q "\"${ENV_NAME}\""; then
+            found=0
         fi
+    fi
+    if cmd_exists conda; then
+        if conda env list --json 2>/dev/null | grep -q "\"${ENV_NAME}\""; then
+            found=0
+        fi
+    fi
+    # As a last resort, look for env dirs matching the name under standard envs path
+    if [ $found -ne 0 ]; then
+        # Look under CONDA_PREFIX envs directory
+        PREFIXS=("/opt/miniconda3/envs" "$HOME/.local/conda/envs" "/usr/local/conda/envs")
+        for p in "${PREFIXS[@]}"; do
+            if [ -d "$p/${ENV_NAME}" ]; then
+                found=0; break
+            fi
+        done
+    fi
+    if [ $found -eq 0 ]; then
+        return 0
     fi
     return 1
 }
@@ -181,9 +199,28 @@ remove_conda_env() {
     fi
 }
 
+# Try to resolve environment name if exact name missing (fuzzy match)
+resolve_env_name() {
+    if env_exists_conda; then
+        return 0
+    fi
+    PREFIXS=("/opt/miniconda3/envs" "$HOME/.local/conda/envs" "/usr/local/conda/envs")
+    for p in "${PREFIXS[@]}"; do
+        for d in "$p/${ENV_NAME}"*; do
+            if [ -d "$d" ]; then
+                CAND=$(basename "$d")
+                echo "Warning: Environment '${ENV_NAME}' not found; using '${CAND}' instead"
+                ENV_NAME="$CAND"
+                return 0
+            fi
+        done
+    done
+    return 1
+}
+
 # Decide on env existence
 CONDAXISTS=1
-if env_exists_conda; then
+if resolve_env_name && env_exists_conda; then
     echo "Detected conda-style env: ${ENV_NAME}"
 else
     CONDAXISTS=0
@@ -192,7 +229,8 @@ fi
 # Handle create/update/force-recreate
 if [ "$ACTION" = "create" ]; then
     if [ $CONDAXISTS -eq 1 ]; then
-        echo "Environment ${ENV_NAME} already exists. Use --update or --force-recreate if you want to change it."
+        echo "Environment ${ENV_NAME} already exists. Running update instead of create..."
+        update_conda_env
     else
         create_conda_env
     fi
@@ -217,34 +255,55 @@ elif [ "$ACTION" = "force-recreate" ]; then
 fi
 
     # Run the command
-    # Wenn Conda-Umgebung existiert, IMMER conda run verwenden (ignoriere .venv)
+    # Strict mode: the requested Conda environment must exist and a runner must be available.
     if env_exists_conda; then
-        if cmd_exists mamba; then
-            echo "Executing via: mamba run -n ${ENV_NAME} -- ${POSITIONAL[*]}"
-            mamba run -n "${ENV_NAME}" -- "${POSITIONAL[@]}"
-            exit $?
-        elif cmd_exists conda; then
-            echo "Executing via: conda run -n ${ENV_NAME} -- ${POSITIONAL[*]}"
-            conda run -n "${ENV_NAME}" -- "${POSITIONAL[@]}"
-            exit $?
-        fi
-    fi
+        # Build a single safe command string to pass through 'bash -lc' to avoid word-splitting issues
+        CMD_STR=""
+        for _a in "${POSITIONAL[@]}"; do
+            # Use printf %q to properly escape each token for the shell
+            CMD_STR="$CMD_STR $(printf '%q' "${_a}")"
+        done
 
-    # Fallback: nur wenn KEINE Conda-Umgebung existiert
-    if venv_exists; then
-        VENV_DIR="${REPO_ROOT}/.venv"
-        if [ ! -d "${VENV_DIR}" ]; then
-            VENV_DIR="${REPO_ROOT}/venv"
+        # Try conda/mamba run first (expected path), but fall back to running with the env bin in PATH
+        if cmd_exists conda || cmd_exists mamba; then
+            # Try conda run first, but guard against conda-run argument parsing issues
+            if cmd_exists conda; then
+                echo "Attempting: conda run -n ${ENV_NAME} bash -lc ${CMD_STR}"
+                if conda run -n "${ENV_NAME}" bash -lc "$CMD_STR"; then
+                    exit 0
+                else
+                    echo "Warning: 'conda run' failed, will fall back to running with env bin in PATH"
+                fi
+            fi
+            if cmd_exists mamba; then
+                echo "Attempting: mamba run -n ${ENV_NAME} bash -lc ${CMD_STR}"
+                if mamba run -n "${ENV_NAME}" bash -lc "$CMD_STR"; then
+                    exit 0
+                else
+                    echo "Warning: 'mamba run' failed, will fall back to running with env bin in PATH"
+                fi
+            fi
         fi
-        echo "Activating venv at ${VENV_DIR} and running command"
-        # shellcheck disable=SC1090
-        source "${VENV_DIR}/bin/activate"
-        "${POSITIONAL[@]}"
-        RET=$?
-        deactivate
-        exit $RET
-    fi
 
-    # Last resort: run with current Python environment
-    echo "No suitable env runner found; running command with current interpreter (ensure correct env is active)"
-    "${POSITIONAL[@]}"
+        # Fallback: find environment prefix directory and run with its bin prepended to PATH
+        PREFIXS=("/opt/miniconda3/envs" "$HOME/.local/conda/envs" "/usr/local/conda/envs")
+        ENV_PREFIX=""
+        for p in "${PREFIXS[@]}"; do
+            if [ -d "$p/${ENV_NAME}" ]; then
+                ENV_PREFIX="$p"
+                break
+            fi
+        done
+        if [ -z "$ENV_PREFIX" ]; then
+            echo "ERROR: Could not locate prefix for environment '${ENV_NAME}'. Please use --create to create it or specify a valid --env." >&2
+            exit 2
+        fi
+
+        echo "Executing with env bin in PATH: PATH=${ENV_PREFIX}/${ENV_NAME}/bin:... bash -lc ${CMD_STR}"
+        env PATH="${ENV_PREFIX}/${ENV_NAME}/bin:$PATH" bash -lc "$CMD_STR"
+        exit $?
+
+    else
+        echo "ERROR: Conda environment '${ENV_NAME}' not found. Use --create to create it or specify a different --env." >&2
+        exit 2
+    fi
