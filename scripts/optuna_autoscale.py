@@ -102,6 +102,8 @@ def make_objective(features, metadata, n_samples, min_distance_bounds):
         trial.set_user_attr("n_selected", int(n_selected))
         trial.set_user_attr("diversity", float(diversity))
         trial.set_user_attr("spatial_spread", float(spatial_spread))
+        # record the n_samples used for this trial so best_trial can be mapped to its stage
+        trial.set_user_attr("n_samples", int(n_samples))
 
         return float(score)
 
@@ -314,6 +316,38 @@ def run_autoscale(
             fh,
             indent=2,
         )
+
+    # Also write a canonical 'latest' best file and a simple selected n_samples file for downstream automation
+    latest = OUT / "optuna_autoscale_best_latest.json"
+    with latest.open("w") as fh:
+        json.dump(
+            {
+                "value": best_overall.value,
+                "params": best_overall.params,
+                "user_attrs": best_overall.user_attrs,
+            },
+            fh,
+            indent=2,
+        )
+
+    # extract n_samples if available and write simple text file
+    best_n_samples = best_overall.user_attrs.get("n_samples")
+    sel_file = OUT / "optuna_autoscale_selected_n_samples.txt"
+    if best_n_samples is not None:
+        sel_file.write_text(str(int(best_n_samples)))
+        print(f"BEST_N_SAMPLES: {int(best_n_samples)}")
+    else:
+        # fallback: try to infer from history CSV if present
+        try:
+            hist_df = pd.read_csv(summary_file)
+            # find row with max value
+            idx = hist_df["value"].idxmax()
+            inferred = int(hist_df.loc[idx, "n_samples"])
+            sel_file.write_text(str(inferred))
+            print(f"BEST_N_SAMPLES (inferred): {inferred}")
+            best_n_samples = inferred
+        except Exception:
+            print("WARNING: could not determine best n_samples")
 
     # Save study as pickle if joblib available
     try:

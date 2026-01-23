@@ -80,27 +80,42 @@ Dataselector/
 1. Platzieren Sie die Metadaten-Datei (`KDR100_foliage_with_files_epsg3857.csv` oder `all_png_tiles.dbf`) im `data/` Verzeichnis
 2. Erstellen Sie einen Ordner `data/images/` und legen Sie die Kartenbilder dort ab
 
-### Vollständiger Experiment-Workflow (Coarse → Fine → Optuna → Bootstrap → Final)
+### Vollständiger Experiment-Workflow (Modern: Autoscale → Sampler Suite → XXL)
 
-Für das intensivste, reproduzierbare Lauf-Setup nutzen Sie das mitgelieferte Orchestrator-Skript `scripts/run_full_experiment.sh`.
+Der vollständige, wissenschaftlich fundierte Ablauf besteht aus drei klaren Phasen:
 
-Beispiel (komplett, interaktiv):
+1. **Autoscale** (`scripts/optuna_autoscale.py`) — gestufte Suche nach sinnvoller `n_samples` und globalen Hyperparametern (Stages z.B. 50 → 100 → 300 → full). Ergebnis: `outputs/optuna_autoscale_selected_n_samples.txt` und `outputs/optuna_autoscale_best_latest.json`.
+
+2. **Sampler Suite** (`scripts/run_thesis_sampler_suite.py`) — Vergleicht Sampler (QMC, TPE, CMA‑ES) über mehrere Seeds und verwendet die Autoscale‑Ergebnisse zur Einschränkung der Suchräume (Constrained Bounds). Ergebnis: `outputs/selected_sampler.json` und per‑run `results/`-Ordner.
+
+3. **XXL Pipeline (Phases 0–5)** (`scripts/xxl_KDR146_run_thesis_complete_modern.py`) — Validierung (Phase 0), große Optimierungsläufe (Phase 1–4), Bootstrap UQ (Phase 5) und Erstellung der Thesis‑Artefakte.
+
+Für die komplette Ausführung nutze das zentrale Orchestrator‑Skript (modernisiert):
 
 ```bash
-# Standard Lauf: coarse sweep → fine sweep → Optuna → Bootstrap → final selection
-./scripts/run_full_experiment.sh
+# Vollständige Orchestrierung (Autoscale → Sampler Suite → XXL)
+bash scripts/run_complete_thesis_pipeline.sh
 ```
 
-Nicht-interaktiv, Optuna mit 300 Trials und 300 Bootstrap-Resamples:
+Wenn Sie nur die Sampler-Suite mit Autoscale ausführen möchten:
 
 ```bash
-./scripts/run_full_experiment.sh --n-trials 300 --n-boot 300 --yes
+python scripts/run_thesis_sampler_suite.py --autoscale
 ```
 
-Wichtige Flags:
-- `--use-optuna-best` : Extrahiert nach Optuna den besten Trial und schreibt eine konfigurationsdatei in den Experiment-Ordner (`outputs/experiments/run_<TS>/pipeline_config.optuna.yaml`).
-- `--inject-optuna` : Injiziert den besten Optuna-Trial direkt in `config/pipeline_config.yaml` (vorher wird ein Backup `config/pipeline_config.yaml.optuna_bak` angelegt).
-- `--final-with-optuna-config` : Führt den finalen Run temporär mit der generierten Optuna-Konfiguration aus (Original-Konfig wird danach wiederhergestellt).
+Und falls Sie die Suite ohne Autoscale durchführen wollen (z.B. mit festem n_samples):
+
+```bash
+python scripts/run_thesis_sampler_suite.py --no-autoscale --n-samples 38
+```
+
+Nur die moderne XXL‑Orchestration (z.B. nach erfolgreicher Suite) läuft so:
+
+```bash
+python scripts/xxl_KDR146_run_thesis_complete_modern.py --best-sampler tpe
+```
+
+Hinweis: Die Orchestrator‑Skripte prüfen die Existenz von Artefakten im `outputs/`-Verzeichnis (`optuna_autoscale_*`, `selected_sampler.json`) und verwenden diese automatisiert. Die Skripte brauchen eine Umgebung mit `optuna` installiert, wenn Optuna‑Phasen ausgeführt werden.
 
 Provenance & Reproduzierbarkeit:
 - Das Orchestrator-Skript kopiert sämtliche relevanten Artefakte in `outputs/experiments/run_<TIMESTAMP>/`, darunter die `optuna_results.csv`, ggf. die `optuna_study.pkl`, eine `pipeline_config.optuna.yaml` (oder die Backup-Datei bei Injection) und die finalen CSV/Plots. So sind alle Eingaben dokumentiert.
@@ -116,20 +131,36 @@ python scripts/optuna_optimize.py --n-trials 2 --n-candidates 50 --dim 32 --n-sa
 Diese Commands sind absichtlich klein gehalten, damit sie schnell laufen und als Smoke-Test in CI nutzbar sind.
 
 
-### Pipeline ausführen
+### Pipeline ausführen (modern)
+
+Die empfohlene Methode ist die 3‑Phasen Orchestrierung (Autoscale → Sampler Suite → XXL). Für den kompletten Durchlauf benutze:
 
 ```bash
-python src/main.py
+bash scripts/run_complete_thesis_pipeline.sh
 ```
 
-Die Pipeline führt automatisch folgende Schritte aus:
+Alternativen für gezielte Ausführung einzelner Schritte:
 
-1. **Metadaten-Verarbeitung**: Lädt CSV und extrahiert temporale/räumliche Informationen
-2. **Feature Extraction**: Generiert 2048-dimensionale Vektoren für jede Kachel
-3. **Clustering**: Reduziert auf 2D mittels UMAP und gruppiert mit K-Means
-4. **Diversity Selection**: Wählt 34 optimale Samples via Facility Location
-5. **Visualisierung**: Erstellt Plots und Zusammenfassungen
+- Nur Autoscale (Schneller Test / Debugging):
+```bash
+python scripts/optuna_autoscale.py --n-trials 20 --stages 50 100 --n-candidates 100
+```
 
+- Sampler Suite (mit oder ohne Autoscale):
+```bash
+# Mit automatischem Autoscale
+python scripts/run_thesis_sampler_suite.py --autoscale
+
+# Ohne Autoscale, mit festem n_samples
+python scripts/run_thesis_sampler_suite.py --no-autoscale --n-samples 38
+```
+
+- Nur XXL Pipeline (nach Suite):
+```bash
+python scripts/xxl_KDR146_run_thesis_complete_modern.py --best-sampler tpe
+```
+
+Die allgemeinen Pipeline-Schritte (Metadaten → Feature Extraction → Clustering → Selection → Visualisierung) bleiben als konzeptionelles Gerüst erhalten; die Orchestrations-Skripte fügen die wissenschaftlichen Optimierungs- und Validierungsphasen hinzu (Autoscale / Sampler‑Suite / XXL).
 ### Konfiguration anpassen
 
 Bearbeiten Sie `config/pipeline_config.yaml`:
