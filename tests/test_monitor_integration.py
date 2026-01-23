@@ -2,6 +2,7 @@ import json
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+import pytest
 
 # Ensure repo root on path
 ROOT = Path(__file__).resolve().parents[1]
