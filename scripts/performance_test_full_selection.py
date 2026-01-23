@@ -50,7 +50,8 @@ def main():
     wwi_fraction = float(np.sum(wwi_years) / len(years)) if len(years) > 0 else np.nan
 
     # Prefer projected coordinates if available
-    use_metric = getattr(metadata, "gdf_metric", None) is not None
+    from src.io import get_metric_gdf
+    use_metric = get_metric_gdf(metadata) is not None
     pairwise = []
     for i in range(len(selected)):
         for j in range(i + 1, len(selected)):

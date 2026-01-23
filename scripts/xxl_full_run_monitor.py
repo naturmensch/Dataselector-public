@@ -1398,7 +1398,11 @@ def main():
     )
 
     # Create per-run timestamped log file and make `XXL_FULL_RUN.log` point to it (symlink)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    forced_ts = os.environ.get("MONITOR_FORCE_TS")
+    if forced_ts:
+        ts = forced_ts
+    else:
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     LOG_FILE_TS = LOG_FILE.parent / f"XXL_FULL_RUN_{ts}.log"
     # Ensure we do not overwrite an existing timestamped file
     if not LOG_FILE_TS.exists():
@@ -1952,7 +1956,8 @@ def main():
 
     # Write report into the monitor_reports folder under the XXL run dir if available, else into outputs/monitor_reports (timestamped)
     report_text = "\n".join(report_lines)
-    report_ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    # Prefer forced timestamp for deterministic tests
+    report_ts = os.environ.get("MONITOR_FORCE_TS") or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     if latest_xxl:
         reports_dir = latest_xxl / "monitor_reports"
     else:

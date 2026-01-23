@@ -11,8 +11,23 @@ def _make_csv(tmp_path):
     return str(p)
 
 
-def test_load_csv_without_geopandas(tmp_path):
+def test_load_csv_without_geopandas(tmp_path, monkeypatch):
     csv_path = _make_csv(tmp_path)
+
+    # Force ImportError for geopandas/shapely to simulate absence regardless of env
+    import builtins
+
+    orig_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "geopandas" or name.startswith("geopandas."):
+            raise ImportError("Simulated missing geopandas for test")
+        if name == "shapely" or name.startswith("shapely."):
+            raise ImportError("Simulated missing shapely for test")
+        return orig_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
     mp = MetadataProcessor(csv_path)
     df = mp.load_csv()
     assert isinstance(df, pd.DataFrame)

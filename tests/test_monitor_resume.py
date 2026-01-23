@@ -8,6 +8,9 @@ import pytest
 def skip_if_no_optuna():
     pytest.importorskip("optuna")
 
+# Make optuna module available in this namespace for tests that directly call it
+optuna = pytest.importorskip("optuna")
+
 from tests._helpers.load_script import load_script
 
 
@@ -202,7 +205,7 @@ def test_staged_resume_after_optuna_complete(monkeypatch, tmp_path, _resume_run)
     assert any("finalize" in n for n in called_names)
 
 
-def test_dry_run_reports_phases_when_missing(tmp_path, monkeypatch):
+def test_dry_run_reports_phases_when_missing(tmp_path, monkeypatch, _resume_run):
     # Setup isolated root with no final selection and no repro runs
     local_root = tmp_path
     monkeypatch.setattr("scripts.xxl_full_run_monitor.ROOT", local_root)

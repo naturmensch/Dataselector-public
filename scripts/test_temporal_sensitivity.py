@@ -80,13 +80,17 @@ def main() -> None:
             )
 
             # Spatial: prefer projected coords if present
-            use_metric = getattr(meta, "gdf_metric", None) is not None
+            from src.io import get_metric_gdf
+
+            use_metric = get_metric_gdf(meta) is not None
             pairwise = []
             for i in range(len(selected)):
                 for j in range(i + 1, len(selected)):
                     if use_metric:
-                        a = meta.gdf_metric.loc[selected[i], ["_proj_x", "_proj_y"]].values.astype(float)
-                        b = meta.gdf_metric.loc[selected[j], ["_proj_x", "_proj_y"]].values.astype(float)
+                        from src.io import get_metric_gdf
+                        gdf = get_metric_gdf(meta)
+                        a = gdf.loc[selected[i], ["_proj_x", "_proj_y"]].values.astype(float)
+                        b = gdf.loc[selected[j], ["_proj_x", "_proj_y"]].values.astype(float)
                         pairwise.append(float((((a - b) ** 2).sum()) ** 0.5 / 1000.0))
                     else:
                         from src.spatial_facility_location import haversine_distance

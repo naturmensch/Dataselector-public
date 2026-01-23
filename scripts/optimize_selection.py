@@ -79,8 +79,10 @@ def run_grid(
         features = features_full[idxs]
         metadata = metadata_full.iloc[idxs].reset_index(drop=True)
         # preserve projected coords if available
-        if getattr(metadata_full, "gdf_metric", None) is not None:
-            metadata.gdf_metric = metadata_full.gdf_metric.iloc[idxs].reset_index(drop=True)
+        from src.io import get_metric_gdf, attach_metric_gdf
+
+        if get_metric_gdf(metadata_full) is not None:
+            attach_metric_gdf(metadata, get_metric_gdf(metadata_full).iloc[idxs].reset_index(drop=True))
 
     results = []
 
@@ -149,7 +151,9 @@ def run_grid(
             # Prefer projected coordinates (_proj_x/_proj_y) when available on metadata
             pairwise = []
             idxs = list(selected_idx)
-            use_metric = getattr(metadata, "gdf_metric", None) is not None
+            from src.io import get_metric_gdf
+
+            use_metric = get_metric_gdf(metadata) is not None
             for i in range(len(idxs)):
                 for j in range(i + 1, len(idxs)):
                     if use_metric:

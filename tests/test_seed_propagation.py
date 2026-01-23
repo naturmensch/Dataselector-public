@@ -28,6 +28,12 @@ def test_run_adaptive_pipeline_seed_propagation(tmp_path):
         "12345",
     ]
     # Execute command
+    # Ensure we run against a clean outputs/runs to avoid picking up earlier runs
+    import shutil
+
+    out_runs = Path("outputs/runs")
+    if out_runs.exists():
+        shutil.rmtree(out_runs)
     subprocess.check_call(" ".join(cmd), shell=True)
 
     # Find latest run dir

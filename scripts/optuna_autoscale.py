@@ -23,6 +23,14 @@ import pandas as pd
 
 # Project root (Path) - avoid modifying sys.path at import time
 ROOT = Path(__file__).resolve().parents[1]
+# Ensure 'src' package is importable when script is executed from outside repo root
+try:
+    import src  # type: ignore
+except Exception:
+    import sys as _sys
+
+    if str(ROOT) not in _sys.path:
+        _sys.path.insert(0, str(ROOT))
 
 # DiversitySelector is imported at runtime in `make_objective` to avoid module-level side-effects
 
@@ -84,6 +92,9 @@ def make_objective(
         min_dist = trial.suggest_int(
             "min_distance_km", *min_distance_bounds["min_distance_km"]
         )
+
+        # Lazy import to avoid module-level side effects during import/pytest
+        from src.diversity_selector import DiversitySelector
 
         selector = DiversitySelector(n_samples=n_samples, use_multi_criteria=True)
         selected = selector.select(

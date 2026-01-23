@@ -49,4 +49,17 @@ def load_script(path: Path, module_name: str | None = None) -> ModuleType:
         # temporary names lying around in subsequent tests if not needed.
         pass
 
+    # If module was loaded under a dotted name, attempt to attach it as an attribute
+    # on its parent package so string-based monkeypatching (e.g., "scripts.name.attr") works.
+    try:
+        if "." in module_name:
+            parent_name = module_name.rsplit(".", 1)[0]
+            import importlib as _importlib
+
+            parent_pkg = _importlib.import_module(parent_name)
+            setattr(parent_pkg, module_name.split(".")[-1], module)
+    except Exception:
+        # Not critical for tests; silently ignore to avoid test disruption
+        pass
+
     return module

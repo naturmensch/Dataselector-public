@@ -60,66 +60,104 @@ def parse_args() -> argparse.Namespace:
 
 
 def find_aux_for_image(image_path: Path, aux_dir: Optional[Path] = None) -> Optional[Path]:
-    # Common locations: image_path + '.aux.xml', same dir, aux_dir with same basename + '.aux.xml'
+    """Robust lookup for .aux.xml sidecar files.
+
+    Tries several common patterns and falls back to a case-insensitive search in `aux_dir`.
+    """
     candidates = []
-    candidates.append(image_path.with_suffix(image_path.suffix + ".aux.xml"))
-    candidates.append(image_path.with_suffix(".aux.xml"))
+    # exact common patterns relative to the image file
+    candidates.append(image_path.with_suffix(image_path.suffix + ".aux.xml"))  # image.png -> image.png.aux.xml
+    candidates.append(image_path.with_suffix(".aux.xml"))  # image.png -> image.aux.xml
+
+    # common patterns in auxiliary directory
     if aux_dir:
+        candidates.append(aux_dir / (image_path.name + ".aux.xml"))
         candidates.append(aux_dir / (image_path.stem + ".aux.xml"))
+        candidates.append(aux_dir / (image_path.stem + image_path.suffix + ".aux.xml"))
+
     for c in candidates:
         if c.exists():
             return c
+
+    # Fallback: case-insensitive search in aux_dir (match any file containing the image base name)
+    if aux_dir and aux_dir.exists():
+        target_name = image_path.name.lower()
+        for p in aux_dir.iterdir():
+            if not p.is_file():
+                continue
+            name_l = p.name.lower()
+            if name_l.endswith(".aux.xml") and target_name in name_l:
+                return p
     return None
 
 
-def parse_aux_bbox_xml(xml_path: Path) -> Optional[Tuple[float, float, float, float, str]]:
-    """Attempt to parse bounding box from .aux.xml. Returns (minx, miny, maxx, maxy, crs_wkt_or_epsg)"""
+def parse_aux_bbox_xml(xml_path: Path, image_path: Optional[Path] = None) -> Optional[Tuple[float, float, float, float, str]]:
+    """Parse bounding box from .aux.xml. If GeoTransform present and `image_path` is provided,
+    compute bbox from geotransform + image size. Returns (minx, miny, maxx, maxy, crs_wkt_or_epsg)"""
     try:
         tree = ET.parse(xml_path)
         root = tree.getroot()
-        # Try GeoTransform first
+        # Try to find SRS
+        srs = None
+        for elem in root.iter():
+            tag = elem.tag.lower()
+            if tag.endswith('srs') or tag.endswith('spatialreference') or tag.endswith('srsname'):
+                srs = (elem.text or '').strip()
+                break
+
+        # Try GeoTransform
         gt = None
         for elem in root.iter():
             if elem.tag.lower().endswith("geotransform"):
                 txt = (elem.text or "").strip()
-                nums = [float(x) for x in txt.split()
-                        if x.replace('.', '', 1).replace('-', '', 1).isdigit()]
-                if len(nums) >= 6:
-                    gt = nums[:6]
-                    break
-        # Try corner coordinates
+                parts = [p for p in txt.replace(',', ' ').split() if p]
+                try:
+                    nums = [float(x) for x in parts]
+                    if len(nums) >= 6:
+                        gt = nums[:6]
+                except Exception:
+                    gt = None
+                break
+
+        # If we have explicit corner coords use them
         ul = lr = None
         for elem in root.iter():
             tag = elem.tag.lower()
-            if tag.endswith("upperleftx"):
-                ulx = float(elem.text.strip())
-                # find sibling upperlefty
-                uly = float(elem.getparent().find('UpperLeftY').text) if hasattr(elem, 'getparent') else None
-            if tag.endswith("upperleft"):
-                # e.g. <UpperLeft> 5.8333 51.875 </UpperLeft>
+            if tag.endswith("upperleft") and elem.text:
                 parts = (elem.text or "").split()
                 if len(parts) >= 2:
                     ul = (float(parts[0]), float(parts[1]))
-            if tag.endswith("lowerright"):
+            if tag.endswith("lowerright") and elem.text:
                 parts = (elem.text or "").split()
                 if len(parts) >= 2:
                     lr = (float(parts[0]), float(parts[1]))
-        # If GeoTransform present and we can get size from image via rasterio or from XML, try to compute bbox
-        if gt is not None and rasterio is not None:
-            # Not enough info here to compute corners without raster size; fallback to searching for explicit corner coords
-            pass
+
         if ul and lr:
             minx = min(ul[0], lr[0])
             maxx = max(ul[0], lr[0])
             miny = min(ul[1], lr[1])
             maxy = max(ul[1], lr[1])
-            # Attempt to find SRS
-            srs = None
-            for elem in root.iter():
-                if elem.tag.lower().endswith('srs') or elem.tag.lower().endswith('spatialreference'):
-                    srs = (elem.text or '').strip()
-                    break
             return (minx, miny, maxx, maxy, srs)
+
+        # If GeoTransform present and image size known, compute bbox
+        if gt is not None and image_path is not None:
+            try:
+                from PIL import Image
+
+                with Image.open(image_path) as im:
+                    w, h = im.size
+                # GeoTransform: gt0, gt1, gt2, gt3, gt4, gt5
+                gt0, gt1, gt2, gt3, gt4, gt5 = gt
+                # assume no rotation (gt2 == gt4 == 0)
+                minx = gt0
+                maxx = gt0 + gt1 * w
+                maxy = gt3
+                miny = gt3 + gt5 * h
+                return (minx, miny, maxx, maxy, srs)
+            except Exception as e:
+                print(f"DEBUG: parse_aux_bbox_xml failed for {xml_path} with image {image_path}: {e}")
+                pass
+
     except ET.ParseError:
         return None
     return None
@@ -172,16 +210,31 @@ def make_report(csv_path: Path, base_dir: Path, aux_dir: Optional[Path], target_
         }
         if aux_path:
             rec["aux_found"] = True
-            # try rasterio first
-            bbox = aux_bbox_via_rasterio(aux_path) if aux_path is not None else None
+            # Normalize image_path: the CSV may contain lowercase names while files are uppercase (KDR_xxx).
+            if not image_path.exists() and aux_dir and aux_dir.exists():
+                # search for a matching image file (case-insensitive prefix match)
+                candidate = None
+                for p in aux_dir.iterdir():
+                    if not p.is_file():
+                        continue
+                    if p.suffix.lower() in (".png", ".tif", ".tiff", ".jpg", ".jpeg") and p.name.lower().startswith(image_path.stem.lower()):
+                        candidate = p
+                        break
+                if candidate:
+                    print(f"DEBUG: corrected image path {image_path} -> {candidate}")
+                    image_path = candidate
+
+            # try rasterio first (it understands PAM sidecars)
+            bbox = aux_bbox_via_rasterio(image_path)
             if not bbox:
-                # Attempt to parse aux.xml directly
-                parsed = parse_aux_bbox_xml(aux_path)
+                parsed = parse_aux_bbox_xml(aux_path, image_path=image_path)
                 if parsed:
                     bbox = (parsed[0], parsed[1], parsed[2], parsed[3], parsed[4])
             if bbox:
                 minx, miny, maxx, maxy, srs = bbox
                 rec["aux_bbox"] = [minx, miny, maxx, maxy]
+                print(f"DEBUG: bbox for {image_path} -> {rec['aux_bbox']} (srs={srs})")
+
                 aux_cx = (minx + maxx) / 2.0
                 aux_cy = (miny + maxy) / 2.0
                 # Need to detect aux CRS: if srs contains '3857' or indicates Mercator, assume EPSG:3857
@@ -203,6 +256,8 @@ def make_report(csv_path: Path, base_dir: Path, aux_dir: Optional[Path], target_
                 dy = csv_centroid_proj[1] - aux_cy_t
                 offset = math.hypot(dx, dy)
                 rec["offset_m"] = offset
+            else:
+                print(f"DEBUG: NO bbox for {image_path} (aux={aux_path})")
         results.append(rec)
 
     # metrics

@@ -45,7 +45,7 @@ def test_extract_and_write_config(tmp_path):
 
     # write new config
     out_cfg = tmp_path / "pipeline_config.optuna.yaml"
-    write_new_config(out_cfg, params, base_cfg_path=Path("config/pipeline_config.yaml"))
+    mod.write_new_config(out_cfg, params, base_cfg_path=Path("config/pipeline_config.yaml"))
     assert out_cfg.exists()
     cfg = yaml.safe_load(out_cfg.read_text())
     sel = cfg.get("selection", {})

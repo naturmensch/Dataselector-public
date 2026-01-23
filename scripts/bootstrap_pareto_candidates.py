@@ -14,6 +14,24 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # Note: Project imports (src.*) are deferred into functions to keep this module
 # import-safe for tests and linters (avoid import-time side-effects).
+# Expose module-level loader hooks so tests can monkeypatch them (e.g., set 'load_metadata')
+load_metadata = None
+load_or_extract_features = None
+ClusteringPipeline = None
+try:
+    from src.io import load_metadata as _lm, load_or_extract_features as _lof
+    load_metadata = _lm
+    load_or_extract_features = _lof
+except Exception:
+    # If unavailable at import time, functions will be imported lazily inside main
+    pass
+try:
+    # Allow tests to monkeypatch ClusteringPipeline at module level
+    from src.clustering import ClusteringPipeline as _cls
+    ClusteringPipeline = _cls
+except Exception:
+    # Keep None; will be imported lazily inside main
+    pass
 
 
 
@@ -58,8 +76,11 @@ def bootstrap_candidate(
         boot_features = features[sample_idx]
         boot_meta = metadata.iloc[sample_idx].reset_index(drop=True)
         # Preserve projected coords in the bootstrap sample if present
-        if getattr(metadata, "gdf_metric", None) is not None:
-            boot_meta.gdf_metric = metadata.gdf_metric.iloc[sample_idx].reset_index(drop=True)
+        from src.io import get_metric_gdf, attach_metric_gdf
+
+        gdf_metric = get_metric_gdf(metadata)
+        if gdf_metric is not None:
+            attach_metric_gdf(boot_meta, gdf_metric.iloc[sample_idx].reset_index(drop=True))
 
         # clustering on boot features (not used for metrics -- metrics computed on original mapping)
         clustering = ClusteringPipeline(n_clusters=8)
@@ -108,8 +129,12 @@ def main(
     pre_selected_names=None,
     pre_selected_indices=None,
 ):
-    # Local imports to keep module import-safe
-    from src.io import load_metadata, load_or_extract_features
+    # Local imports to keep module import-safe, but prefer module-level hooks if tests patched them
+    if load_metadata is None or load_or_extract_features is None:
+        from src.io import load_metadata as _load_metadata_fn, load_or_extract_features as _load_or_extract_features_fn
+    else:
+        _load_metadata_fn = load_metadata
+        _load_or_extract_features_fn = load_or_extract_features
     from src.clustering import ClusteringPipeline
     from src.diversity_selector import DiversitySelector
 
@@ -117,11 +142,11 @@ def main(
 
     # load full metadata and features
     metadata = (
-        load_metadata(str(Path(ROOT) / "data" / "new_all_tiles.csv"))
+        _load_metadata_fn(str(Path(ROOT) / "data" / "new_all_tiles.csv"))
         if (Path(ROOT) / "outputs" / "metadata.csv").exists() is False
-        else load_metadata(str(Path(ROOT) / "outputs" / "metadata.csv"))
+        else _load_metadata_fn(str(Path(ROOT) / "outputs" / "metadata.csv"))
     )
-    features = load_or_extract_features(
+    features = _load_or_extract_features_fn(
         Path(ROOT) / "outputs",
         csv_meta=(
             str(Path(ROOT) / "outputs" / "metadata.csv")

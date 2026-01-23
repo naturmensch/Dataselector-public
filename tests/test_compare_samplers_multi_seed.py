@@ -38,7 +38,7 @@ def test_run_single_optuna_no_run_dir_includes_subprocess_output(tmp_path, monke
         assert "Subprocess stdout" in msg and "Subprocess stderr" in msg
 
 
-def test_run_single_optuna_success(tmp_path, monkeypatch, run_single_optuna):
+def test_run_single_optuna_success(tmp_path, monkeypatch, run_single_optuna, compare_mod):
     """Test successful run with mocked subprocess and file system."""
     # Mock ROOT to point to tmp_path (patch both the loaded module and any existing package-loaded module)
     monkeypatch.setattr(compare_mod, "ROOT", tmp_path)

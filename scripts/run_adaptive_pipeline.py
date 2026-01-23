@@ -229,6 +229,17 @@ def main():
     os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
     os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
+    # Fail-fast: run geo dependency smoke check if geo features are enabled in config
+    try:
+        import yaml
+
+        cfg = yaml.safe_load(open("config/pipeline_config.yaml"))
+    except Exception:
+        cfg = {}
+    if cfg.get("features", {}).get("geo", True):
+        print("Running geo dependency smoke check...")
+        run_cmd_safe("python scripts/check_geo_env.py")
+
     # Initialize ExperimentManager for the entire adaptive run and export its run_dir to sub-stages
     from src.experiment_manager import ExperimentManager
 

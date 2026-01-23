@@ -26,6 +26,10 @@ import pandas as pd
 
 # Project root (Path object); avoid modifying sys.path at module import time
 ROOT = Path(__file__).resolve().parents[1]
+# Ensure project root is on sys.path so 'src' package resolves both for module and script invocations
+import sys as _sys
+if str(ROOT) not in _sys.path:
+    _sys.path.insert(0, str(ROOT))
 
 try:
     import optuna
@@ -215,6 +219,9 @@ def objective_factory(
 
                 n_samples = compute_adaptive_n_initial(n_dimensions=3)
 
+        # Import selector lazily to avoid module-level side effects when importing script
+        from src.diversity_selector import DiversitySelector
+
         selector = DiversitySelector(n_samples=n_samples, use_multi_criteria=True)
         selected = selector.select(
             features,
@@ -331,6 +338,11 @@ def run_optuna(
     """
     # Initialize or attach to an experiment manager
     import os
+    # Ensure ExperimentManager is available in this runtime context
+    try:
+        from src.experiment_manager import ExperimentManager
+    except Exception as e:
+        raise RuntimeError("ExperimentManager import failed. Ensure project is installed or PYTHONPATH includes the repo root") from e
 
     em_env = os.environ.get("EXPERIMENT_RUN_DIR")
     if em_env:
@@ -463,6 +475,9 @@ def run_optuna(
         "n_samples",
         "state",
     ]
+    # Incremental writer helpers
+    from src.incremental_results import IncrementalCSVWriter, TrialBuffer
+
     trial_writer = IncrementalCSVWriter(
         trials_csv_path, fieldnames=trial_fieldnames, buffer_size=50
     )
