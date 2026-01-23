@@ -40,7 +40,10 @@ def load_or_create_data(n=None, dim=256, seed=123):
         features = load_or_extract_features(
             out_dir=OUT, csv_meta=str(metadata_path), batch_size=16, cache=False
         )
-        metadata = pd.read_csv(metadata_path)
+        # Load using loader so gdf_metric is attached if available
+        from src.io import load_metadata
+
+        metadata = load_metadata(str(metadata_path))
     else:
         rng = np.random.RandomState(seed)
         if n is None:

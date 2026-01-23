@@ -63,7 +63,10 @@ def load_or_create_data(
         features = load_or_extract_features(
             out_dir=OUT_DIR, csv_meta=str(metadata_path), batch_size=16, cache=False
         )
-        metadata = pd.read_csv(metadata_path)
+        # Use load_metadata so any cached/derived projection (gdf_metric) is attached
+        from src.io import load_metadata
+
+        metadata = load_metadata(str(metadata_path))
     else:
         # Try loading canonical dataset metadata if present in repo
         canonical_meta = Path("data") / "new_all_tiles.csv"
@@ -115,7 +118,23 @@ def load_or_create_data(
                     non_included = non_included.sample(n=needed, random_state=seed)
                 metadata = pd.concat([include_rows, non_included], ignore_index=True)
 
+            # Preserve original indices so we can map projected coords (gdf_metric) later
+            original_indices = metadata.index.copy()
             metadata = metadata.reset_index(drop=True)
+
+            # Attempt to attach projected coordinates from the canonical metadata
+            try:
+                from src.metadata_processor import MetadataProcessor
+
+                mp = MetadataProcessor(str(canonical_meta))
+                mp.load_csv()
+                full_metric = mp.ensure_metric_crs()
+                if full_metric is not None:
+                    # Subset the full projected frame to the sampled rows and reindex to metadata
+                    metadata.gdf_metric = full_metric.loc[original_indices].reset_index(drop=True)
+            except Exception:
+                # Best effort: if geopandas unavailable or mapping fails, proceed without gdf_metric
+                pass
 
             # Generate synthetic features for sampling experiments
             rng = np.random.RandomState(seed)

@@ -81,8 +81,9 @@ def main():
         batch_size=16,
         cache=True,
     )
+    # Read cached metadata via loader to ensure projected coords are attached
     metadata = (
-        pd.read_csv(OUT_ROOT / "metadata.csv")
+        load_metadata(str(OUT_ROOT / "metadata.csv"))
         if (OUT_ROOT / "metadata.csv").exists()
         else load_metadata(str(ROOT / "data" / "new_all_tiles.csv"))
     )

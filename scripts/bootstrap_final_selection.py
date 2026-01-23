@@ -191,7 +191,8 @@ def main():
     if not metadata_path.exists():
         metadata = load_metadata(str(ROOT / "data" / "new_all_tiles.csv"))
     else:
-        metadata = pd.read_csv(metadata_path)
+        # Ensure any cached metadata retains projected coords
+        metadata = load_metadata(str(metadata_path))
 
     features = load_or_extract_features(
         ROOT / "outputs",
