@@ -49,12 +49,19 @@ def main():
     wwi_years = (years >= 1906) & (years <= 1918)
     wwi_fraction = float(np.sum(wwi_years) / len(years)) if len(years) > 0 else np.nan
 
+    # Prefer projected coordinates if available
+    use_metric = getattr(metadata, "gdf_metric", None) is not None
     pairwise = []
     for i in range(len(selected)):
         for j in range(i + 1, len(selected)):
-            r1 = metadata.iloc[selected[i]]
-            r2 = metadata.iloc[selected[j]]
-            pairwise.append(haversine_distance(r1["N"], r1["left"], r2["N"], r2["left"]))
+            if use_metric:
+                a = metadata.gdf_metric.loc[selected[i], ["_proj_x", "_proj_y"]].values.astype(float)
+                b = metadata.gdf_metric.loc[selected[j], ["_proj_x", "_proj_y"]].values.astype(float)
+                pairwise.append(float((((a - b) ** 2).sum()) ** 0.5 / 1000.0))
+            else:
+                r1 = metadata.iloc[selected[i]]
+                r2 = metadata.iloc[selected[j]]
+                pairwise.append(haversine_distance(r1["N"], r1["left"], r2["N"], r2["left"]))
     mean_pairwise = float(np.mean(pairwise)) if pairwise else np.nan
     min_pairwise = float(np.min(pairwise)) if pairwise else np.nan
     std_pairwise = float(np.std(pairwise)) if pairwise else np.nan
