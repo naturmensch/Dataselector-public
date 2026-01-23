@@ -95,6 +95,33 @@ def _init_env_runner(use_env: bool = True, env_name: str | None = None):
         USE_DATASELECTOR_ENV = False
 
 
+def _detect_n_candidates(root: Path = ROOT) -> int:
+    """Detect number of candidate tiles (module-level helper).
+
+    Tries, in order:
+     - read `data/new_all_tiles.csv` and return number of rows,
+     - honor env var `DATASET_N_CANDIDATES` if present,
+     - fall back to legacy default = 673 (with a warning logged).
+    """
+    try:
+        import pandas as _pd
+        tiles_df = _pd.read_csv(root / "data" / "new_all_tiles.csv")
+        return int(len(tiles_df))
+    except Exception:
+        # Try explicit environment override
+        try:
+            env_val = os.environ.get("DATASET_N_CANDIDATES")
+            if env_val:
+                return int(env_val)
+        except Exception:
+            pass
+        _monitor_log(
+            "Warning: could not read data/new_all_tiles.csv and DATASET_N_CANDIDATES not set; falling back to legacy value 673",
+            LOG_FILE,
+        )
+        return 673
+
+
 def run_hook(
     name: str,
     cmd_str: str,
@@ -999,14 +1026,7 @@ def _resume_run(
         state["n_samples"] = None
 
     # Compute dataset size (used for repro CLI invocation)
-    n_candidates_calculated = 673
-    try:
-        import pandas as pd
-
-        tiles_df = pd.read_csv(ROOT / "data" / "new_all_tiles.csv")
-        n_candidates_calculated = len(tiles_df)
-    except Exception:
-        pass
+    n_candidates_calculated = _detect_n_candidates()
 
     planner = RecoveryPlanner(configured_n=configured_n, repro_seeds=[43, 44])
     tasks = planner.plan(state)
@@ -1029,12 +1049,12 @@ def _resume_run(
             phases.append(
                 {
                     "name": "reproducibility",
-                    "cmd": f"{sys.executable} -m scripts.xxl_KDR146_run_thesis_complete --phase repro --seeds {seeds} --n-trials {configured_n} --n-candidates {n_candidates_calculated}",
+                    "cmd": f"{sys.executable} {str(MAIN_SCRIPT)} --phase repro --seeds {seeds} --n-trials {configured_n} --n-candidates {n_candidates_calculated}",
                 }
             )
         elif t.name == "finalize":
             n_samples = t.params.get("n_samples")
-            cmd = f"{sys.executable} -m scripts.xxl_KDR146_run_thesis_complete --phase finalize --run-dir {run_dir}"
+            cmd = f"{sys.executable} {str(MAIN_SCRIPT)} --phase finalize --run-dir {run_dir}"
             if n_samples:
                 cmd += f" --n-samples {n_samples}"
             phases.append({"name": "finalize", "cmd": cmd})
@@ -1383,8 +1403,23 @@ def main():
         default=os.environ.get("DATASELECTOR_ENV_NAME", "dataselector"),
         help="Name of the mamba/conda environment to use (default from DATASELECTOR_ENV_NAME or 'dataselector')",
     )
+    parser.add_argument(
+        "--main-script",
+        type=str,
+        default=None,
+        help="Override main orchestrator script path (if provided, uses this path).",
+    )
 
     args = parser.parse_args()
+
+    # Determine MAIN_SCRIPT selection: explicit override > modern implementation > legacy
+    global MAIN_SCRIPT
+    if args.main_script:
+        MAIN_SCRIPT = Path(args.main_script)
+    else:
+        modern = ROOT / "scripts" / "xxl_KDR146_run_thesis_complete_modern.py"
+        legacy = ROOT / "scripts" / "xxl_KDR146_run_thesis_complete.py"
+        MAIN_SCRIPT = modern if modern.exists() else legacy
 
     # Ensure PYTHONPATH in env
     env = os.environ.copy()
@@ -1928,9 +1963,10 @@ def main():
                     config_issues.append(f"n_trials not parseable: {n_trials_cfg}")
 
                 try:
-                    if n_candidates_cfg is not None and int(n_candidates_cfg) != 673:
+                    detected_nc = _detect_n_candidates()
+                    if n_candidates_cfg is not None and int(n_candidates_cfg) != detected_nc:
                         config_issues.append(
-                            f"n_candidates mismatch: {n_candidates_cfg}"
+                            f"n_candidates mismatch: {n_candidates_cfg} (detected: {detected_nc})"
                         )
                 except Exception:
                     config_issues.append(
