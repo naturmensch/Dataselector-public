@@ -146,13 +146,20 @@ def run_grid(
                 c = 2 * atan2(sqrt(a), sqrt(1 - a))
                 return R * c
 
+            # Prefer projected coordinates (_proj_x/_proj_y) when available on metadata
             pairwise = []
             idxs = list(selected_idx)
+            use_metric = getattr(metadata, "gdf_metric", None) is not None
             for i in range(len(idxs)):
                 for j in range(i + 1, len(idxs)):
-                    r1 = metadata.iloc[idxs[i]]
-                    r2 = metadata.iloc[idxs[j]]
-                    pairwise.append(hav(r1["N"], r1["left"], r2["N"], r2["left"]))
+                    if use_metric:
+                        a = metadata.gdf_metric.loc[idxs[i], ["_proj_x", "_proj_y"]].values.astype(float)
+                        b = metadata.gdf_metric.loc[idxs[j], ["_proj_x", "_proj_y"]].values.astype(float)
+                        pairwise.append(float((((a - b) ** 2).sum()) ** 0.5 / 1000.0))
+                    else:
+                        r1 = metadata.iloc[idxs[i]]
+                        r2 = metadata.iloc[idxs[j]]
+                        pairwise.append(hav(r1["N"], r1["left"], r2["N"], r2["left"]))
             mean_pairwise = float(np.mean(pairwise)) if pairwise else float("nan")
 
             entry.update(
