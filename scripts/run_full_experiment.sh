@@ -91,6 +91,13 @@ if [[ $ASSUME_YES -eq 0 ]]; then
   fi
 fi
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Detect wrapper presence and prefer using it to enforce environment
+WRAPPER=""
+if [ -f "${ROOT}/scripts/exec_in_env.sh" ]; then
+  WRAPPER="${ROOT}/scripts/exec_in_env.sh --env dataselector --"
+fi
+
 # Helper to run a command with timestamped logging
 # NOTE: We join all args into a shell command string and run via 'bash -lc' so
 # constructs like 'PYTHONPATH=. python script.py' work correctly.
@@ -100,7 +107,15 @@ run_step() {
   local logfile="${OUT_DIR}/${label}.log"
   echo "\n=== [$label] Starting: $(date -u +%FT%TZ) ==="
   echo "> ${cmd_str}" | tee -a "$logfile"
-  if bash -lc "$cmd_str" >>"$logfile" 2>&1; then
+
+  # If wrapper available, prefix the command so it runs inside the dataselector env
+  if [ -n "${WRAPPER}" ]; then
+    prefixed_cmd="${WRAPPER} ${cmd_str}"
+  else
+    prefixed_cmd="${cmd_str}"
+  fi
+
+  if bash -lc "$prefixed_cmd" >>"$logfile" 2>&1; then
     echo "[${label}] Completed: $(date -u +%FT%TZ)" | tee -a "$logfile"
   else
     echo "[${label}] FAILED (see ${logfile})" | tee -a "$logfile"
