@@ -22,6 +22,30 @@ def test_cache_migration_and_load(tmp_path):
     csv = tmp_path / "data.csv"
     csv.write_text("id\n1\n2\n3\n")
 
+    # Before importing the migrate script, inject a lightweight stub for `src.cache` to
+    # avoid importing heavy native deps indirectly via package-level imports.
+    import types, sys
+
+    fake_cache = types.ModuleType("src.cache")
+
+    def compute_meta_hash(csv_path, params=None):
+        return "deadbeef" * 8  # deterministic fake hash
+
+    def create_meta_info(csv_path, params=None):
+        return {"metadata_csv": str(csv_path), "params": params}
+
+    def atomic_write_features_with_meta(out_dir, feats, meta_hash, meta_info):
+        # write a simple features-{meta_hash}.npy
+        import numpy as _np
+        target = Path(out_dir) / f"features-{meta_hash}.npy"
+        _np.save(target, feats)
+
+    fake_cache.compute_meta_hash = compute_meta_hash
+    fake_cache.create_meta_info = create_meta_info
+    fake_cache.atomic_write_features_with_meta = atomic_write_features_with_meta
+
+    sys.modules["src.cache"] = fake_cache
+
     # Import migrate function
     spec = importlib.util.spec_from_file_location("migrate_mod", REPO_ROOT / "scripts" / "migrate_feature_cache_to_hash.py")
     mod = importlib.util.module_from_spec(spec)
@@ -158,6 +182,27 @@ def test_pipeline_smoke_small(tmp_path, monkeypatch):
 
     io_mod = load_module_from_path("io_mod", REPO_ROOT / "src" / "io.py")
     monkeypatch.setitem(sys.modules, 'src.io', io_mod)
+
+    # Provide a fake DiversitySelector to avoid importing heavy package-level deps (umap/numba)
+    fake_divsel = types.ModuleType('src.diversity_selector')
+
+    class _FakeDS:
+        def __init__(self, n_samples=5, use_multi_criteria=False, use_constraint_integration=False):
+            self.n_samples = n_samples
+            self.use_multi_criteria = use_multi_criteria
+            self.use_constraint_integration = use_constraint_integration
+
+        def select(self, features, metadata, *a, **k):
+            return list(range(min(self.n_samples, len(features))))
+
+        def export_selection(self, metadata, out_file):
+            import pandas as _pd
+            sel = _pd.DataFrame({'selection_rank': list(range(min(self.n_samples, len(metadata))))})
+            sel.to_csv(out_file, index=False)
+            return sel
+
+    fake_divsel.DiversitySelector = _FakeDS
+    monkeypatch.setitem(sys.modules, 'src.diversity_selector', fake_divsel)
 
     experiments = load_module_from_path('experiments', REPO_ROOT / 'src' / 'experiments.py')
     monkeypatch.setitem(sys.modules, 'src.experiments', experiments)
