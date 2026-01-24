@@ -125,10 +125,18 @@ def run_single_optuna(
 
     df = pd.read_csv(trials_csv)
     df = df[df["value"].notna()]
+
+    # Normalize trial number column names across different optuna versions/formats
+    for col in ("trial_number", "number", "trial"):
+        if col in df.columns:
+            df = df.rename(columns={col: "trial_number"})
+            break
+
     best_val = float(df["value"].max()) if len(df) > 0 else float("nan")
-    best_trial = (
-        int(df.loc[df["value"].idxmax(), "trial_number"]) if len(df) > 0 else -1
-    )
+    if len(df) > 0 and "trial_number" in df.columns:
+        best_trial = int(df.loc[df["value"].idxmax(), "trial_number"])
+    else:
+        best_trial = -1
     cumulative_best = (
         df["value"].expanding().max() if len(df) > 0 else pd.Series(dtype=float)
     )
@@ -418,9 +426,13 @@ def main():
         print(f"\n=== Running dataset: {dataset} ===\n")
         preselection_flag = "--hamburg" if dataset == "hamburg" else None
         if args.n_candidates is None:
-            df_meta = pd.read_csv(CSV_META_PATH)
-            n_candidates = len(df_meta)  # Dynamically from CSV
-            print(f"[INFO] Auto-detected n_candidates from CSV: {n_candidates}")
+            try:
+                df_meta = pd.read_csv(CSV_META_PATH)
+                n_candidates = len(df_meta)  # Dynamically from CSV
+                print(f"[INFO] Auto-detected n_candidates from CSV: {n_candidates}")
+            except FileNotFoundError:
+                n_candidates = 676
+                print(f"WARNING: {CSV_META_PATH} not found, using default {n_candidates}")
         else:
             n_candidates = args.n_candidates
 

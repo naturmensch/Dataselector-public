@@ -60,71 +60,78 @@ def load_or_create_data(n=500, dim=512, seed=123):
 
 def objective_factory(features, metadata, n_samples, min_distance_km, n_samples_range=None, constrain_bounds=None):
     def objective(trial: optuna.trial.Trial):
-        # Allow Optuna to explore n_samples if a range is provided; otherwise use fixed.
-        n_samp = (
-            trial.suggest_int("n_samples", n_samples_range[0], n_samples_range[1])
-            if n_samples_range is not None
-            else n_samples
-        )
-        
-        # Determine bounds for a, b, c
-        if constrain_bounds:
-            a_bounds = (constrain_bounds.get("a_min", 0.01), constrain_bounds.get("a_max", 1.0))
-            b_bounds = (constrain_bounds.get("b_min", 0.01), constrain_bounds.get("b_max", 1.0))
-            c_bounds = (constrain_bounds.get("c_min", 0.01), constrain_bounds.get("c_max", 1.0))
-            min_dist_bounds = (constrain_bounds.get("min_dist_min", 0), constrain_bounds.get("min_dist_max", 60))
-        else:
-            a_bounds = (0.01, 1.0)
-            b_bounds = (0.01, 1.0)
-            c_bounds = (0.01, 1.0)
-            min_dist_bounds = (0, 60)
-        
-        # Sample raw weights and normalize (ensures sum=1 and non-negative)
-        a = trial.suggest_float("a", *a_bounds)
-        b = trial.suggest_float("b", *b_bounds)
-        c = trial.suggest_float("c", *c_bounds)
-        total = a + b + c
-        alpha = a / total
-        beta = b / total
-        gamma = c / total
+        try:
+            # Allow Optuna to explore n_samples if a range is provided; otherwise use fixed.
+            n_samp = (
+                trial.suggest_int("n_samples", n_samples_range[0], n_samples_range[1])
+                if n_samples_range is not None
+                else n_samples
+            )
+            
+            # Determine bounds for a, b, c
+            if constrain_bounds:
+                a_bounds = (constrain_bounds.get("a_min", 0.01), constrain_bounds.get("a_max", 1.0))
+                b_bounds = (constrain_bounds.get("b_min", 0.01), constrain_bounds.get("b_max", 1.0))
+                c_bounds = (constrain_bounds.get("c_min", 0.01), constrain_bounds.get("c_max", 1.0))
+                min_dist_bounds = (constrain_bounds.get("min_dist_min", 0), constrain_bounds.get("min_dist_max", 60))
+            else:
+                a_bounds = (0.01, 1.0)
+                b_bounds = (0.01, 1.0)
+                c_bounds = (0.01, 1.0)
+                min_dist_bounds = (0, 60)
+            
+            # Sample raw weights and normalize (ensures sum=1 and non-negative)
+            a = trial.suggest_float("a", *a_bounds)
+            b = trial.suggest_float("b", *b_bounds)
+            c = trial.suggest_float("c", *c_bounds)
+            total = a + b + c
+            alpha = a / total
+            beta = b / total
+            gamma = c / total
 
-        # Use conservative bounds for min_distance based on dataset grid (median ≈ 28km).
-        # Limit search to [0, 60] km to avoid overly restrictive values that prevent selecting enough samples.
-        min_dist = trial.suggest_int("min_distance_km", *min_dist_bounds)
+            # Use conservative bounds for min_distance based on dataset grid (median ≈ 28km).
+            # Limit search to [0, 60] km to avoid overly restrictive values that prevent selecting enough samples.
+            min_dist = trial.suggest_int("min_distance_km", *min_dist_bounds)
 
-        selector = DiversitySelector(n_samples=n_samp, use_multi_criteria=True)
-        selected = selector.select(
-            features,
-            metadata,
-            spatial_constraint=True,
-            min_distance_km=min_dist,
-            alpha_visual=alpha,
-            beta_spatial=beta,
-            gamma_temporal=gamma,
-        )
+            selector = DiversitySelector(n_samples=n_samp, use_multi_criteria=True)
+            selected = selector.select(
+                features,
+                metadata,
+                spatial_constraint=True,
+                min_distance_km=min_dist,
+                alpha_visual=alpha,
+                beta_spatial=beta,
+                gamma_temporal=gamma,
+            )
 
-        # Compute metrics
-        n_selected = len(selected)
-        if n_selected == 0:
+            # Compute metrics
+            n_selected = len(selected)
+            if n_selected == 0:
+                return 0.0
+
+            diversity = selector._calculate_diversity_score(features[selected])
+            spatial_spread = metadata.loc[selected, ["N", "left"]].std().mean()
+
+            # Composite objective (maximize)
+            score = diversity * spatial_spread
+
+            # Log intermediate values
+            trial.set_user_attr("alpha", float(alpha))
+            trial.set_user_attr("beta", float(beta))
+            trial.set_user_attr("gamma", float(gamma))
+            trial.set_user_attr("min_distance_km", int(min_dist))
+            trial.set_user_attr("n_selected", int(n_selected))
+            trial.set_user_attr("n_samples", int(n_samp))
+            trial.set_user_attr("diversity", float(diversity))
+            trial.set_user_attr("spatial_spread", float(spatial_spread))
+
+            return float(score)
+        except Exception as e:
+            import traceback
+            print(f"[ERROR] Exception in trial {getattr(trial, 'number', 'N/A')}: {e}")
+            traceback.print_exc()
+            trial.set_user_attr("error", str(e))
             return 0.0
-
-        diversity = selector._calculate_diversity_score(features[selected])
-        spatial_spread = metadata.loc[selected, ["N", "left"]].std().mean()
-
-        # Composite objective (maximize)
-        score = diversity * spatial_spread
-
-        # Log intermediate values
-        trial.set_user_attr("alpha", float(alpha))
-        trial.set_user_attr("beta", float(beta))
-        trial.set_user_attr("gamma", float(gamma))
-        trial.set_user_attr("min_distance_km", int(min_dist))
-        trial.set_user_attr("n_selected", int(n_selected))
-        trial.set_user_attr("n_samples", int(n_samp))
-        trial.set_user_attr("diversity", float(diversity))
-        trial.set_user_attr("spatial_spread", float(spatial_spread))
-
-        return float(score)
 
     return objective
 
@@ -140,6 +147,8 @@ def run_optuna(
     study_name="kdr100_opt",
     sampler_name="tpe",
     constrain_bounds=None,
+    exp_name: str | None = None,
+    checkpoint_every: int = 0,
 ):
     features, metadata = load_or_create_data(n=n_candidates, dim=dim, seed=seed)
 
@@ -156,11 +165,48 @@ def run_optuna(
         features, metadata, n_samples=n_samples, min_distance_km=min_distance_km, n_samples_range=n_samples_range, constrain_bounds=constrain_bounds
     )
 
-    study.optimize(objective, n_trials=n_trials)
+    # Setup optional checkpoint callback
+    callbacks = []
+    if checkpoint_every and checkpoint_every > 0:
+        def _optuna_checkpoint_callback(study_obj, trial_obj):
+            try:
+                if (trial_obj.number + 1) % checkpoint_every == 0:
+                    try:
+                        import joblib
+
+                        joblib.dump(
+                            study_obj, OUT_DIR / f"optuna_study_checkpoint_{trial_obj.number+1}.pkl"
+                        )
+                    except Exception:
+                        try:
+                            import pickle
+
+                            with open(OUT_DIR / f"optuna_study_checkpoint_{trial_obj.number+1}.pkl", "wb") as f:
+                                pickle.dump(study_obj, f)
+                        except Exception as e:
+                            print(f"[WARN] Failed to save study checkpoint: {e}")
+
+                    df = study_obj.trials_dataframe()
+                    df.to_csv(OUT_DIR / f"optuna_results_checkpoint_{trial_obj.number+1}.csv", index=False)
+                    print(f"[INFO] Saved Optuna checkpoint at trial {trial_obj.number+1}")
+            except Exception as e:
+                print(f"[WARN] Exception in checkpoint callback: {e}")
+
+        callbacks = [_optuna_checkpoint_callback]
+
+    study.optimize(objective, n_trials=n_trials, callbacks=callbacks)
 
     # Save results
     results_df = study.trials_dataframe()
     results_df.to_csv(OUT_DIR / "optuna_results.csv", index=False)
+
+    # If an experiment name was provided, also save per-run outputs to a run-specific folder
+    if exp_name:
+        run_results_dir = OUT_DIR / "runs" / exp_name / "results"
+        run_results_dir.mkdir(parents=True, exist_ok=True)
+        trials_csv = run_results_dir / "trials.csv"
+        results_df.to_csv(trials_csv, index=False)
+        print(f"Saved run trials to {trials_csv}")
 
     # Save study object
     try:
@@ -185,6 +231,7 @@ if __name__ == "__main__":
     parser.add_argument("--n-samples-max", type=int, default=None, help="Max samples for range (ignored if n-samples-min not set)")
     parser.add_argument("--min-distance-km", type=int, default=28)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--checkpoint-every", type=int, default=0, help="Save Optuna study and results every N trials (0 disables)")
     parser.add_argument("--sampler", type=str, default="tpe", help="Optuna sampler (qmc, tpe, cmaes)")
     parser.add_argument("--exp-name", type=str, default=None, help="Experiment name (optional)")
     parser.add_argument("--exp-desc", type=str, default=None, help="Experiment description (optional)")
@@ -231,4 +278,6 @@ if __name__ == "__main__":
         n_samples_range=n_samples_range,
         sampler_name=args.sampler,
         constrain_bounds=constrain_bounds,
+        exp_name=args.exp_name,
+        checkpoint_every=args.checkpoint_every,
     )

@@ -78,6 +78,8 @@ Dataselector/
 ### Daten vorbereiten
 
 1. Platzieren Sie die Metadaten-Datei (`KDR100_foliage_with_files_epsg3857.csv` oder `all_png_tiles.dbf`) im `data/` Verzeichnis
+
+   Hinweis: Falls die Rohbilder und Sidecar-XMLs in `data/images/` vorhanden sind, kann `scripts/build_new_all_tiles.py` automatisch `data/new_all_tiles.csv` erzeugen (z.B. `python scripts/build_new_all_tiles.py --image-dir data/images --out data/new_all_tiles.csv`).
 2. Erstellen Sie einen Ordner `data/images/` und legen Sie die Kartenbilder dort ab
 
 ### Vollständiger Experiment-Workflow (Modern: Autoscale → Sampler Suite → XXL)

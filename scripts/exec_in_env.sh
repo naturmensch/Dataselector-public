@@ -9,16 +9,18 @@ ACTION="none"
 FORCE_RECREATE=0
 ASSUME_YES=0
 SHOW_HELP=0
+ENSURE_PACKAGES=""
 
 print_help() {
     cat <<'HELP'
-Usage: exec_in_env.sh --env <name> [--create|--update|--force-recreate] [--yes] -- <command> [args...]
+Usage: exec_in_env.sh --env <name> [--create|--update|--force-recreate] [--ensure-packages "pkg=1.2 pkg2"] [--yes] -- <command> [args...]
 
 Options:
   --env NAME                Name of the conda/mamba environment (default: dataselector)
   --create                  Create the environment if missing (uses environment.yml)
   --update                  Update environment if present
   --force-recreate          Recreate environment from scratch (destructive)
+  --ensure-packages "..."   Ensure specific packages are installed in the env (conda/mamba)
   --yes                     Assume 'yes' for prompts (non-interactive)
   --help                    Show this help
 
@@ -26,9 +28,10 @@ Behaviour:
   1. Prefer mamba run -n NAME -- <cmd>, then conda run -n NAME -- <cmd>
   2. If neither available, prefer an existing .venv/venv in repo root and activate it
   3. If env missing and --create, try mamba/conda create, else fall back to .venv + pip
+  4. Use --ensure-packages to run `mamba install -n <env> <pkgs>` or `conda install -n <env> <pkgs>` after the env exists
 
 Examples:
-  ./scripts/exec_in_env.sh --env dataselector --create -- python scripts/run_adaptive_pipeline.py --yes
+  ./scripts/exec_in_env.sh --env dataselector --create --ensure-packages "numpy<2.4 numba=0.63.1" -- python scripts/run_adaptive_pipeline.py --yes
 HELP
 }
 
@@ -53,6 +56,9 @@ while [[ $# -gt 0 ]]; do
             ;;
         --help|-h)
             SHOW_HELP=1; shift;
+            ;;
+        --ensure-packages)
+            ENSURE_PACKAGES="$2"; shift 2;
             ;;
         --)
             shift; POSITIONAL+=("$@"); break
@@ -199,6 +205,31 @@ remove_conda_env() {
     fi
 }
 
+# Ensure packages installed into the env (mamba preferred, conda fallback, pip fallback)
+ensure_packages() {
+    PKG_STR="$1"
+    echo "Ensuring packages in env ${ENV_NAME}: ${PKG_STR}"
+    if cmd_exists mamba; then
+        echo "Installing with mamba: mamba install -n ${ENV_NAME} ${PKG_STR}"
+        mamba install -n "${ENV_NAME}" ${PKG_STR} ${ASSUME_YES:+-y}
+        return $?
+    elif cmd_exists conda; then
+        echo "Installing with conda: conda install -n ${ENV_NAME} ${PKG_STR}"
+        conda install -n "${ENV_NAME}" ${PKG_STR} ${ASSUME_YES:+-y}
+        return $?
+    else
+        echo "No conda/mamba available; trying pip in .venv or env bin as fallback"
+        if venv_exists; then
+            source "${REPO_ROOT}/.venv/bin/activate"
+            pip install ${PKG_STR}
+            deactivate
+            return $?
+        fi
+        echo "Could not ensure packages: no supported installer found." >&2
+        return 2
+    fi
+}
+
 # Try to resolve environment name if exact name missing (fuzzy match)
 resolve_env_name() {
     if env_exists_conda; then
@@ -264,11 +295,13 @@ fi
             CMD_STR="$CMD_STR $(printf '%q' "${_a}")"
         done
 
-        # Try conda/mamba run first (expected path), but fall back to running with the env bin in PATH
-        if cmd_exists conda || cmd_exists mamba; then
-            # Try conda run first, but guard against conda-run argument parsing issues
-            if cmd_exists conda; then
-                echo "Attempting: conda run -n ${ENV_NAME} bash -lc ${CMD_STR}"
+    # If requested, ensure additional packages are installed into the existing environment
+    if [ -n "${ENSURE_PACKAGES}" ]; then
+        ensure_packages "${ENSURE_PACKAGES}" || {
+            echo "ERROR: ensure_packages failed" >&2
+            exit 2
+        }
+    fi
                 if conda run -n "${ENV_NAME}" bash -lc "$CMD_STR"; then
                     exit 0
                 else

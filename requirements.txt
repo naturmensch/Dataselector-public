@@ -7,7 +7,8 @@ Pillow>=10.0.0
 
 # Data Processing
 pandas>=2.0.0
-numpy>=1.24.0
+numpy<2.4
+numba==0.63.1
 dbfread>=2.0.7
 
 # Machine Learning & Clustering
@@ -27,6 +28,8 @@ seaborn>=0.12.0
 # Utilities
 tqdm>=4.65.0
 pyyaml>=6.0
+numba>=0.63.1,<0.66  # Add Numba (pin a tested range)
+
 
 # Testing
 pytest>=7.0.0
