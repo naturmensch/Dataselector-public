@@ -7,7 +7,28 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 from tests.utils import load_module_from_path
 
 
-def test_spatial_constraint_preserves_count(make_features, make_dummy_metadata):
+def _install_apricot_stub(monkeypatch):
+    import types, sys
+
+    class _FakeFacilityLocation:
+        def __init__(self, n_samples=None, metric=None, random_state=None):
+            self.n_samples = n_samples
+            self.metric = metric
+            self.random_state = random_state
+            self.ranking = None
+
+        def fit(self, X):
+            n = X.shape[0]
+            k = min(self.n_samples or n, n)
+            self.ranking = list(range(k))
+
+    fake = types.ModuleType("apricot")
+    fake.FacilityLocationSelection = _FakeFacilityLocation
+    monkeypatch.setitem(sys.modules, "apricot", fake)
+
+
+def test_spatial_constraint_preserves_count(make_features, make_dummy_metadata, monkeypatch):
+    _install_apricot_stub(monkeypatch)
     selector_mod = load_module_from_path("sel_mod", REPO_ROOT / "src" / "diversity_selector.py")
     DiversitySelector = selector_mod.DiversitySelector
 
@@ -19,11 +40,12 @@ def test_spatial_constraint_preserves_count(make_features, make_dummy_metadata):
     assert len(result) == 10, f"Expected 10 samples, got {len(result)}"
 
 
-def test_spatial_constraint_respects_distance(make_features, make_dummy_metadata):
+def test_spatial_constraint_respects_distance(make_features, make_dummy_metadata, monkeypatch):
     # Use real MetadataProcessor helper for distance computation loaded in isolation
     mp_mod = load_module_from_path("mp_mod", REPO_ROOT / "src" / "metadata_processor.py")
     MetadataProcessor = mp_mod.MetadataProcessor
 
+    _install_apricot_stub(monkeypatch)
     selector_mod = load_module_from_path("sel_mod2", REPO_ROOT / "src" / "diversity_selector.py")
     DiversitySelector = selector_mod.DiversitySelector
 
@@ -43,7 +65,8 @@ def test_spatial_constraint_respects_distance(make_features, make_dummy_metadata
             assert dist >= min_dist or len(result) == selector.n_samples
 
 
-def test_spatial_constraint_with_insufficient_samples(make_features):
+def test_spatial_constraint_with_insufficient_samples(make_features, monkeypatch):
+    _install_apricot_stub(monkeypatch)
     selector_mod = load_module_from_path("sel_mod3", REPO_ROOT / "src" / "diversity_selector.py")
     DiversitySelector = selector_mod.DiversitySelector
 
@@ -58,7 +81,8 @@ def test_spatial_constraint_with_insufficient_samples(make_features):
 
 
 # Adaptive tests
-def test_adaptive_min_distance_reaches_n_samples():
+def test_adaptive_min_distance_reaches_n_samples(monkeypatch):
+    _install_apricot_stub(monkeypatch)
     selector_mod = load_module_from_path("sel_mod4", REPO_ROOT / "src" / "diversity_selector.py")
     DiversitySelector = selector_mod.DiversitySelector
 
@@ -83,7 +107,8 @@ def test_adaptive_min_distance_reaches_n_samples():
     assert len(result) == 5, f"Adaptive fallback failed to reach 5 samples, got {len(result)}"
 
 
-def test_adaptive_fallback_allows_duplicates():
+def test_adaptive_fallback_allows_duplicates(monkeypatch):
+    _install_apricot_stub(monkeypatch)
     selector_mod = load_module_from_path("sel_mod5", REPO_ROOT / "src" / "diversity_selector.py")
     DiversitySelector = selector_mod.DiversitySelector
 
@@ -105,7 +130,31 @@ def test_adaptive_fallback_allows_duplicates():
 
 # Soft penalty / MultiCriteria Distance tests
 
-def test_spatial_penalty_increases_nearby_distances():
+def test_spatial_penalty_increases_nearby_distances(monkeypatch):
+    # Prevent src package init from importing heavy deps by stubbing required submodules
+    import types, sys
+    src_pkg = types.ModuleType("src")
+    src_pkg.__path__ = []
+    monkeypatch.setitem(sys.modules, "src", src_pkg)
+
+    # Provide minimal src.spatial_facility_location implementation required by multi_criteria
+    fake_spatial = types.ModuleType("src.spatial_facility_location")
+
+    def _haversine_distance(lat1, lon1, lat2, lon2):
+        return float(abs(lat1 - lat2) + abs(lon1 - lon2))
+
+    def _haversine_matrix(lats, lons):
+        n = len(lats)
+        m = np.zeros((n, n))
+        for i in range(n):
+            for j in range(n):
+                m[i, j] = _haversine_distance(lats[i], lons[i], lats[j], lons[j])
+        return m
+
+    fake_spatial.haversine_distance = _haversine_distance
+    fake_spatial.haversine_matrix = _haversine_matrix
+    monkeypatch.setitem(sys.modules, "src.spatial_facility_location", fake_spatial)
+
     mc_mod = load_module_from_path("mc_mod", REPO_ROOT / "src" / "multi_criteria_facility_location.py")
     MultiCriteriaFacilityLocation = mc_mod.MultiCriteriaFacilityLocation
 
