@@ -237,10 +237,18 @@ PY
                 ${ROOT}/scripts/exec_in_env.sh --env ${DATASELECTOR_ENV} -- python "${ROOT}/scripts/build_new_all_tiles.py" --image-dir "${ROOT}/data/images" || {
                     log_warning "Regeneration of new_all_tiles.csv failed - scripts will fall back to defaults"
                 }
+                
+                # Also ensure we prefer running subsequent helper scripts via RUNNER when available
             else
-                python "${ROOT}/scripts/build_new_all_tiles.py" --image-dir "${ROOT}/data/images" || {
-                    log_warning "Regeneration of new_all_tiles.csv failed - scripts will fall back to defaults"
-                }
+                if [ -n "${RUNNER:-}" ]; then
+                    ${RUNNER} python "${ROOT}/scripts/build_new_all_tiles.py" --image-dir "${ROOT}/data/images" || {
+                        log_warning "Regeneration of new_all_tiles.csv failed - scripts will fall back to defaults"
+                    }
+                else
+                    python "${ROOT}/scripts/build_new_all_tiles.py" --image-dir "${ROOT}/data/images" || {
+                        log_warning "Regeneration of new_all_tiles.csv failed - scripts will fall back to defaults"
+                    }
+                fi
             fi
         else
             log_warning "No generator script found (scripts/build_new_all_tiles.py) - scripts will fall back to defaults"
