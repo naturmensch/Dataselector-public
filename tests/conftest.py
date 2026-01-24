@@ -115,3 +115,35 @@ def inject_src_stub(monkeypatch):
     current_keys = {k for k in sys.modules if k.startswith("src.")}
     for k in current_keys - original_keys:
         del sys.modules[k]
+
+def pytest_sessionstart(session):
+    """Fail early if tests are not running inside the project's conda env.
+
+    This prevents accidental test runs in `base` or other environments where
+    native dependencies (Numba/UMAP/Apricot) are incompatible. It gives a
+    clear actionable message to run tests via `./scripts/exec_in_env.sh`.
+    """
+    import os, sys
+
+    # Allow bypass for automation or debugging (set this env var to 1 to override)
+    if os.environ.get("DATASELECTOR_IGNORE_ENV_CHECK") == "1":
+        return
+
+    # Check common conda env indicators
+    env_name = os.environ.get("CONDA_DEFAULT_ENV") or os.environ.get("MAMBA_DEFAULT_ENV")
+    if env_name == "dataselector" or ("dataselector" in sys.prefix):
+        return
+
+    # Not in the correct env — abort with helpful instructions
+    msg = (
+        "Tests must be run inside the 'dataselector' environment.\n"
+        "To run the curated integration suite locally, use:\n"
+        "  ./scripts/exec_in_env.sh --env dataselector -- pytest -q -m integration\n"
+        "Or to run a single test file: \n"
+        "  ./scripts/exec_in_env.sh --env dataselector -- pytest -q <path/to/test_file.py>\n"
+        "If you understand the implications and want to bypass this check for debugging, set:\n"
+        "  export DATASELECTOR_IGNORE_ENV_CHECK=1\n"
+    )
+    import pytest
+
+    pytest.exit(msg, returncode=2)
