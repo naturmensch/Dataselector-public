@@ -129,6 +129,7 @@ def inject_src_stub(monkeypatch):
     for k in current_keys - original_keys:
         del sys.modules[k]
 
+<<<<<<< HEAD
 
 @pytest.fixture
 def fake_features():
@@ -156,6 +157,8 @@ def stub_feature_extraction(monkeypatch, fake_features):
     return _fake_loader
 
 
+=======
+>>>>>>> 2cab885 (tests: add session env-check to ensure pytest runs inside 'dataselector' env; provide actionable message)
 def pytest_sessionstart(session):
     """Fail early if tests are not running inside the project's conda env.
 
@@ -187,6 +190,7 @@ def pytest_sessionstart(session):
     import pytest
 
     pytest.exit(msg, returncode=2)
+<<<<<<< HEAD
 
 
 def pytest_configure(config):
@@ -250,3 +254,5 @@ def pytest_collection_modifyitems(config: Config, items):
     for item in list(items):
         if "e2e" in {m.name for m in item.iter_markers()}:
             item.add_marker(skip_marker)
+=======
+>>>>>>> 2cab885 (tests: add session env-check to ensure pytest runs inside 'dataselector' env; provide actionable message)
