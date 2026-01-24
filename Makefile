@@ -28,6 +28,31 @@ format-check:
 test:
 	pytest -q
 
+# Environment and integration helpers
+.PHONY: env-create env-update check-env test-integration test-e2e
+
+ENV_NAME := dataselector
+
+env-create:
+	@echo "Create/update conda env '$(ENV_NAME)'"
+	@./scripts/exec_in_env.sh --env $(ENV_NAME) --create --ensure-packages "numpy<2.4 numba=0.63.1" --yes -- true
+
+env-update:
+	@echo "Update conda env '$(ENV_NAME)'"
+	@./scripts/exec_in_env.sh --env $(ENV_NAME) --update --ensure-packages "numpy<2.4 numba=0.63.1" --yes -- true
+
+check-env:
+	@echo "Checking environment compatibility"
+	@./scripts/exec_in_env.sh --env $(ENV_NAME) -- python scripts/check_env.py
+
+test-integration:
+	@echo "Running a curated set of integration tests inside $(ENV_NAME)" \
+	&& ./scripts/exec_in_env.sh --env $(ENV_NAME) -- pytest -q tests/test_integration_diversity_selector.py tests/test_full_pipeline_integration.py tests/test_full_pipeline_comprehensive.py
+
+test-e2e:
+	@echo "Running e2e smoke tests inside $(ENV_NAME)" \
+	&& ./scripts/exec_in_env.sh --env $(ENV_NAME) -- pytest -q -m e2e
+
 archive-outputs:
 	@echo "Archive outputs to data/archive/"
 	python scripts/manage_archives.py archive --outputs outputs --dest data/archive $(foreach p,$(EXCLUDE),--exclude $(p))
