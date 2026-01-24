@@ -168,7 +168,8 @@ def test_monitor_run_hook_with_dummy_script(tmp_path):
     active_log = base_log_dir / "active.log"
 
     # Use run_hook to execute the dummy script; ensure subprocess runs in tmp_path
-    cmd_str = f"python {str(dummy)}"
+    import sys
+    cmd_str = f"{sys.executable} {str(dummy)}"
 
     old_cwd = os.getcwd()
     os.chdir(tmp_path)

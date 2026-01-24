@@ -24,7 +24,8 @@ def test_build_new_all_tiles_tmpdir(tmp_path: Path):
     out_csv = tmp_path / "new_all_tiles.csv"
 
     # run script
-    cmd = ["python", "scripts/build_new_all_tiles.py", "--image-dir", str(images), "--out", str(out_csv)]
+    import sys
+    cmd = [sys.executable, "scripts/build_new_all_tiles.py", "--image-dir", str(images), "--out", str(out_csv)]
     res = subprocess.run(cmd, capture_output=True, text=True)
     assert res.returncode == 0, res.stdout + "\n" + res.stderr
 
