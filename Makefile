@@ -3,11 +3,11 @@
 
 clean:
 	@echo "Dry-run: show candidates to be cleaned"
-	python scripts/clean_workspace.py --dry-run
+	@./scripts/exec_in_env.sh --env $(ENV_NAME) -- python scripts/clean_workspace.py --dry-run
 
 clean-force:
 	@echo "Deleting outputs and venvs (will skip protected paths)."
-	python scripts/clean_workspace.py --delete-outputs --delete-venvs
+	@./scripts/exec_in_env.sh --env $(ENV_NAME) -- python scripts/clean_workspace.py --delete-outputs --delete-venvs
 
 format:
 	@echo "Formatting code with isort, black and ruff"
@@ -26,7 +26,8 @@ format-check:
 	ruff check .
 
 test:
-	pytest -q
+	@echo "Running tests inside '$(ENV_NAME)' environment"
+	@./scripts/exec_in_env.sh --env $(ENV_NAME) -- pytest -q
 
 # Environment and integration helpers
 .PHONY: env-create env-update check-env test-integration test-e2e
@@ -55,9 +56,9 @@ test-e2e:
 
 archive-outputs:
 	@echo "Archive outputs to data/archive/"
-	python scripts/manage_archives.py archive --outputs outputs --dest data/archive $(foreach p,$(EXCLUDE),--exclude $(p))
+	@./scripts/exec_in_env.sh --env $(ENV_NAME) -- python scripts/manage_archives.py archive --outputs outputs --dest data/archive $(foreach p,$(EXCLUDE),--exclude $(p))
 
 restore-outputs:
 	@echo "Restore latest archive from data/archive/"
-	python -c "import pathlib,sys; import glob; a=list(pathlib.Path('data/archive').glob('outputs_archive_*.tar.gz')); a.sort(); print('No archive found' if not a else a[-1]); sys.exit(0 if a else 1)" \
-	&& python scripts/manage_archives.py restore --archive $(python -c "import pathlib; a=list(pathlib.Path('data/archive').glob('outputs_archive_*.tar.gz')); a.sort(); print(a[-1])") --dest .
+	@./scripts/exec_in_env.sh --env $(ENV_NAME) -- python -c "import pathlib,sys; import glob; a=list(pathlib.Path('data/archive').glob('outputs_archive_*.tar.gz')); a.sort(); print('No archive found' if not a else a[-1]); sys.exit(0 if a else 1)" \
+	&& @./scripts/exec_in_env.sh --env $(ENV_NAME) -- python scripts/manage_archives.py restore --archive $(shell ./scripts/exec_in_env.sh --env $(ENV_NAME) -- python -c "import pathlib; a=list(pathlib.Path('data/archive').glob('outputs_archive_*.tar.gz')); a.sort(); print(a[-1])") --dest .
