@@ -10,6 +10,18 @@ import pytest
 # repo root (two levels up from tests/integration)
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+# Prevent importing src/__init__.py (which pulls heavy native deps like umap/numba at import time)
+# by registering a lightweight package module early. This lets submodules be loaded directly
+# via importlib without executing package-level side-effects.
+import types, sys
+if 'src' not in sys.modules:
+    _src_pkg = types.ModuleType('src')
+    _src_pkg.__path__ = []
+    sys.modules['src'] = _src_pkg
+else:
+    if not hasattr(sys.modules['src'], '__path__'):
+        sys.modules['src'].__path__ = []
+
 
 @pytest.mark.integration
 def test_cache_migration_and_load(tmp_path):
@@ -203,6 +215,13 @@ def test_pipeline_smoke_small(tmp_path, monkeypatch):
 
     fake_divsel.DiversitySelector = _FakeDS
     monkeypatch.setitem(sys.modules, 'src.diversity_selector', fake_divsel)
+
+    # Provide a lightweight `src.metrics` to avoid importing heavy deps
+    fake_metrics = types.ModuleType('src.metrics')
+    def compute_metrics(*args, **kwargs):
+        return {'diversity_score': 0.0, 'n_selected': kwargs.get('n_selected', 0)}
+    fake_metrics.compute_metrics = compute_metrics
+    monkeypatch.setitem(sys.modules, 'src.metrics', fake_metrics)
 
     experiments = load_module_from_path('experiments', REPO_ROOT / 'src' / 'experiments.py')
     monkeypatch.setitem(sys.modules, 'src.experiments', experiments)
