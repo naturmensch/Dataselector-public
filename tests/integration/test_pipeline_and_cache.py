@@ -7,7 +7,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+# repo root (two levels up from tests/integration)
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.integration
