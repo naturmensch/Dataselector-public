@@ -12,10 +12,22 @@ Local run (recommended pre-conditions)
 
 Run a full E2E test locally (manual)
 
-1) Activate env (example):
+1) Activate env (example) or use the helper script `scripts/exec_in_env.sh`:
 
+   # Create or update the conda environment with pinned deps
+   ./scripts/exec_in_env.sh --env dataselector --create --ensure-packages "numpy<2.4 numba=0.63.1" --yes -- python -c "import numpy; print(numpy.__version__)"
+
+   # Or with conda/mamba directly
    conda env create -f environment.yml -n dataselector
    conda activate dataselector
+
+# Quick compatibility check
+
+Run the environment compatibility check which prints versions and exits non-zero when an incompatibility is detected:
+
+   python scripts/check_env.py
+
+If it prints errors about NumPy/Numba versions, run the `exec_in_env.sh` command above to fix the environment.
 
 2) Run the full integration tests (explicit marker):
 
