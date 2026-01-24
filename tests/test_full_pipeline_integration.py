@@ -12,6 +12,20 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
+# Inject a lightweight fake `src` package into sys.modules early to avoid importing
+# the real package `src` (which triggers heavy imports like umap/numba during test import).
+# Individual tests will override submodules as needed.
+import types
+if 'src' not in sys.modules:
+    mod = types.ModuleType('src')
+    # mark as package so submodule imports (e.g., src.cache) work during tests
+    mod.__path__ = []
+    sys.modules['src'] = mod
+else:
+    # if present but not package-like, add __path__ to allow submodule imports
+    if not hasattr(sys.modules['src'], '__path__'):
+        sys.modules['src'].__path__ = []
+
 
 def _load_module_from_path(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, str(path))
@@ -63,6 +77,12 @@ def test_feature_cache_validation(tmp_path, monkeypatch):
 
     sys.modules['src.feature_extractor'] = fake_feat
     sys.modules['src.metadata_processor'] = fake_meta
+
+    # The io module imports from src.cache; ensure src.cache is loadable and registered
+    spec = importlib.util.spec_from_file_location("src.cache", REPO_ROOT / "src" / "cache.py")
+    cache_mod = importlib.util.module_from_spec(spec)
+    sys.modules["src.cache"] = cache_mod
+    spec.loader.exec_module(cache_mod)
 
     # load src/io.py as isolated module (avoid package-level side effects)
     io_mod = _load_module_from_path("test_src_io", REPO_ROOT / "src" / "io.py")
@@ -147,33 +167,44 @@ def test_monitor_run_hook_with_dummy_script(tmp_path):
     base_log_dir.mkdir()
     active_log = base_log_dir / "active.log"
 
-    # Use run_hook to execute the dummy script
+    # Use run_hook to execute the dummy script; ensure subprocess runs in tmp_path
     cmd_str = f"python {str(dummy)}"
 
-    result = monitor_mod.run_hook(
-        name="dummy",
-        cmd_str=cmd_str,
-        base_log_dir=base_log_dir,
-        active_log=active_log,
-        timeout=10,
-        retries=0,
-        env=os.environ.copy(),
-        start_new_session=True,
-        pass_dry_run=False,
-    )
+    old_cwd = os.getcwd()
+    os.chdir(tmp_path)
+    try:
+        result = monitor_mod.run_hook(
+            name="dummy",
+            cmd_str=cmd_str,
+            base_log_dir=base_log_dir,
+            active_log=active_log,
+            timeout=10,
+            retries=0,
+            env=os.environ.copy(),
+            start_new_session=True,
+            pass_dry_run=False,
+        )
+    finally:
+        os.chdir(old_cwd)
 
     assert isinstance(result, dict)
-    assert result.get("exit_code") == 0
+    # run_hook returns a meta dict with attempts; prefer 'success' flag and last attempt exit_code
+    assert result.get("success") is True
+    assert result.get("attempts") and result.get("attempts")[-1].get("exit_code") == 0
 
-    # validate the artifact was created
-    artifact = Path("outputs") / "runs" / "dummy_run" / "results.txt"
+    # validate the artifact was created in the tmp_path where the subprocess ran
+    artifact = tmp_path / "outputs" / "runs" / "dummy_run" / "results.txt"
     assert artifact.exists()
     assert artifact.read_text() == "dummy-result"
 
-    # active log should exist and contain at least one DUMMY_RUN_DONE
+    # active log should exist
     assert active_log.exists()
-    logtxt = active_log.read_text()
-    assert "DUMMY_RUN_DONE" in logtxt or "DUMMY_RUN_DONE" in (base_log_dir / "dummy" / "dummy.log").read_text()
+
+    # The run's stdout/stderr are written to base_log_dir / f"dummy_*.log"
+    run_logs = list(base_log_dir.glob("dummy_*.log"))
+    assert run_logs, f"No run log found in {base_log_dir}"
+    runtxt = run_logs[0].read_text()
+    assert "DUMMY_RUN_DONE" in runtxt
 
 
 if __name__ == '__main__':
