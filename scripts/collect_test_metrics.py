@@ -22,7 +22,10 @@ stamp = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
 outdir = OUT / stamp
 outdir.mkdir(parents=True, exist_ok=True)
 
-cmd = ["pytest", args.tests, "-q", "--durations=10", "-rA", f"--junitxml={outdir / 'junit.xml' if args.junit else '/dev/null'}"]
+import sys
+cmd = [sys.executable, "-m", "pytest", args.tests, "-q", "--durations=10", "-rA"]
+if args.junit:
+    cmd.append(f"--junitxml={outdir / 'junit.xml'}")
 if args.extra_args:
     cmd.extend(args.extra_args.split())
 
