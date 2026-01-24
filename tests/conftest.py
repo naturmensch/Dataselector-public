@@ -13,14 +13,77 @@ import pytest
 
 REPO_ROOT_PATH = Path(ROOT)
 
-# Ignore the original flaky metadata processor test while we add corrected tests
-collect_ignore = ["test_metadata_processor.py"]
-
 
 @pytest.fixture(scope="session")
 def repo_root():
     """Returns the Path object to the repository root."""
     return REPO_ROOT_PATH
+
+
+# --- Shared fixtures for consolidation PoC ---
+@pytest.fixture
+def make_dummy_metadata():
+    """Return a factory that creates deterministic metadata DataFrames."""
+    import pandas as _pd
+    import numpy as _np
+
+    def _make(n, seed: int = 0):
+        rng = _np.random.RandomState(seed)
+        return _pd.DataFrame(
+            {
+                "N": rng.uniform(48, 55, n),
+                "left": rng.uniform(6, 15, n),
+                "year": rng.randint(1880, 1945, n),
+            }
+        )
+
+    return _make
+
+
+@pytest.fixture
+def make_features():
+    import numpy as _np
+
+    def _make(n, dim=64, seed: int = 0):
+        rng = _np.random.RandomState(seed)
+        return rng.randn(n, dim)
+
+    return _make
+
+
+@pytest.fixture
+def tmp_workspace(tmp_path):
+    ws = tmp_path / "workspace"
+    data = ws / "data"
+    outputs = ws / "outputs"
+    data.mkdir(parents=True)
+    outputs.mkdir(parents=True)
+    return ws
+
+
+@pytest.fixture
+def create_minimal_new_all_tiles_csv():
+    def _fn(path, n=5):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        lines = ["longName,shortName,N,left,image_path,image_filename,year"]
+        for i in range(n):
+            lines.append(f"A{i},a{i},{50.0 + i*0.1},{10 + i*0.1},,,{1900+i}")
+        path.write_text("\n".join(lines) + "\n")
+        return path
+
+    return _fn
+
+
+@pytest.fixture
+def init_tmp_git_repo(tmp_path):
+    import subprocess
+
+    def _init():
+        # Initialize a git repo with minimal commit
+        subprocess.check_call(["git", "init", str(tmp_path)])
+        return tmp_path
+
+    return _init
 
 
 @pytest.fixture
