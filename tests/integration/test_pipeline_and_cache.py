@@ -199,10 +199,13 @@ def test_pipeline_smoke_small(tmp_path, monkeypatch):
     fake_divsel = types.ModuleType('src.diversity_selector')
 
     class _FakeDS:
-        def __init__(self, n_samples=5, use_multi_criteria=False, use_constraint_integration=False):
+        def __init__(self, n_samples=5, use_multi_criteria=False, use_constraint_integration=False, **kwargs):
+            # Accept extra kwargs (random_state, etc.) to be compatible with real API
             self.n_samples = n_samples
             self.use_multi_criteria = use_multi_criteria
             self.use_constraint_integration = use_constraint_integration
+            for k, v in kwargs.items():
+                setattr(self, k, v)
 
         def select(self, features, metadata, *a, **k):
             return list(range(min(self.n_samples, len(features))))
