@@ -268,6 +268,13 @@ PY
         return 1
     fi
 
+    # Check shell script syntax to catch errors early
+    if ! bash -n "${ROOT}/scripts/run_complete_thesis_pipeline.sh"; then
+        log_error "Shell script syntax error detected in run_complete_thesis_pipeline.sh"
+        return 1
+    fi
+    log_success "Shell script syntax check passed"
+
     log_success "Preflight checks passed (with warnings if any)"
     return 0
 }
