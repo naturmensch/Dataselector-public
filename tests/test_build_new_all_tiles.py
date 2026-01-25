@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -25,8 +26,10 @@ def test_build_new_all_tiles_tmpdir(tmp_path: Path):
 
     # run script
     import sys
+    env = os.environ.copy()
+    env['PYTHONPATH'] = str(Path.cwd())
     cmd = [sys.executable, "scripts/build_new_all_tiles.py", "--image-dir", str(images), "--out", str(out_csv)]
-    res = subprocess.run(cmd, capture_output=True, text=True)
+    res = subprocess.run(cmd, capture_output=True, text=True, env=env)
     assert res.returncode == 0, res.stdout + "\n" + res.stderr
 
     assert out_csv.exists()
@@ -87,8 +90,10 @@ def test_build_new_all_tiles_with_base_merge(tmp_path: Path):
 
         # Run script
         import sys
+        env = os.environ.copy()
+        env['PYTHONPATH'] = str(Path.cwd())
         cmd = [sys.executable, "scripts/build_new_all_tiles.py", "--image-dir", str(images), "--out", str(out_csv)]
-        res = subprocess.run(cmd, capture_output=True, text=True)
+        res = subprocess.run(cmd, capture_output=True, text=True, env=env)
         assert res.returncode == 0, res.stdout + "\n" + res.stderr
 
         assert out_csv.exists()
