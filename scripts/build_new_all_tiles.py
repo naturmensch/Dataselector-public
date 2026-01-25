@@ -248,9 +248,13 @@ def build_dataframe(image_dir: Path) -> pd.DataFrame:
 
     df = pd.DataFrame(rows)
     # normalize numeric columns
-    for col in ("N", "left"):
+    for col in ("N", "left", "top", "right", "bottom"):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
+    
+    # Rename 'top' to 'N' for consistency with other parts of the codebase
+    if 'top' in df.columns:
+        df = df.rename(columns={'top': 'N'})
     
     # Convert lat/lon to EPSG:3857 if pyproj available
     # Note: Coordinates from AUX are already in EPSG:3857, no transformation needed
@@ -321,9 +325,12 @@ def main(argv=None) -> int:
         base_df = pd.read_csv(base_path)
         # Rename columns to remove type suffixes (e.g., "longName,C,254" -> "longName")
         base_df.columns = [col.split(',')[0] for col in base_df.columns]
+        # Rename 'top' to 'N' for consistency
+        if 'top' in base_df.columns:
+            base_df = base_df.rename(columns={'top': 'N'})
         # Keep original coordinates in separate columns
         base_df['epsg_left'] = base_df['left']
-        base_df['epsg_top'] = base_df['top']
+        base_df['epsg_top'] = base_df['N']  # Now 'N' instead of 'top'
         base_df['epsg_right'] = base_df['right']
         base_df['epsg_bottom'] = base_df['bottom']
         print(f"Loaded base metadata from {base_path} ({len(base_df)} rows, columns: {list(base_df.columns)})")

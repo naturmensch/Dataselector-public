@@ -54,7 +54,7 @@ def test_build_new_all_tiles_with_base_merge(tmp_path: Path):
     base_csv = tmp_path / "KDR100_foliage_with_files_epsg3857.csv"
     base_df = pd.DataFrame({
         "longName": ["KDR_001_Someplace_1901.png", "KDR_002_Other_1950.jpg", "KDR_003_New_2000.png"],
-        "N": [5800000.0, 5900000.0, None],  # EPSG:3857 coords (meters)
+        "top": [5800000.0, 5900000.0, None],  # EPSG:3857 coords (meters)
         "left": [1400000.0, 1500000.0, None],
         "shortName": ["KDR_001", "KDR_002", "KDR_003"],
         "year": [1901, 1950, 2000]
