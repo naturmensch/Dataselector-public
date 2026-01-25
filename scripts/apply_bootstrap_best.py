@@ -2,8 +2,8 @@
 """Apply best Bootstrap candidate into pipeline config.
 
 Usage:
-  python scripts/apply_bootstrap_best.py --bootstrap-summary outputs/fine_sweep/bootstrap_summary.csv --inject
-  python scripts/apply_bootstrap_best.py --bootstrap-summary outputs/bootstrap_results_summary.csv --write-config config/pipeline_config.bootstrap.yaml
+  ./scripts/exec_in_env.sh --env dataselector -- python scripts/apply_bootstrap_best.py --bootstrap-summary outputs/fine_sweep/bootstrap_summary.csv --inject
+  ./scripts/exec_in_env.sh --env dataselector -- python scripts/apply_bootstrap_best.py --bootstrap-summary outputs/bootstrap_results_summary.csv --write-config config/pipeline_config.bootstrap.yaml
 """
 
 import argparse

@@ -2,8 +2,8 @@
 """Hilfs-Skript: Zählt CSV-Zeilen in einem Archiv (ohne Header).
 
 Usage:
-  python scripts/count_archived_tiles.py --archive data/archive/archive-20260111-234742.tar.gz
-  python scripts/count_archived_tiles.py --archive <path> --extract <member> --out data/
+  ./scripts/exec_in_env.sh --env dataselector -- python scripts/count_archived_tiles.py --archive data/archive/archive-20260111-234742.tar.gz
+  ./scripts/exec_in_env.sh --env dataselector -- python scripts/count_archived_tiles.py --archive <path> --extract <member> --out data/
 
 Outputs a simple report to stdout and returns exit code 0 on success.
 """

@@ -3,7 +3,7 @@ Grid search über alpha_visual, beta_spatial, gamma_temporal für Multi-Criteria
 Speichert für jede Kombination Metriken: Temporal STD, Cluster Coverage, Spatial Mean Dist, WWI-Anteil.
 
 Usage:
-    PYTHONPATH=. python scripts/tune_weights_and_run.py
+    ./scripts/exec_in_env.sh --env dataselector -- PYTHONPATH=. python scripts/tune_weights_and_run.py
 
 """
 

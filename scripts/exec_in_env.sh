@@ -152,7 +152,7 @@ The environment '${ENV_NAME}' must have exact, validated versions:
 Fix:
 
   ./scripts/exec_in_env.sh --env ${ENV_NAME} --create \
-    --ensure-packages "numpy==1.26.4 numba==0.63.1 umap-learn==0.5.11 apricot-select==0.6.1" --yes -- python scripts/check_env.py
+    ./scripts/exec_in_env.sh --env dataselector -- --ensure-packages "numpy==1.26.4 numba==0.63.1 umap-learn==0.5.11 apricot-select==0.6.1" --yes -- python scripts/check_env.py
 
 Or:
 

@@ -3,7 +3,7 @@
 This extends bootstrap analysis to the actual final selection produced by Optuna,
 providing confidence intervals and stability metrics for the thesis.
 Usage:
-    python scripts/bootstrap_final_selection.py --run-dir outputs/runs/<run> --n-boot 500          """
+    ./scripts/exec_in_env.sh --env dataselector -- python scripts/bootstrap_final_selection.py --run-dir outputs/runs/<run> --n-boot 500          """
 
 import sys
 import argparse

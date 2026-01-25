@@ -1,7 +1,7 @@
 """Bootstrap-based uncertainty estimates for Pareto candidates.
 
 Usage example:
-  PYTHONPATH=. python scripts/bootstrap_pareto_candidates.py --pareto outputs/fine_sweep/pareto_solutions.csv --n-boot 200 --out outputs/fine_sweep/bootstrap_results.csv                       """
+  ./scripts/exec_in_env.sh --env dataselector -- PYTHONPATH=. python scripts/bootstrap_pareto_candidates.py --pareto outputs/fine_sweep/pareto_solutions.csv --n-boot 200 --out outputs/fine_sweep/bootstrap_results.csv                       """
 
 import argparse
 from pathlib import Path

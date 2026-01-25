@@ -7,7 +7,7 @@ Produces:
 - prints summary of validity (violations, incomplete selections)
 
 Usage:
-    python scripts/run_diverse_experiments.py --n-runs 20 --n-samples 100
+    ./scripts/exec_in_env.sh --env dataselector -- python scripts/run_diverse_experiments.py --n-runs 20 --n-samples 100
 """
 
 import argparse

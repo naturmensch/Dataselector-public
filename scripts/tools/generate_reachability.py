@@ -6,7 +6,7 @@ Outputs:
  - outputs/reachability_report.md
 
 Heuristics used:
- - match invocations like: python scripts/X.py
+ ./scripts/exec_in_env.sh --env dataselector -- - match invocations like: python scripts/X.py
  - match exec_in_env.sh ... python scripts/X.py
  - match "-m scripts.X" (module invocation)
  - match imports: import scripts.X or from scripts.X import ...

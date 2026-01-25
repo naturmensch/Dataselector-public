@@ -83,9 +83,9 @@ def read_autoscale_config() -> dict:
 
 # Helper: run a command using the same Python interpreter
 def run_cmd(cmd: list, cwd: Optional[Path] = None, dry_run: bool = False) -> subprocess.CompletedProcess:
-    """Run a command in the same python environment and log output.
+    ./scripts/exec_in_env.sh --env dataselector -- """Run a command in the same python environment and log output.
 
-    cmd: list of args following the python interpreter, e.g. ['scripts/foo.py', '--arg', 'val']
+    ./scripts/exec_in_env.sh --env dataselector -- cmd: list of args following the python interpreter, e.g. ['scripts/foo.py', '--arg', 'val']
     """
     log("INFO", f"Running command: {' '.join(str(c) for c in cmd)}")
     if dry_run:

@@ -2,7 +2,7 @@
 """Profiling script for the DiversitySelector pipeline.
 
 Usage:
-    python scripts/profile_selection.py
+    ./scripts/exec_in_env.sh --env dataselector -- python scripts/profile_selection.py
 
 Saves profiling results to `outputs/` as both `.prof` (binary) and `.txt` (human readable).
 If `outputs/features.npy` and `outputs/metadata.csv` exist they will be used; otherwise a synthetic dataset is generated.

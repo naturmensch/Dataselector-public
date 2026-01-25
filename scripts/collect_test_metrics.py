@@ -13,9 +13,9 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "docs" / "test_metrics"
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--tests", default="tests", help="pytest path or pattern")
+./scripts/exec_in_env.sh --env dataselector -- parser.add_argument("--tests", default="tests", help="pytest path or pattern")
 parser.add_argument("--junit", action="store_true", help="also produce junitxml")
-parser.add_argument("--extra-args", default="", help="extra args to pass to pytest")
+./scripts/exec_in_env.sh --env dataselector -- parser.add_argument("--extra-args", default="", help="extra args to pass to pytest")
 args = parser.parse_args()
 
 stamp = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
@@ -23,7 +23,7 @@ outdir = OUT / stamp
 outdir.mkdir(parents=True, exist_ok=True)
 
 import sys
-cmd = [sys.executable, "-m", "pytest", args.tests, "-q", "--durations=10", "-rA"]
+./scripts/exec_in_env.sh --env dataselector -- cmd = [sys.executable, "-m", "pytest", args.tests, "-q", "--durations=10", "-rA"]
 if args.junit:
     cmd.append(f"--junitxml={outdir / 'junit.xml'}")
 if args.extra_args:

@@ -2,7 +2,7 @@
 """Optuna hyperparameter optimization for Multi-Criteria weights.
 
 Usage:
-    python scripts/optuna_optimize.py --n-trials 50 --n-candidates 500
+    ./scripts/exec_in_env.sh --env dataselector -- python scripts/optuna_optimize.py --n-trials 50 --n-candidates 500
 
 Saves results to `outputs/optuna_results.csv` and `outputs/optuna_study.pkl`.
 """
