@@ -315,7 +315,7 @@ def phase_1_optimization(autoscale_config: dict, best_sampler: str, dry_run: boo
     return True
 
 
-def phase_5_bootstrap(autoscale_config: dict, dry_run: bool = False, smoke: bool = False, seed: Optional[int] = None) -> bool:
+def phase_5_bootstrap(autoscale_config: dict, run_dir: Optional[Path] = None, dry_run: bool = False, smoke: bool = False, seed: Optional[int] = None) -> bool:
     """Phase 5: Bootstrap Uncertainty Quantification.
 
     If dry_run=True, create small synthetic bootstrap outputs to validate orchestration
@@ -325,7 +325,11 @@ def phase_5_bootstrap(autoscale_config: dict, dry_run: bool = False, smoke: bool
     log("PHASE", "PHASE 5: BOOTSTRAP UNCERTAINTY QUANTIFICATION (500 resamples)")
     log("PHASE", "=" * 70)
 
-    run_dir = find_latest_xxl_run()
+    if run_dir is None:
+        run_dir = find_latest_xxl_run()
+    else:
+        run_dir = Path(run_dir)
+
     if not run_dir:
         # In dry-run mode, create a synthetic run dir to simulate outputs
         if dry_run:
@@ -357,7 +361,7 @@ def phase_5_bootstrap(autoscale_config: dict, dry_run: bool = False, smoke: bool
         rng = _np.random.RandomState(42 if seed is None else int(seed))
         for i in range(n_boot):
             rows.append({
-                "n_selected": int(autoscale_config.get("n_samples", 40)),
+                "n_selected": int(autoscale_config.get("n_samples") or 40),
                 "temporal_std": float(rng.rand()),
                 "spatial_mean_km": float(10 * rng.rand()),
                 "wwi_percent": float(rng.rand() * 100),
@@ -696,6 +700,53 @@ def main():
 
     # Read autoscale results
     autoscale_config = read_autoscale_config()
+
+    # Prefer an explicit optuna sampler (passed by monitor) over --best-sampler
+    sampler_to_use = args.optuna_sampler if args.optuna_sampler else args.best_sampler
+
+    # SHORT-CIRCUIT: handle targeted phases emitted by the monitor
+    if args.phase == "repro":
+        log("INFO", "Running reproducibility-only phase (repro)")
+        timestamp = datetime.now().strftime("%Y%m%dT%H%M%SZ")
+        n_trials_arg = str(args.n_trials) if args.n_trials else ("3" if args.smoke else "440")
+        # Determine n_candidates from CSV when possible
+        try:
+            csv_path = data_path("new_all_tiles.csv")
+            if args.n_candidates:
+                n_candidates = int(args.n_candidates)
+            elif csv_path.exists():
+                import pandas as _pd
+
+                n_candidates = len(_pd.read_csv(csv_path))
+            else:
+                n_candidates = 676
+        except Exception:
+            n_candidates = 676
+        seeds = args.seeds if args.seeds else ([43, 44] if not args.smoke else [42])
+        for s in seeds:
+            seed_name = f"hamburg_repro_seed{s}_{timestamp}"
+            seed_cmd = ["scripts/optuna_optimize.py", "--n-trials", n_trials_arg, "--n-candidates", str(n_candidates), "--sampler", sampler_to_use, "--hamburg", "--seed", str(s), "--exp-name", seed_name]
+            if args.smoke:
+                seed_cmd.append("--smoke")
+            rc = run_cmd(seed_cmd, dry_run=args.dry_run)
+            if rc.returncode != 0 and not args.smoke:
+                log("ERROR", f"Hamburg reproducibility run seed={s} failed; aborting")
+                return 1
+        log("SUCCESS", "Repro phase complete")
+        return 0
+
+    if args.phase == "finalize":
+        log("INFO", "Running finalize-only phase (bootstrap + finalization)")
+        run_dir = Path(args.run_dir) if args.run_dir else find_latest_xxl_run()
+        if not run_dir:
+            log("ERROR", "No run directory found for finalize phase")
+            return 1
+        if not phase_5_bootstrap(autoscale_config, run_dir=run_dir, dry_run=args.dry_run, smoke=args.smoke, seed=args.seed):
+            return 1
+        if not finalization(args.dry_run, args.smoke, run_dir=run_dir):
+            return 1
+        log("SUCCESS", "Finalize phase complete")
+        return 0
 
     # Only require autoscale config for full end-to-end runs. For 'repro' and 'finalize'
     # we allow operating on partial artifacts (resume workflows) as the monitor expects.
