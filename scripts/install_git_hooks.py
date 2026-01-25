@@ -3,7 +3,7 @@
 
 Run this only if you want to enable project-local hooks:
 
-  python scripts/install_git_hooks.py
+  ./scripts/exec_in_env.sh --env dataselector -- python scripts/install_git_hooks.py
 
 The script is conservative and will not overwrite existing hooks unless --force is passed.
 """

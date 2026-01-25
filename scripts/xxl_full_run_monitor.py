@@ -8,7 +8,7 @@ writes a monitor report `monitor_report.md` inside the discovered run dir
 when the run finishes (success or failure).
 
 Usage:
-    PYTHONPATH=. python scripts/xxl_full_run_monitor.py
+    PYTHONPATH=. ./scripts/exec_in_env.sh --env dataselector -- python scripts/xxl_full_run_monitor.py
 
 Be aware: this performs a full production execution and can take a long time.
 """
@@ -27,6 +27,7 @@ from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+from scripts.common import data_path
 
 ROOT = Path(__file__).resolve().parents[1]
 # Do NOT modify sys.path at module import time; imports that require project root should
@@ -74,24 +75,20 @@ def _init_env_runner(use_env: bool = True, env_name: str | None = None):
     if not USE_DATASELECTOR_ENV:
         return
 
-    # Prefer mamba, fall back to conda
+    # Use mamba for environment execution
     try:
         if shutil.which("mamba"):
             ENV_RUNNER_CMD = f"mamba run -n {DATASELECTOR_ENV_NAME}"
             ENV_RUNNER_LIST = ["mamba", "run", "-n", DATASELECTOR_ENV_NAME]
             ENV_RUNNER_NAME = "mamba"
-        elif shutil.which("conda"):
-            ENV_RUNNER_CMD = f"conda run -n {DATASELECTOR_ENV_NAME}"
-            ENV_RUNNER_LIST = ["conda", "run", "-n", DATASELECTOR_ENV_NAME]
-            ENV_RUNNER_NAME = "conda"
         else:
             _monitor_log(
-                "Warning: no mamba/conda found on PATH; will not use dataselector env",
+                "Warning: mamba not found on PATH; will not use dataselector env",
                 LOG_FILE,
             )
             USE_DATASELECTOR_ENV = False
     except Exception as e:
-        _monitor_log(f"Warning: error detecting mamba/conda: {e}", LOG_FILE)
+        _monitor_log(f"Warning: error detecting mamba: {e}", LOG_FILE)
         USE_DATASELECTOR_ENV = False
 
 
@@ -105,7 +102,7 @@ def _detect_n_candidates(root: Path = ROOT) -> int:
     """
     try:
         import pandas as _pd
-        tiles_df = _pd.read_csv(root / "data" / "new_all_tiles.csv")
+        tiles_df = _pd.read_csv(data_path("new_all_tiles.csv"))
         return int(len(tiles_df))
     except Exception:
         # Try explicit environment override
@@ -958,13 +955,32 @@ def _resume_run(
         db_backup = "N/A"
 
     # Use ExperimentStateAnalyzer and RecoveryPlanner to plan recovery tasks
+    # Import ExperimentStateAnalyzer and RecoveryPlanner independently so that
+    # a missing optional module does not prevent using the other.
     try:
         from scripts.monitor_state import ExperimentStateAnalyzer
-        from scripts.recovery import RecoveryPlanner, TaskExecutor
-    except Exception:
+    except Exception as e:
         ExperimentStateAnalyzer = None
+        _monitor_log(f"Import: monitor_state not available: {e}", active_log)
+        try:
+            import traceback as _tb
+
+            _monitor_log(_tb.format_exc(), active_log)
+        except Exception:
+            pass
+
+    try:
+        from scripts.recovery import RecoveryPlanner, TaskExecutor
+    except Exception as e:
         RecoveryPlanner = None
         TaskExecutor = None
+        _monitor_log(f"Import: recovery module not available: {e}", active_log)
+        try:
+            import traceback as _tb
+
+            _monitor_log(_tb.format_exc(), active_log)
+        except Exception:
+            pass
 
     analyzer_state = {}
     if ExperimentStateAnalyzer is not None:
@@ -1550,7 +1566,11 @@ def main():
             sys.exit(1)
 
     # Start the full run subprocess
-    cmd = [sys.executable, str(MAIN_SCRIPT)]
+    # If MAIN_SCRIPT is a shell script, run it with bash; otherwise use the Python interpreter
+    if str(MAIN_SCRIPT).endswith('.sh') or not str(MAIN_SCRIPT).endswith('.py'):
+        cmd = ['bash', str(MAIN_SCRIPT)]
+    else:
+        cmd = [sys.executable, str(MAIN_SCRIPT)]
 
     # If a selected_sampler artifact exists, use it to instruct the main script which sampler to use
     try:
@@ -2040,6 +2060,42 @@ def main():
     print(
         f"Wrote report to: {report_md} (latest copies: {report_latest_md}, {report_latest_meta})"
     )
+
+    # Postprocess: ensure backward compatibility for bootstrap results summary
+    try:
+        bootstrap_csv = ROOT / "outputs" / "bootstrap_results_summary.csv"
+        if bootstrap_csv.exists():
+            try:
+                import pandas as _pd
+
+                df_bs = _pd.read_csv(bootstrap_csv)
+                if "mean" not in df_bs.columns:
+                    # Case A: columns with _mean suffix → create a mean column across them
+                    mean_cols = [c for c in df_bs.columns if c.endswith("_mean")]
+                    if mean_cols:
+                        df_bs["mean"] = df_bs[mean_cols].mean(axis=1)
+                        df_bs.to_csv(bootstrap_csv, index=False)
+                        _monitor_log("Added 'mean' column to bootstrap_results_summary.csv for compatibility", ACTIVE_LOG)
+                    else:
+                        # Case B: legacy format where rows are ['count','mean','std',...] and first column is the metric name (e.g., 'Unnamed: 0')
+                        # Detect and transpose into a column-based summary if applicable
+                        idx_col = None
+                        for candidate in df_bs.columns[:2]:
+                            if df_bs[candidate].astype(str).str.lower().isin(["count", "mean", "std", "min", "25%", "50%", "75%", "max"]).any():
+                                idx_col = candidate
+                                break
+                        if idx_col is not None:
+                            try:
+                                df_transposed = df_bs.set_index(idx_col).transpose()
+                                if "mean" in df_transposed.columns:
+                                    df_transposed.to_csv(bootstrap_csv, index=False)
+                                    _monitor_log("Transposed legacy bootstrap_results_summary.csv into column-based format for compatibility", ACTIVE_LOG)
+                            except Exception as e:
+                                _monitor_log(f"Could not transpose legacy bootstrap summary: {e}", ACTIVE_LOG)
+            except Exception as e:
+                _monitor_log(f"Could not post-process bootstrap summary: {e}", ACTIVE_LOG)
+    except Exception:
+        pass
 
     # Also copy the ACTIVE log into the run folder for completeness (versioned)
     try:

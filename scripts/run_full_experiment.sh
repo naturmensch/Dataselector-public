@@ -91,6 +91,13 @@ if [[ $ASSUME_YES -eq 0 ]]; then
   fi
 fi
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# Detect wrapper presence and prefer using it to enforce environment
+WRAPPER=""
+if [ -f "${ROOT}/scripts/exec_in_env.sh" ]; then
+  WRAPPER="${ROOT}/scripts/exec_in_env.sh --env dataselector --"
+fi
+
 # Helper to run a command with timestamped logging
 # NOTE: We join all args into a shell command string and run via 'bash -lc' so
 # constructs like 'PYTHONPATH=. python script.py' work correctly.
@@ -100,7 +107,18 @@ run_step() {
   local logfile="${OUT_DIR}/${label}.log"
   echo "\n=== [$label] Starting: $(date -u +%FT%TZ) ==="
   echo "> ${cmd_str}" | tee -a "$logfile"
-  if bash -lc "$cmd_str" >>"$logfile" 2>&1; then
+
+  # If wrapper available, prefix the command so it runs inside the dataselector env.
+  # If the command already embeds the wrapper (contains exec_in_env.sh), do not prefix again.
+  if [[ "$cmd_str" == *"exec_in_env.sh"* ]]; then
+    prefixed_cmd="${cmd_str}"
+  elif [ -n "${WRAPPER}" ]; then
+    prefixed_cmd="${WRAPPER} ${cmd_str}"
+  else
+    prefixed_cmd="${cmd_str}"
+  fi
+
+  if bash -lc "$prefixed_cmd" >>"$logfile" 2>&1; then
     echo "[${label}] Completed: $(date -u +%FT%TZ)" | tee -a "$logfile"
   else
     echo "[${label}] FAILED (see ${logfile})" | tee -a "$logfile"
@@ -110,17 +128,17 @@ run_step() {
 
 # 1) Coarse sweep
 if [[ $SKIP_COARSE -eq 0 ]]; then
-  run_step "coarse_sweep" PYTHONPATH=. python scripts/run_coarse_sweep.py
+  run_step "coarse_sweep" "${ROOT}/scripts/exec_in_env.sh --env dataselector -- PYTHONPATH=. python scripts/run_coarse_sweep.py"
 fi
 
 # 2) Fine sweep
 if [[ $SKIP_FINE -eq 0 ]]; then
-  run_step "fine_sweep" PYTHONPATH=. python scripts/run_fine_sweep.py
+  run_step "fine_sweep" "${ROOT}/scripts/exec_in_env.sh --env dataselector -- PYTHONPATH=. python scripts/run_fine_sweep.py"
 fi
 
 # 3) Optuna optimization
 if [[ $SKIP_OPTUNA -eq 0 ]]; then
-  run_step "optuna" PYTHONPATH=. python scripts/optuna_optimize.py --n-trials ${N_TRIALS} --n-candidates ${N_CANDIDATES} --dim ${DIM} --n-samples ${N_SAMPLES} --min-distance-km ${MIN_DISTANCE_KM}
+  run_step "optuna" "${ROOT}/scripts/exec_in_env.sh --env dataselector -- PYTHONPATH=. python scripts/optuna_optimize.py --n-trials ${N_TRIALS} --n-candidates ${N_CANDIDATES} --dim ${DIM} --n-samples ${N_SAMPLES} --min-distance-km ${MIN_DISTANCE_KM}"
   # copy results into experiment folder
   cp -v outputs/optuna_results.csv "${OUT_DIR}/" || true
   cp -v outputs/optuna_study.pkl "${OUT_DIR}/" 2>/dev/null || true
@@ -133,7 +151,7 @@ if [[ $USE_OPTUNA_BEST -eq 1 ]]; then
     OPTUNA_CONFIG_OUT="${OUT_DIR}/pipeline_config.optuna.yaml"
     if [[ $USE_OPTUNA_INJECT -eq 1 ]]; then
       # Inject directly into the repo config (creates backup)
-      run_step "apply_optuna_best_inject" PYTHONPATH=. python scripts/apply_optuna_best.py --optuna-csv "$OPTUNA_CSV" --inject
+      run_step "apply_optuna_best_inject" "${ROOT}/scripts/exec_in_env.sh --env dataselector -- PYTHONPATH=. python scripts/apply_optuna_best.py --optuna-csv \"$OPTUNA_CSV\" --inject"
       # copy backup to experiment folder for provenance
       BAK_SRC="config/pipeline_config.yaml.optuna_bak"
       if [[ -f "$BAK_SRC" ]]; then
@@ -143,7 +161,7 @@ if [[ $USE_OPTUNA_BEST -eq 1 ]]; then
       echo "Optuna best trial injected into config/pipeline_config.yaml (backup saved)."
     else
       # Write a separate config file in the experiment folder (safer)
-      run_step "apply_optuna_best_write" PYTHONPATH=. python scripts/apply_optuna_best.py --optuna-csv "$OPTUNA_CSV" --write-config "$OPTUNA_CONFIG_OUT"
+      run_step "apply_optuna_best_write" "${ROOT}/scripts/exec_in_env.sh --env dataselector -- PYTHONPATH=. python scripts/apply_optuna_best.py --optuna-csv \"$OPTUNA_CSV\" --write-config \"$OPTUNA_CONFIG_OUT\""
       APPLIED_CONFIG="$OPTUNA_CONFIG_OUT"
       echo "Optuna best config written to: ${OPTUNA_CONFIG_OUT}"
     fi
@@ -164,7 +182,7 @@ if [[ $SKIP_BOOTSTRAP -eq 0 ]]; then
   if [[ ! -f "$PARETO" ]]; then
     echo "Pareto file not found at ${PARETO}. Skipping bootstrap (or run fine sweep first)."; exit 1
   fi
-  run_step "bootstrap" PYTHONPATH=. python scripts/bootstrap_pareto_candidates.py --pareto ${PARETO} --n-boot ${N_BOOT} --out ${OUT_DIR}/bootstrap_results.csv --seed 42
+  run_step "bootstrap" "${ROOT}/scripts/exec_in_env.sh --env dataselector -- PYTHONPATH=. python scripts/bootstrap_pareto_candidates.py --pareto ${PARETO} --n-boot ${N_BOOT} --out ${OUT_DIR}/bootstrap_results.csv --seed 42"
   cp -v outputs/fine_sweep/bootstrap_summary.csv "${OUT_DIR}/" 2>/dev/null || true
 fi
 
@@ -180,14 +198,14 @@ if [[ $SKIP_FINAL -eq 0 ]]; then
     cp -v config/pipeline_config.yaml config/pipeline_config.yaml.optuna_bak || true
     echo "Using Optuna config for final run: ${APPLIED_CONFIG} -> config/pipeline_config.yaml"
     cp -v "${APPLIED_CONFIG}" config/pipeline_config.yaml
-    run_step "final_selection_optuna" PYTHONPATH=. python scripts/final_selection.py
+    run_step "final_selection_optuna" "${ROOT}/scripts/exec_in_env.sh --env dataselector -- PYTHONPATH=. python scripts/final_selection.py"
     # After run, restore original config
     if [[ -f config/pipeline_config.yaml.optuna_bak ]]; then
       echo "Restoring original config from config/pipeline_config.yaml.optuna_bak"
       cp -v config/pipeline_config.yaml.optuna_bak config/pipeline_config.yaml
     fi
   else
-    run_step "final_selection" PYTHONPATH=. python scripts/final_selection.py
+    run_step "final_selection" "${ROOT}/scripts/exec_in_env.sh --env dataselector -- PYTHONPATH=. python scripts/final_selection.py"
   fi
   cp -v outputs/final_selection/* "${OUT_DIR}/" 2>/dev/null || true
 fi

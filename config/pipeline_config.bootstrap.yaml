@@ -1,0 +1,42 @@
+data:
+  metadata_path: data/new_all_tiles.csv
+  csv_path: data/new_all_tiles.csv
+  image_dir: data/images
+feature_extraction:
+  model: resnet50
+  batch_size: 8
+  crop_size:
+  - 2048
+  - 2048
+  device: auto
+clustering:
+  n_clusters: 8
+  umap_components: 2
+  umap_n_neighbors: 15
+  umap_min_dist: 0.1
+  umap_metric: cosine
+  umap_random_state: 2026
+  umap_n_jobs: 1
+selection:
+  n_samples: 34
+  metric: euclidean
+  temporal_weight: 0.25
+  alpha_visual: 0.0
+  beta_spatial: 0.0
+  gamma_temporal: 0.0
+  pre_selected_names:
+  - Hamburg
+  spatial_constraint: true
+  min_distance_km: 0.0
+  use_multi_criteria: true
+  use_constraint_integration: false
+  random_state: 42
+  _bootstrap_provenance:
+    composite_score: 0.7
+    temporal_std_mean: 0.6437479610180055
+    wwi_percent_mean: 60.34799167234303
+    jaccard_mean: 0.625649062241524
+output:
+  dir: outputs
+  prefix: kdr100_selection
+  create_visualizations: true

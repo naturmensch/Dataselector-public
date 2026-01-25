@@ -1,0 +1,6 @@
+longName,shortName,N,left,image_path,image_filename,year
+KDR_428_Aachen_1910.png,KDR_428.png,21,649348.0840131369,<dataselector-repo>/tests/test_data/kdr100/images/KDR_428.png,KDR_428.png,
+KDR_327_Cleve_1907.png,KDR_327.png,17,649364.7250226882,<dataselector-repo>/tests/test_data/kdr100/images/KDR_327.png,KDR_327.png,
+KDR_377_Kaldenkirchen_1907.png,KDR_377.png,19,649351.7558460508,<dataselector-repo>/tests/test_data/kdr100/images/KDR_377.png,KDR_377.png,
+KDR_352_Geldern_1907.png,KDR_352.png,18,649356.7501902725,<dataselector-repo>/tests/test_data/kdr100/images/KDR_352.png,KDR_352.png,
+KDR_402_Erkelenz_1896.png,KDR_402.png,20,649359.4550715155,<dataselector-repo>/tests/test_data/kdr100/images/KDR_402.png,KDR_402.png,

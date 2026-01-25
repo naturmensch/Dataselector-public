@@ -2,9 +2,9 @@
 """Check staged files for modifications inside protected paths.
 
 Usage:
-  python scripts/check_protected.py           # exits 0 if OK, non-zero if offending files
-  python scripts/check_protected.py --list    # list protected paths
-  python scripts/check_protected.py --protect data/secret --protect outputs/kdr100_selection
+  ./scripts/exec_in_env.sh --env dataselector -- python scripts/check_protected.py           # exits 0 if OK, non-zero if offending files
+  ./scripts/exec_in_env.sh --env dataselector -- python scripts/check_protected.py --list    # list protected paths
+  ./scripts/exec_in_env.sh --env dataselector -- python scripts/check_protected.py --protect data/secret --protect outputs/kdr100_selection
 """
 from __future__ import annotations
 import argparse

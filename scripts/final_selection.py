@@ -2,17 +2,37 @@
 """Final selection runner: runs selection with given weights and min_distance and produces outputs.
 
 Usage:
-    PYTHONPATH=. python scripts/final_selection.py
+    ./scripts/exec_in_env.sh --env dataselector -- PYTHONPATH=. python scripts/final_selection.py
 """
 
 import time
 from pathlib import Path
+try:
+    from scripts.common import data_path
+except Exception:
+    # Allow invocation as a script (not as a package) by ensuring project root is on sys.path
+    import sys
+
+    ROOT = Path(__file__).resolve().parents[1]
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from scripts.common import data_path
 
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in __import__("sys").path:
     __import__("sys").path.insert(0, str(ROOT))
+
+# STARTUP ENV VALIDATION
+try:
+    from src.compat import validate_environment_full
+    if "--skip-env-check" not in __import__("sys").argv:
+        validate_environment_full()
+except Exception as e:
+    print(f"\n❌ STARTUP VALIDATION FAILED:\n{e}\n", file=__import__("sys").stderr)
+    print("Fix: ./scripts/exec_in_env.sh --env dataselector --create --ensure-packages 'numpy==1.26.4 numba==0.63.1' --yes -- python scripts/final_selection.py", file=__import__("sys").stderr)
+    __import__("sys").exit(1)
 
 from src.clustering import ClusteringPipeline
 from src.diversity_selector import DiversitySelector
@@ -54,7 +74,7 @@ features = load_or_extract_features(
 metadata = (
     pd.read_csv(OUT_ROOT / "metadata.csv")
     if (OUT_ROOT / "metadata.csv").exists()
-    else load_metadata(str(ROOT / "data" / "new_all_tiles.csv"))
+    else load_metadata(str(data_path("new_all_tiles.csv")))
 )
 
 # Clustering

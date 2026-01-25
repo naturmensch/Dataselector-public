@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Pre-run hook: execute sampler comparison
 
 cd <dataselector-repo>

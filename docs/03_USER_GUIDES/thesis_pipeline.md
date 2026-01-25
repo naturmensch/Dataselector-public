@@ -12,7 +12,7 @@ pip install -r requirements.txt
 ## Volle Pipeline ausführen
 
 ```bash
-python scripts/run_thesis_pipeline.py
+./scripts/exec_in_env.sh --env dataselector -- python scripts/run_thesis_pipeline.py
 ```
 
 Dies führt automatisch alle 4 Phasen aus (~10 Minuten Gesamtdauer):

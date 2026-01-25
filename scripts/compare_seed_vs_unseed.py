@@ -2,6 +2,7 @@
 Produces a small CSV and Markdown report in outputs/seed_benchmark.
 """
 from pathlib import Path
+from scripts.common import data_path
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -23,8 +24,8 @@ gamma = 0.25
 min_distance_km = 50.0
 
 # Load cached features & metadata
-features = load_or_extract_features(OUT, csv_meta=str(ROOT / "data" / "new_all_tiles.csv"), batch_size=16, cache=True)
-metadata = load_metadata(str(ROOT / "data" / "new_all_tiles.csv"))
+features = load_or_extract_features(OUT, csv_meta=str(data_path("new_all_tiles.csv")), batch_size=16, cache=True)
+metadata = load_metadata(str(data_path("new_all_tiles.csv")))
 
 cluster_labels = None
 # compute cluster labels using existing pipeline to be consistent

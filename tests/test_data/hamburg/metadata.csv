@@ -1,0 +1,6 @@
+longName,shortName,N,left,image_path,image_filename,year
+hamburg_tile_004.png,hamburg_tile_004,1.0,1.0,<dataselector-repo>/tests/test_data/hamburg/images/hamburg_tile_004.png,hamburg_tile_004.png,1900
+hamburg_tile_003.png,hamburg_tile_003,1.0,1.0,<dataselector-repo>/tests/test_data/hamburg/images/hamburg_tile_003.png,hamburg_tile_003.png,1900
+hamburg_tile_005.png,hamburg_tile_005,1.0,1.0,<dataselector-repo>/tests/test_data/hamburg/images/hamburg_tile_005.png,hamburg_tile_005.png,1900
+hamburg_tile_001.png,hamburg_tile_001,1.0,1.0,<dataselector-repo>/tests/test_data/hamburg/images/hamburg_tile_001.png,hamburg_tile_001.png,1900
+hamburg_tile_002.png,hamburg_tile_002,1.0,1.0,<dataselector-repo>/tests/test_data/hamburg/images/hamburg_tile_002.png,hamburg_tile_002.png,1900

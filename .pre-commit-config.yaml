@@ -25,3 +25,17 @@ repos:
         pass_filenames: false
         stages: [commit]
         files: ''
+      - id: check-env-usage
+        name: Check environment usage
+        entry: python scripts/check_env_usage.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit, commit, push]
+        files: "(^scripts/.*|^Makefile$|^\.github/workflows/.*|^tests/.*)"
+      - id: check-dependency-pins
+        name: Check dependency pins
+        entry: python scripts/check_dependency_pins.py
+        language: system
+        pass_filenames: false
+        stages: [pre-commit, commit, push]
+        files: "(^environment.yml$|^requirements.txt$|^\.github/workflows/.*)"
