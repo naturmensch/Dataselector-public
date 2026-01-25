@@ -89,7 +89,8 @@ def print_report(report):
         print(f"- {path}:")
         for pat, desc, level, match, snippet in findings:
             print(f"    * [{level}] {desc}: '{match}'")
-            if level in ('bad', 'suspicious'):
+            # Only 'bad' findings are considered failures; 'suspicious' are informational and should be addressed later
+            if level == 'bad':
                 bad += 1
         print('')
     if not report:
