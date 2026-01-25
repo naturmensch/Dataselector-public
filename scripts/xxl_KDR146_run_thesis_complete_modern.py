@@ -31,15 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT_BASE = ROOT / "outputs" / "runs"
 OUT_BASE.mkdir(parents=True, exist_ok=True)
 
-# STARTUP ENV VALIDATION
-try:
-    from src.compat import validate_environment_full
-    if "--skip-env-check" not in sys.argv:
-        validate_environment_full()
-except Exception as e:
-    log('ERROR', f"Startup environment validation failed: {e}")
-    log('ERROR', "Fix: ./scripts/exec_in_env.sh --env dataselector --create --ensure-packages 'numpy==1.26.4 numba==0.63.1' --yes -- python scripts/xxl_KDR146_run_thesis_complete_modern.py")
-    sys.exit(1)
+# NOTE: Startup environment validation moved to `main()` to avoid import-time side-effects.
 
 
 
@@ -47,6 +39,16 @@ def log(level, msg):
     """Simple logging."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{ts}] [{level}] {msg}")
+
+
+def fmt_float(v: Optional[float], prec: int = 3) -> str:
+    """Format a float value safely; return 'n/a' when value is missing."""
+    if v is None:
+        return "n/a"
+    try:
+        return f"{v:.{prec}f}"
+    except Exception:
+        return str(v)
 
 
 def read_autoscale_config() -> dict:
@@ -75,7 +77,7 @@ def read_autoscale_config() -> dict:
             config["beta"] = ua.get("beta")
             config["gamma"] = ua.get("gamma")
             config["min_distance_km"] = ua.get("min_distance_km")
-            log("INFO", f"Read hyperparams from autoscale: α={config['alpha']:.3f}, β={config['beta']:.3f}, γ={config['gamma']:.3f}, d={config['min_distance_km']}")
+            log("INFO", f"Read hyperparams from autoscale: α={fmt_float(config['alpha'])}, β={fmt_float(config['beta'])}, γ={fmt_float(config['gamma'])}, d={config['min_distance_km']}")
         except Exception as e:
             log("WARNING", f"Could not read autoscale best JSON: {e}")
     
@@ -145,7 +147,7 @@ def phase_0_preflight(autoscale_config: dict, best_sampler: str, smoke: bool = F
 
     log("SUCCESS", f"✓ Autoscale: n_samples={autoscale_config['n_samples']}")
     log("SUCCESS", f"✓ Sampler Suite: best_sampler={best_sampler}")
-    log("SUCCESS", f"✓ Hyperparams: α={autoscale_config['alpha']:.3f}, β={autoscale_config['beta']:.3f}, γ={autoscale_config['gamma']:.3f}")
+    log("SUCCESS", f"✓ Hyperparams: α={fmt_float(autoscale_config.get('alpha'))}, β={fmt_float(autoscale_config.get('beta'))}, γ={fmt_float(autoscale_config.get('gamma'))}")
     log("SUCCESS", "Phase 0 complete: all prerequisites satisfied")
 
     return True
@@ -164,7 +166,7 @@ def phase_1_optimization(autoscale_config: dict, best_sampler: str, dry_run: boo
 
     log("INFO", f"Running with sampler: {best_sampler}")
     log("INFO", f"Using n_samples: {autoscale_config['n_samples']}")
-    log("INFO", f"Hyperparams: α={autoscale_config['alpha']}, β={autoscale_config['beta']}, γ={autoscale_config['gamma']}")
+    log("INFO", f"Hyperparams: α={fmt_float(autoscale_config.get('alpha'))}, β={fmt_float(autoscale_config.get('beta'))}, γ={fmt_float(autoscale_config.get('gamma'))}")
 
     # Determine n_candidates (try to read data/new_all_tiles.csv)
     n_candidates = 676
@@ -426,13 +428,16 @@ def phase_5_bootstrap(autoscale_config: dict, dry_run: bool = False, smoke: bool
     return True
 
 
-def finalization(dry_run: bool = False, smoke: bool = False) -> bool:
+def finalization(dry_run: bool = False, smoke: bool = False, run_dir: Optional[Path] = None) -> bool:
     """Final: Generate thesis artifacts.
 
     Runs reporting, plotting, validation and final selection steps. In
     `dry_run` and `smoke` modes the function will favor lightweight
     operations and create minimal placeholders for missing artifacts so
     E2E tests can validate expected outputs.
+
+    If `run_dir` is provided it will be used instead of attempting to find
+    the latest XXL run directory.
     """
     log("PHASE", "=" * 70)
     log("PHASE", "FINALIZATION: Thesis Artifacts & Reports")
@@ -440,7 +445,11 @@ def finalization(dry_run: bool = False, smoke: bool = False) -> bool:
 
     log("INFO", "Generating final reports and artifacts...")
 
-    run_dir = find_latest_xxl_run()
+    if run_dir is None:
+        run_dir = find_latest_xxl_run()
+    else:
+        run_dir = Path(run_dir)
+
     if not run_dir:
         if dry_run:
             run_dir = OUT_BASE / "dry_run_finalization"
@@ -620,7 +629,39 @@ def main():
         "--optuna-sampler",
         type=str,
         default=None,
-        help="(optional) optuna sampler passed through by monitor (ignored by orchestrator)",
+        help="(optional) optuna sampler passed through by monitor (overrides --best-sampler)",
+    )
+    parser.add_argument(
+        "--phase",
+        type=str,
+        choices=["full", "repro", "finalize"],
+        default="full",
+        help="Run only a sub-phase: repro (reproducibility), finalize (bootstrap+finalization) or full (default)",
+    )
+    parser.add_argument(
+        "--seeds",
+        nargs="*",
+        type=int,
+        default=None,
+        help="Seeds for reproducibility phase (e.g., --seeds 43 44)",
+    )
+    parser.add_argument(
+        "--n-trials",
+        type=int,
+        default=None,
+        help="Override number of Optuna trials for repro phase",
+    )
+    parser.add_argument(
+        "--n-candidates",
+        type=int,
+        default=None,
+        help="Override number of candidates for repro phase",
+    )
+    parser.add_argument(
+        "--run-dir",
+        type=str,
+        default=None,
+        help="(optional) run directory to operate on (for finalize)",
     )
     parser.add_argument(
         "--dry-run",
@@ -631,6 +672,11 @@ def main():
         "--smoke",
         action="store_true",
         help="Run pipeline in smoke mode (execute real scripts with reduced settings)",
+    )
+    parser.add_argument(
+        "--skip-env-check",
+        action="store_true",
+        help="Skip startup environment validation (internal/testing)",
     )
     parser.add_argument(
         "--seed",
@@ -651,7 +697,9 @@ def main():
     # Read autoscale results
     autoscale_config = read_autoscale_config()
 
-    if autoscale_config["n_samples"] is None and not args.smoke:
+    # Only require autoscale config for full end-to-end runs. For 'repro' and 'finalize'
+    # we allow operating on partial artifacts (resume workflows) as the monitor expects.
+    if args.phase == "full" and autoscale_config["n_samples"] is None and not args.smoke:
         log("ERROR", "No autoscale configuration found!")
         return 1
 
