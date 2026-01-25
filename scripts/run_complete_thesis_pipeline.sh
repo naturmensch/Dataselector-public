@@ -88,7 +88,7 @@ check_environment() {
     fi
 
     # Quick test
-    ./scripts/exec_in_env.sh --env dataselector -- if ! ${RUNNER} python --version &>/dev/null; then
+    if ! ${RUNNER} python --version &>/dev/null; then
         log_error "Kann Environment '${DATASELECTOR_ENV}' nicht aktivieren!"
         log_info "Verfügbare Environments:"
         if command -v mamba &> /dev/null; then

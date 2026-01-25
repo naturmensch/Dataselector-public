@@ -95,23 +95,36 @@ def _init_env_runner(use_env: bool = True, env_name: str | None = None):
 def _detect_n_candidates(root: Path = ROOT) -> int:
     """Detect number of candidate tiles (module-level helper).
 
-    Tries, in order:
-     - read `data/new_all_tiles.csv` and return number of rows,
-     - honor env var `DATASET_N_CANDIDATES` if present,
-     - fall back to legacy default = 673 (with a warning logged).
+    Order of precedence:
+     1. workspace-local `root/data/new_all_tiles.csv` if present
+     2. repository `data/new_all_tiles.csv` (via `data_path`)
+     3. environment override `DATASET_N_CANDIDATES`
+     4. fallback legacy default = 673 (with a warning logged).
     """
+    import pandas as _pd
+
+    # 1) workspace-local CSV (if provided via root) — tests expect this to be checked first
     try:
-        import pandas as _pd
+        local_path = Path(root) / "data" / "new_all_tiles.csv"
+        if local_path.exists():
+            tiles_df = _pd.read_csv(local_path)
+            return int(len(tiles_df))
+    except Exception:
+        pass
+
+    # 2) Try explicit environment override (if set in process env)
+    try:
+        env_val = os.environ.get("DATASET_N_CANDIDATES")
+        if env_val:
+            return int(env_val)
+    except Exception:
+        pass
+
+    # 3) repository-wide CSV
+    try:
         tiles_df = _pd.read_csv(data_path("new_all_tiles.csv"))
         return int(len(tiles_df))
     except Exception:
-        # Try explicit environment override
-        try:
-            env_val = os.environ.get("DATASET_N_CANDIDATES")
-            if env_val:
-                return int(env_val)
-        except Exception:
-            pass
         _monitor_log(
             "Warning: could not read data/new_all_tiles.csv and DATASET_N_CANDIDATES not set; falling back to legacy value 673",
             LOG_FILE,

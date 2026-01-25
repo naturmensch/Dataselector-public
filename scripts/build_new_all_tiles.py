@@ -152,12 +152,23 @@ def extract_from_xml(xml_path: Path) -> Dict[str, Optional[str]]:
                     if not meta.get("left"):
                         meta["left"] = txt
 
-    return meta
-    for k in ("N", "left"):
+    # If we detected lat/lon fallback values (stored as 'N' and 'left'), convert them to EPSG:3857 coords
+    if meta.get("N") is not None and meta.get("left") is not None and not meta.get("top"):
+        try:
+            lat = float(str(meta.get("N")).strip().replace(",", "."))
+            lon = float(str(meta.get("left")).strip().replace(",", "."))
+            x, y = latlon_to_epsg3857(lat, lon)
+            meta["left"] = str(x)
+            meta["top"] = str(y)
+        except Exception:
+            # leave as-is if conversion fails
+            pass
+
+    # Normalize any numeric strings (comma -> dot)
+    for k in ("N", "left", "top", "right", "bottom"):
         if k in meta and isinstance(meta[k], str):
             s = meta[k].strip()
             s = s.replace(",", ".")
-            # keep as string; conversion to numeric can happen downstream
             meta[k] = s
 
     return meta
@@ -232,10 +243,17 @@ def build_dataframe(image_dir: Path) -> pd.DataFrame:
                 except Exception:
                     pass
         year = extract_year_from_name(img_name) or None
+        # Derive a shortName (e.g., 'KDR_003') from the filename when possible for reliable merging
+        stem = Path(img_name).stem
+        parts = stem.split('_')
+        if len(parts) >= 2 and parts[0].upper().startswith('KDR') and parts[1].isdigit():
+            short_name = f"{parts[0]}_{parts[1]}"
+        else:
+            short_name = stem
         rows.append(
             {
                 "longName": img_name,
-                "shortName": img_name,
+                "shortName": short_name,
                 "left": meta.get("left"),
                 "top": meta.get("top"),
                 "right": meta.get("right"),
@@ -252,10 +270,11 @@ def build_dataframe(image_dir: Path) -> pd.DataFrame:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
     
-    # Rename 'top' to 'N' for consistency with other parts of the codebase
-    if 'top' in df.columns:
-        df = df.rename(columns={'top': 'N'})
-    
+    # Keep original 'top' and provide 'N' alias for consistency
+    # This preserves the original source column while maintaining downstream compatibility.
+    if 'top' in df.columns and 'N' not in df.columns:
+        df['N'] = df['top']
+
     # Convert lat/lon to EPSG:3857 if pyproj available
     # Note: Coordinates from AUX are already in EPSG:3857, no transformation needed
     
@@ -325,22 +344,33 @@ def main(argv=None) -> int:
         base_df = pd.read_csv(base_path)
         # Rename columns to remove type suffixes (e.g., "longName,C,254" -> "longName")
         base_df.columns = [col.split(',')[0] for col in base_df.columns]
-        # Rename 'top' to 'N' for consistency
-        if 'top' in base_df.columns:
-            base_df = base_df.rename(columns={'top': 'N'})
-        # Keep original coordinates in separate columns
-        base_df['epsg_left'] = base_df['left']
-        base_df['epsg_top'] = base_df['N']  # Now 'N' instead of 'top'
-        base_df['epsg_right'] = base_df['right']
-        base_df['epsg_bottom'] = base_df['bottom']
+        # Keep original 'top' and provide 'N' alias for consistency
+        if 'top' in base_df.columns and 'N' not in base_df.columns:
+            base_df['N'] = base_df['top']
+        # Keep original coordinates in separate columns (use .get to be robust when some cols are missing)
+        base_df['epsg_left'] = base_df.get('left')
+        base_df['epsg_top'] = base_df.get('N')  # Use 'N' alias (mirror of original 'top')
+        base_df['epsg_right'] = base_df.get('right')
+        base_df['epsg_bottom'] = base_df.get('bottom')
         print(f"Loaded base metadata from {base_path} ({len(base_df)} rows, columns: {list(base_df.columns)})")
         merge_df = pd.merge(base_df, extracted_df, on='shortName', how='left', suffixes=('', '_extracted'))
         for col in extracted_df.columns:
             if col in merge_df.columns and col != 'longName':
                 extracted_col = col + '_extracted'
                 if extracted_col in merge_df.columns:
-                    # Prefer extracted values over base values
-                    merge_df[col] = merge_df[extracted_col].fillna(merge_df[col])
+                    # Fill missing base values from extracted values (preserve base provenance)
+                    merge_df[col] = merge_df[col].fillna(merge_df[extracted_col])
+        # Ensure 'N' alias is filled from 'top' when missing (preserve base where present)
+        if 'top' in merge_df.columns:
+            if 'N' in merge_df.columns:
+                merge_df['N'] = merge_df['N'].fillna(merge_df['top'])
+            else:
+                merge_df['N'] = merge_df['top']
+        # Recompute epsg_* from the final merged coordinate columns
+        merge_df['epsg_left'] = merge_df.get('left')
+        merge_df['epsg_top'] = merge_df.get('N')
+        merge_df['epsg_right'] = merge_df.get('right')
+        merge_df['epsg_bottom'] = merge_df.get('bottom')
         cols_to_drop = [c for c in merge_df.columns if c.endswith('_extracted')]
         merge_df.drop(columns=cols_to_drop, inplace=True)
         df = merge_df
