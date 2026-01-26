@@ -344,7 +344,6 @@ fi
             CMD_STR="$CMD_STR $(printf '%q' "${_a}")"
         done
 
-<<<<<<< HEAD
         # If requested, ensure additional packages are installed into the existing environment
         if [ -n "${ENSURE_PACKAGES}" ]; then
             ensure_packages "${ENSURE_PACKAGES}" || {
@@ -353,10 +352,10 @@ fi
             }
         fi
 
-        # Try preferred runner: mamba, then conda, then fallback to env prefix if present
+        # Try preferred runner: mamba run -> conda run -> fallback to env-prefix PATH
         if cmd_exists mamba; then
             echo "Attempting: mamba run -n ${ENV_NAME} bash -lc ${CMD_STR}"
-            if mamba run -n "${ENV_NAME}" bash -lc "$CMD_STR"; then
+            if EXEC_IN_ENV=1 mamba run -n "${ENV_NAME}" bash -lc "$CMD_STR"; then
                 exit 0
             else
                 echo "Warning: 'mamba run' failed; will try 'conda run' as fallback"
@@ -364,10 +363,11 @@ fi
         fi
 
         if cmd_exists conda; then
-            if conda run -n "${ENV_NAME}" bash -lc "$CMD_STR"; then
+            echo "Attempting: conda run -n ${ENV_NAME} bash -lc ${CMD_STR}"
+            if EXEC_IN_ENV=1 conda run -n "${ENV_NAME}" bash -lc "$CMD_STR"; then
                 exit 0
             else
-                echo "Warning: 'conda run' failed; will fall back to running with env bin in PATH"
+                echo "Warning: 'conda run' failed; will try PATH-based env fallback"
             fi
         fi
 
@@ -382,33 +382,12 @@ fi
         done
         if [ -n "$ENV_PREFIX" ]; then
             echo "Executing with env bin in PATH: PATH=${ENV_PREFIX}/${ENV_NAME}/bin:... bash -lc ${CMD_STR}"
-            env PATH="${ENV_PREFIX}/${ENV_NAME}/bin:$PATH" bash -lc "$CMD_STR"
+            EXEC_IN_ENV=1 env PATH="${ENV_PREFIX}/${ENV_NAME}/bin:$PATH" bash -lc "$CMD_STR"
             exit $?
         fi
 
         echo "ERROR: Could not run command in env '${ENV_NAME}'. Please ensure conda/mamba is available or install the env." >&2
         exit 2
-        fi
-
-        # Run with conda run (fallback to mamba run)
-        if cmd_exists conda; then
-            if EXEC_IN_ENV=1 conda run -n "${ENV_NAME}" $CMD_STR; then
-                exit 0
-            else
-                echo "ERROR: 'conda run' failed" >&2
-                exit 2
-            fi
-        elif cmd_exists mamba; then
-            if EXEC_IN_ENV=1 mamba run -n "${ENV_NAME}" bash -lc "$CMD_STR"; then
-                exit 0
-            else
-                echo "ERROR: 'mamba run' failed" >&2
-                exit 2
-            fi
-        else
-            echo "ERROR: neither conda nor mamba available. Please install conda or mamba." >&2
-            exit 2
-        fi
     else
         echo "ERROR: Conda environment '${ENV_NAME}' not found. Use --create to create it or specify a different --env." >&2
         exit 2
