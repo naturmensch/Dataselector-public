@@ -2,7 +2,7 @@
 """Staged Optuna runner that progressively refines search and stops on convergence.
 
 Usage:
-    python scripts/optuna_autoscale.py --n-candidates 500 --stages 50 100 300 full --trials 20 40 80 160
+    ./scripts/exec_in_env.sh --env dataselector -- python scripts/optuna_autoscale.py --n-candidates 500 --stages 50 100 300 full --trials 20 40 80 160
 
 Behavior:
 - Runs Optuna in stages for increasing `n_samples` (e.g., 50 -> 100 -> 300 -> full).

@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 
 import numpy as np
@@ -6,6 +7,7 @@ import pandas as pd
 from scripts.validate_pareto_candidates import validate
 
 
+@pytest.mark.slow
 def _make_pareto_csv(tmp_path):
     df = pd.DataFrame(
         [
@@ -21,6 +23,7 @@ def _make_pareto_csv(tmp_path):
     np.save(out / "features.npy", np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]))
     pd.DataFrame(
         {
+            "longName": ["a.png", "b.png", "c.png"],
             "N": [50, 51, 52],
             "left": [10, 11, 12],
             "year": [1900, 1914, 1918],
@@ -30,6 +33,7 @@ def _make_pareto_csv(tmp_path):
     return str(p), str(out)
 
 
+@pytest.mark.slow
 def test_validate_small(tmp_path, monkeypatch):
     pareto, outdir = _make_pareto_csv(tmp_path)
     # Run validation with small params to be quick and point to temp outdir

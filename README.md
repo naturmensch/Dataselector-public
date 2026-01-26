@@ -78,6 +78,8 @@ Dataselector/
 ### Daten vorbereiten
 
 1. Platzieren Sie die Metadaten-Datei (`KDR100_foliage_with_files_epsg3857.csv` oder `all_png_tiles.dbf`) im `data/` Verzeichnis
+
+   Hinweis: Falls die Rohbilder und Sidecar-XMLs in `data/images/` vorhanden sind, kann `scripts/build_new_all_tiles.py` automatisch `data/new_all_tiles.csv` erzeugen (z.B. `./scripts/exec_in_env.sh --env dataselector -- python scripts/build_new_all_tiles.py --image-dir data/images --out data/new_all_tiles.csv`).
 2. Erstellen Sie einen Ordner `data/images/` und legen Sie die Kartenbilder dort ab
 
 ### Vollständiger Experiment-Workflow (Modern: Autoscale → Sampler Suite → XXL)
@@ -129,6 +131,31 @@ python scripts/optuna_optimize.py --n-trials 2 --n-candidates 50 --dim 32 --n-sa
 ```
 
 Diese Commands sind absichtlich klein gehalten, damit sie schnell laufen und als Smoke-Test in CI nutzbar sind.
+
+### E2E Tests (empfohlener Ablauf) ✅
+Für vollständige E2E-Tests (Monitor, Orchestrator und Resume-Verhalten) empfehlen wir den folgenden, sicheren Ablauf:
+
+1. Umgebung erstellen/aktualisieren (einmalig oder bei Bedarf):
+
+```bash
+make ensure-env
+```
+
+2. E2E Smoke-Tests ausführen (führt Tests mit `pytest -m e2e` im Environment aus):
+
+```bash
+make test-e2e
+# Oder: Erzeuge die Umgebung falls sie fehlt und führe E2E aus
+make test-e2e-auto
+```
+
+Für CI: verwende das nicht-interaktive Target, das die Umgebung automatisch erstellt und anschließend die E2E-Tests ausführt:
+
+```bash
+make test-e2e-ci
+```
+
+Hinweis: Die Make-Targets verwenden `./scripts/exec_in_env.sh` und stellen sicher, dass die **wissenschaftlich validierten** Paketversionen (z. B. `numpy==1.26.4`, `numba==0.63.1`) in der Environment vorhanden sind. Automatisches Erstellen/Ändern der Environment während eines einzelnen `pytest`-Laufs erfolgt nicht stillschweigend — das ist eine bewusste Designentscheidung, um Nebenwirkungen und lange Laufzeiten zu vermeiden.
 
 
 ### Pipeline ausführen (modern)

@@ -24,7 +24,7 @@ Scientific Justification:
 
 Usage:
     Requires dataselector conda environment to be activated before execution.
-    PYTHONPATH=. python scripts/xxl_KDR146_run_thesis_complete.py
+    PYTHONPATH=. ./scripts/exec_in_env.sh --env dataselector -- python scripts/xxl_KDR146_run_thesis_complete.py
 
 No user intervention required after start.
 

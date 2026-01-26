@@ -3,11 +3,12 @@ Grid search über alpha_visual, beta_spatial, gamma_temporal für Multi-Criteria
 Speichert für jede Kombination Metriken: Temporal STD, Cluster Coverage, Spatial Mean Dist, WWI-Anteil.
 
 Usage:
-    PYTHONPATH=. python scripts/tune_weights_and_run.py
+    ./scripts/exec_in_env.sh --env dataselector -- PYTHONPATH=. python scripts/tune_weights_and_run.py
 
 """
 
 from pathlib import Path
+from scripts.common import data_path
 
 import numpy as np
 
@@ -15,7 +16,7 @@ from src.metadata_processor import MetadataProcessor
 
 # Config
 ROOT = Path(__file__).resolve().parents[1]
-DATA_META = ROOT / "data" / "new_all_tiles.csv"
+DATA_META = data_path("new_all_tiles.csv")
 OUTPUT_DIR = ROOT / "outputs" / "tuning_weights"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 

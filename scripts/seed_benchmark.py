@@ -26,7 +26,9 @@ csv_meta = str(csv_meta) if csv_meta.exists() else None
 features = load_or_extract_features(
     out_dir=OUT, csv_meta=csv_meta, batch_size=16, cache=True
 )
-metadata = load_metadata(csv_meta if csv_meta is not None else "data/new_all_tiles.csv")
+from scripts.common import data_path
+
+metadata = load_metadata(csv_meta if csv_meta is not None else str(data_path("new_all_tiles.csv")))
 
 # subset size for quick timing
 SUBSET_N = min(200, len(features))

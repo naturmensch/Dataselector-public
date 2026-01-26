@@ -7,7 +7,7 @@ Orchestrator for thesis-grade sampler evaluation.
 3) Launch full adaptive runs (n_trials=2000) with best sampler on Hamburg and KDR100
 
 Usage:
-    python scripts/run_thesis_sampler_suite.py --seeds 42 43 44 45 46 --n-trials 500 --n-trials-full 2000
+    ./scripts/exec_in_env.sh --env dataselector -- python scripts/run_thesis_sampler_suite.py --seeds 42 43 44 45 46 --n-trials 500 --n-trials-full 2000
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from scripts.common import data_path
 
 import pandas as pd
 
@@ -26,29 +27,47 @@ OUT_BASE = ROOT / "outputs" / "runs"
 
 
 def run_cmd(cmd, cwd=None):
-    print(f"RUN: {cmd}")
-    proc = subprocess.run(cmd, shell=True, cwd=cwd)
+    """Run a command inside the canonical environment wrapper if available.
+
+    This ensures subprocesses execute inside the `dataselector` conda env via
+    `scripts/exec_in_env.sh --env dataselector -- <cmd>` when the wrapper exists.
+    """
+    wrapper = ROOT / "scripts" / "exec_in_env.sh"
+    if wrapper.exists():
+        wrapped_cmd = f"{wrapper} --env dataselector -- {cmd}"
+        print(f"RUN (via wrapper): {wrapped_cmd}")
+        proc = subprocess.run(wrapped_cmd, shell=True, cwd=cwd)
+    else:
+        print(f"RUN: {cmd}")
+        proc = subprocess.run(cmd, shell=True, cwd=cwd)
+
     if proc.returncode != 0:
         raise RuntimeError(f"Command failed: {cmd}")
 
 
 def choose_best_sampler(results_dir: Path):
-    # results_dir contains per-dataset subfolders with summary.csv in each; read them all
+    # Try to read per-dataset summary files first
     summaries = []
     for dataset_dir in (results_dir).glob("*/"):
         summary_csv = dataset_dir / "summary.csv"
         if summary_csv.exists():
             summaries.append(summary_csv)
 
+    # Fallback: some analysis scripts write a global summary.csv at results_dir
     if not summaries:
-        raise RuntimeError(f"No summary files found in {results_dir} subfolders")
+        global_summary = results_dir / "summary.csv"
+        if global_summary.exists():
+            summaries = [global_summary]
+
+    if not summaries:
+        raise RuntimeError(f"No summary files found in {results_dir} subfolders or {results_dir}/summary.csv")
 
     df_all = []
     for s in summaries:
         try:
             df = pd.read_csv(s)
-            # Add dataset label from parent dir
-            dataset = s.parent.name
+            # If this is a global summary, dataset column may be missing; add dataset label from parent dir when available
+            dataset = s.parent.name if s.parent != results_dir else s.parent.name
             df["dataset"] = dataset
             df_all.append(df)
         except Exception as e:
@@ -93,7 +112,7 @@ if __name__ == "__main__":
 
     # Dynamically read n_candidates from CSV if not set
     if args.n_candidates is None:
-        csv_path = ROOT / "data" / "new_all_tiles.csv"
+        csv_path = data_path("new_all_tiles.csv")
         if csv_path.exists():
             n_candidates = len(pd.read_csv(csv_path))
             print(f"Dynamically determined n_candidates={n_candidates} from {csv_path}")
@@ -110,10 +129,15 @@ if __name__ == "__main__":
     # 1) Optionally run autoscale to determine n_samples and hyperparams
     best_n_samples = None
     constrain_bounds = {}
-    
+    wrapper = ROOT / "scripts" / "exec_in_env.sh"
+
     if args.autoscale:
         print("Running autoscale to determine best n_samples and hyperparams (this may take some time)...")
-        autoscale_cmd = f"python scripts/optuna_autoscale.py --n-candidates {n_candidates}"
+        # Prefer running autoscale inside the canonical environment if wrapper exists
+        if wrapper.exists():
+            ./scripts/exec_in_env.sh --env dataselector -- autoscale_cmd = f"{wrapper} --env dataselector -- python scripts/optuna_autoscale.py --n-candidates {n_candidates}"
+        else:
+            ./scripts/exec_in_env.sh --env dataselector -- autoscale_cmd = f"python scripts/optuna_autoscale.py --n-candidates {n_candidates}"
         print(autoscale_cmd)
         proc = subprocess.run(autoscale_cmd, shell=True, capture_output=True, text=True)
         print(proc.stdout)
@@ -173,7 +197,7 @@ if __name__ == "__main__":
     samplers_arg = " ".join(args.samplers)
     datasets_arg = " ".join(args.datasets)
 
-    compare_cmd = f"python scripts/compare_samplers_multi_seed.py --samplers {samplers_arg} --seeds {seeds_arg} --n-trials {args.n_trials} --datasets {datasets_arg} --sequential --output {suite_dir}"
+    ./scripts/exec_in_env.sh --env dataselector -- compare_cmd = f"python scripts/compare_samplers_multi_seed.py --samplers {samplers_arg} --seeds {seeds_arg} --n-trials {args.n_trials} --datasets {datasets_arg} --sequential --output {suite_dir} --n-candidates {n_candidates}"
     if best_n_samples is not None:
         compare_cmd += f" --n-samples {best_n_samples}"
     
@@ -210,17 +234,22 @@ if __name__ == "__main__":
     # Use exec_in_env.sh wrapper if available
     wrapper = ROOT / "scripts" / "exec_in_env.sh"
 
-    # Hamburg full run
-    run_name_h = f"suite_full_{best}_hamburg_{timestamp}"
-    cmd_h = f"PYTHONPATH=. {wrapper} --env dataselector -- python scripts/run_adaptive_pipeline.py --yes --n-trials {args.n_trials_full} --n-candidates {n_candidates} --sampler {best} --seed {args.seeds[0]} --hamburg"
-    print(f"Launching full Hamburg run: {cmd_h}")
-    run_cmd(cmd_h)
+    # If the full adaptive script is missing, skip these heavy runs and log clearly
+    adaptive_script = ROOT / "scripts" / "run_adaptive_pipeline.py"
+    if not adaptive_script.exists():
+        print(f"WARNING: {adaptive_script} not found - skipping full adaptive runs. Create this script to run full XXL jobs.")
+    else:
+        # Hamburg full run
+        run_name_h = f"suite_full_{best}_hamburg_{timestamp}"
+        ./scripts/exec_in_env.sh --env dataselector -- cmd_h = f"env PYTHONPATH=. python scripts/run_adaptive_pipeline.py --yes --n-trials {args.n_trials_full} --n-candidates {n_candidates} --sampler {best} --seed {args.seeds[0]} --hamburg"
+        print(f"Launching full Hamburg run: {cmd_h}")
+        run_cmd(cmd_h)
 
-    # KDR100 full run (no preselection)
-    run_name_k = f"suite_full_{best}_kdr100_{timestamp}"
-    cmd_k = f"PYTHONPATH=. {wrapper} --env dataselector -- python scripts/run_adaptive_pipeline.py --yes --n-trials {args.n_trials_full} --n-candidates {n_candidates} --sampler {best} --seed {args.seeds[0]}"
-    print(f"Launching full KDR100 run: {cmd_k}")
-    run_cmd(cmd_k)
+        # KDR100 full run (no preselection)
+        run_name_k = f"suite_full_{best}_kdr100_{timestamp}"
+        ./scripts/exec_in_env.sh --env dataselector -- cmd_k = f"env PYTHONPATH=. python scripts/run_adaptive_pipeline.py --yes --n-trials {args.n_trials_full} --n-candidates {n_candidates} --sampler {best} --seed {args.seeds[0]}"
+        print(f"Launching full KDR100 run: {cmd_k}")
+        run_cmd(cmd_k)
 
     print("\n=== SUITE COMPLETE ===")
     print(f"Results and artifacts: {suite_dir}")

@@ -6,7 +6,7 @@ conda activate dataselector
 ```
 2. Run a small LHS exploration:
 ```bash
-python scripts/tune_weights_and_run.py --n-samples 20
+./scripts/exec_in_env.sh --env dataselector -- python scripts/tune_weights_and_run.py --n-samples 20
 ```
 3. Check `outputs/tuning_weights/pareto/pareto_solutions.csv` and plots.
 

@@ -2,8 +2,8 @@
 """Apply best Optuna trial into pipeline config or write a new config file.
 
 Usage:
-  python scripts/apply_optuna_best.py --optuna-csv outputs/optuna_results.csv --write-config config/pipeline_config.optuna.yaml
-  python scripts/apply_optuna_best.py --optuna-csv outputs/optuna_results.csv --inject  # overwrite with backup
+  ./scripts/exec_in_env.sh --env dataselector -- python scripts/apply_optuna_best.py --optuna-csv outputs/optuna_results.csv --write-config config/pipeline_config.optuna.yaml
+  ./scripts/exec_in_env.sh --env dataselector -- python scripts/apply_optuna_best.py --optuna-csv outputs/optuna_results.csv --inject  # overwrite with backup
 
 This script extracts the best trial (max 'value') from the Optuna results CSV and
 injects the derived normalized alpha/beta/gamma and min_distance into the

@@ -2,9 +2,9 @@
 """Safety-first cleanup helpers for the workspace.
 
 Usage:
-  python scripts/clean_workspace.py --dry-run
-  python scripts/clean_workspace.py --delete-outputs --delete-venvs
-  python scripts/clean_workspace.py --archive data/images /path/to/archive.tar.gz
+  ./scripts/exec_in_env.sh --env dataselector -- python scripts/clean_workspace.py --dry-run
+  ./scripts/exec_in_env.sh --env dataselector -- python scripts/clean_workspace.py --delete-outputs --delete-venvs
+  ./scripts/exec_in_env.sh --env dataselector -- python scripts/clean_workspace.py --archive data/images /path/to/archive.tar.gz
 
 The script is intentionally conservative: nothing is deleted unless explicit flags are given.
 """

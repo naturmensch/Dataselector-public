@@ -7,15 +7,16 @@ Pillow>=10.0.0
 
 # Data Processing
 pandas>=2.0.0
-numpy>=1.24.0
+numpy==1.26.4
+numba==0.63.1
 dbfread>=2.0.7
 
 # Machine Learning & Clustering
 scikit-learn>=1.3.0
-umap-learn>=0.5.3
+umap-learn==0.5.11
 
 # Submodular Optimization (Facility Location)
-apricot-select>=0.6.0
+apricot-select==0.6.1
 
 # Hyperparameter Optimization
 optuna>=3.0.0
@@ -27,6 +28,8 @@ seaborn>=0.12.0
 # Utilities
 tqdm>=4.65.0
 pyyaml>=6.0
+numba==0.63.1  # Pinned for reproducibility
+
 
 # Testing
 pytest>=7.0.0
