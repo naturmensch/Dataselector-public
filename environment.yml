@@ -5,10 +5,10 @@ channels:
 dependencies:
   - python=3.11
   - pandas=2
-  - numpy=1.26.4  # Pin to version compatible with numba 0.63.1
-  - numba=0.63.1
-  - scipy
-  - scikit-learn
+    - numpy=1.26.4  # Pin to version compatible with numba 0.63.1
+    - numba=0.63.1
+    - scipy
+    - scikit-learn
   - umap-learn=0.5.11
   - apricot-select=0.6.1
   # PyTorch (from conda-forge)

@@ -4,7 +4,11 @@ Diagnose script: prüft Alignment zwischen Metadata CSV und gecachten Features s
 Nur lesende Operationen - kein Schreiben/Aktualisieren von Caches.
 
 Usage:
+<<<<<<< HEAD
   ./scripts/exec_in_env.sh --env dataselector -- python scripts/diagnose_shape_mismatch.py --csv data/new_all_tiles.csv --check-runs
+=======
+  python scripts/diagnose_shape_mismatch.py --csv data/new_all_tiles.csv --check-runs
+>>>>>>> origin/feat/cache-by-hash
 
 """
 import argparse

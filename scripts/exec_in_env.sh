@@ -27,6 +27,12 @@ Options:
 Behaviour:
   Uses mamba run -n NAME -- <cmd> for execution. Requires mamba to be installed.
 
+  Behaviour notes:
+   1. Prefer `mamba run -n NAME -- <cmd>`, then `conda run -n NAME -- <cmd>` as fallbacks.
+   2. If neither is available, prefer an existing `.venv`/`venv` in repo root and activate it.
+   3. If env missing and `--create` is provided, try `mamba`/`conda` to create it; otherwise fall back to `.venv` + `pip`.
+   4. Use `--ensure-packages` to run `mamba install -n <env> <pkgs>` or `conda install -n <env> <pkgs>` after the env exists.
+
 Examples:
   ./scripts/exec_in_env.sh --env dataselector --create --ensure-packages "numpy==1.26.4 numba==0.63.1" --yes -- python scripts/run_adaptive_pipeline.py --yes
 HELP
@@ -248,6 +254,31 @@ ensure_packages() {
     fi
 }
 
+# Ensure packages installed into the env (mamba preferred, conda fallback, pip fallback)
+ensure_packages() {
+    PKG_STR="$1"
+    echo "Ensuring packages in env ${ENV_NAME}: ${PKG_STR}"
+    if cmd_exists mamba; then
+        echo "Installing with mamba: mamba install -n ${ENV_NAME} ${PKG_STR}"
+        mamba install -n "${ENV_NAME}" ${PKG_STR} ${ASSUME_YES:+-y}
+        return $?
+    elif cmd_exists conda; then
+        echo "Installing with conda: conda install -n ${ENV_NAME} ${PKG_STR}"
+        conda install -n "${ENV_NAME}" ${PKG_STR} ${ASSUME_YES:+-y}
+        return $?
+    else
+        echo "No conda/mamba available; trying pip in .venv or env bin as fallback"
+        if venv_exists; then
+            source "${REPO_ROOT}/.venv/bin/activate"
+            pip install ${PKG_STR}
+            deactivate
+            return $?
+        fi
+        echo "Could not ensure packages: no supported installer found." >&2
+        return 2
+    fi
+}
+
 # Try to resolve environment name if exact name missing (fuzzy match)
 resolve_env_name() {
     if env_exists_conda; then
@@ -313,12 +344,50 @@ fi
             CMD_STR="$CMD_STR $(printf '%q' "${_a}")"
         done
 
+<<<<<<< HEAD
         # If requested, ensure additional packages are installed into the existing environment
         if [ -n "${ENSURE_PACKAGES}" ]; then
             ensure_packages "${ENSURE_PACKAGES}" || {
                 echo "ERROR: ensure_packages failed" >&2
                 exit 2
             }
+        fi
+
+        # Try preferred runner: mamba, then conda, then fallback to env prefix if present
+        if cmd_exists mamba; then
+            echo "Attempting: mamba run -n ${ENV_NAME} bash -lc ${CMD_STR}"
+            if mamba run -n "${ENV_NAME}" bash -lc "$CMD_STR"; then
+                exit 0
+            else
+                echo "Warning: 'mamba run' failed; will try 'conda run' as fallback"
+            fi
+        fi
+
+        if cmd_exists conda; then
+            if conda run -n "${ENV_NAME}" bash -lc "$CMD_STR"; then
+                exit 0
+            else
+                echo "Warning: 'conda run' failed; will fall back to running with env bin in PATH"
+            fi
+        fi
+
+        # Fallback: try to find env prefix and run with its bin in PATH
+        PREFIXS=("/opt/miniconda3/envs" "$HOME/.local/conda/envs" "/usr/local/conda/envs")
+        ENV_PREFIX=""
+        for p in "${PREFIXS[@]}"; do
+            if [ -d "$p/${ENV_NAME}" ]; then
+                ENV_PREFIX="$p"
+                break
+            fi
+        done
+        if [ -n "$ENV_PREFIX" ]; then
+            echo "Executing with env bin in PATH: PATH=${ENV_PREFIX}/${ENV_NAME}/bin:... bash -lc ${CMD_STR}"
+            env PATH="${ENV_PREFIX}/${ENV_NAME}/bin:$PATH" bash -lc "$CMD_STR"
+            exit $?
+        fi
+
+        echo "ERROR: Could not run command in env '${ENV_NAME}'. Please ensure conda/mamba is available or install the env." >&2
+        exit 2
         fi
 
         # Run with conda run (fallback to mamba run)

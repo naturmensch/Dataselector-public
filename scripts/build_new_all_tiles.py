@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+<<<<<<< HEAD
 """Build `data/new_all_tiles.csv` by enriching the canonical `KDR100_foliage_with_files_epsg3857.csv` with image paths and metadata from XML sidecars.
 
 - Loads the canonical table (676 tiles, EPSG:3857) as base if available.
@@ -11,6 +12,21 @@ Usage:
   ./scripts/exec_in_env.sh --env dataselector -- python scripts/build_new_all_tiles.py --image-dir data/images --out data/new_all_tiles.csv
 
 This script ensures no data is overwritten, coordinates stay in EPSG:3857 (meters), and missing fields are filled from images.
+=======
+"""Build minimal `data/new_all_tiles.csv` from raw image files and XML sidecars.
+
+- Scans an image directory for image files (png/jpg/jpeg)
+- For each image, tries to find a sidecar with suffixes (".aux.xml", ".xml")
+  and parse basic metadata (lat / lon) if present.
+- Writes `new_all_tiles.csv` (or `--out` path) atomically, creates a backup of
+  an existing file, and writes a provenance JSON next to the CSV.
+
+Usage:
+  python scripts/build_new_all_tiles.py --image-dir data/images --out data/new_all_tiles.csv
+
+This script is intentionally small and robust: missing XML fields are allowed,
+but are logged and left blank (NaN in CSV).
+>>>>>>> origin/feat/cache-by-hash
 """
 
 from __future__ import annotations
@@ -26,6 +42,7 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, Optional
+<<<<<<< HEAD
 from scripts.common import data_path
 
 import pandas as pd
@@ -35,11 +52,17 @@ try:
     HAS_PYPROJ = True
 except ImportError:
     HAS_PYPROJ = False
+=======
+
+import pandas as pd
+
+>>>>>>> origin/feat/cache-by-hash
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg"}
 SIDECAR_SUFFIXES = [".aux.xml", ".xml"]
 
 
+<<<<<<< HEAD
 def extract_city(long_name: str) -> str:
     """Extract the city/location name from longName like 'KDR_146_Hamburg_1918.png' -> 'Hamburg'"""
     if not isinstance(long_name, str) or not long_name:
@@ -68,6 +91,8 @@ def extract_year(long_name: str) -> str:
     return ""
 
 
+=======
+>>>>>>> origin/feat/cache-by-hash
 def sha256_of_file(p: Path) -> str:
     h = hashlib.sha256()
     with p.open("rb") as f:
@@ -77,9 +102,16 @@ def sha256_of_file(p: Path) -> str:
 
 
 def extract_from_xml(xml_path: Path) -> Dict[str, Optional[str]]:
+<<<<<<< HEAD
     """Try to extract coordinates from GDAL AUX XML.
 
     Looks for CornerCoordinates or GeoTransform and extracts left, top, right, bottom.
+=======
+    """Try to extract lat / lon or geotransform-like values from XML.
+
+    This is a best-effort parser that looks for common tags/attributes and
+    returns a dict with keys 'N' and 'left' (as strings) when available.
+>>>>>>> origin/feat/cache-by-hash
     """
     try:
         tree = ET.parse(str(xml_path))
@@ -89,6 +121,7 @@ def extract_from_xml(xml_path: Path) -> Dict[str, Optional[str]]:
 
     meta: Dict[str, Optional[str]] = {}
 
+<<<<<<< HEAD
     # Try CornerCoordinates first
     corner_coords = root.find('.//CornerCoordinates')
     if corner_coords is not None:
@@ -169,6 +202,50 @@ def extract_from_xml(xml_path: Path) -> Dict[str, Optional[str]]:
         if k in meta and isinstance(meta[k], str):
             s = meta[k].strip()
             s = s.replace(",", ".")
+=======
+    # Common patterns: elements containing 'lat' / 'lon' or attributes
+    text = ET.tostring(root, encoding="utf-8", method="text").decode("utf-8")
+    # naive search for digits/decimal in text near keywords
+    for key in ("lat", "latitude", "north", "N"):
+        if key in text.lower() and "=" not in text:
+            # attempt manual find
+            meta.setdefault("N", None)
+    for key in ("lon", "longitude", "left", "long", "x"):
+        if key in text.lower() and "=" not in text:
+            meta.setdefault("left", None)
+
+    # More structured: search attributes and tags in root and subelements
+    for elem in root.iter():
+        # attributes (prefer attributes but do not overwrite later)
+        for k, v in elem.attrib.items():
+            kl = k.lower()
+            if any(x in kl for x in ("lat", "latitude", "n")) and v:
+                if not meta.get("N"):
+                    meta["N"] = v
+            if any(x in kl for x in ("lon", "long", "left", "x")) and v:
+                if not meta.get("left"):
+                    meta["left"] = v
+        # tag names (prefer explicit names lat/lon)
+        tagname = elem.tag
+        if isinstance(tagname, str) and '}' in tagname:
+            tagname = tagname.split('}', 1)[1]
+        ltag = str(tagname).lower()
+        txt = elem.text.strip() if elem.text and isinstance(elem.text, str) else None
+        if txt:
+            if "lat" in ltag or ltag in ("n", "north"):
+                if not meta.get("N"):
+                    meta["N"] = txt
+            elif "lon" in ltag or "left" in ltag or "long" in ltag or "x" in ltag:
+                if not meta.get("left"):
+                    meta["left"] = txt
+
+    # Normalize simple numeric strings
+    for k in ("N", "left"):
+        if k in meta and isinstance(meta[k], str):
+            s = meta[k].strip()
+            s = s.replace(",", ".")
+            # keep as string; conversion to numeric can happen downstream
+>>>>>>> origin/feat/cache-by-hash
             meta[k] = s
 
     return meta
@@ -183,6 +260,7 @@ def extract_year_from_name(name: str) -> Optional[int]:
     return None
 
 
+<<<<<<< HEAD
 def latlon_to_epsg3857(lat, lon):
     if not HAS_PYPROJ:
         raise ImportError("pyproj required for coordinate conversion")
@@ -198,6 +276,8 @@ def epsg3857_to_latlon(x, y):
     return lat, lon
 
 
+=======
+>>>>>>> origin/feat/cache-by-hash
 def build_dataframe(image_dir: Path) -> pd.DataFrame:
     rows = []
     if not image_dir.exists():
@@ -228,6 +308,7 @@ def build_dataframe(image_dir: Path) -> pd.DataFrame:
         meta: Dict[str, Optional[str]] = {}
         if side is not None:
             meta = extract_from_xml(side)
+<<<<<<< HEAD
             # Calculate right/bottom from GeoTransform if available
             if 'pixelWidth' in meta and 'pixelHeight' in meta and 'left' in meta and 'top' in meta:
                 try:
@@ -258,6 +339,15 @@ def build_dataframe(image_dir: Path) -> pd.DataFrame:
                 "top": meta.get("top"),
                 "right": meta.get("right"),
                 "bottom": meta.get("bottom"),
+=======
+        year = extract_year_from_name(img_name) or None
+        rows.append(
+            {
+                "longName": img_name,
+                "shortName": stem,
+                "N": meta.get("N"),
+                "left": meta.get("left"),
+>>>>>>> origin/feat/cache-by-hash
                 "image_path": str(p),
                 "image_filename": img_name,
                 "year": year,
@@ -266,6 +356,7 @@ def build_dataframe(image_dir: Path) -> pd.DataFrame:
 
     df = pd.DataFrame(rows)
     # normalize numeric columns
+<<<<<<< HEAD
     for col in ("N", "left", "top", "right", "bottom"):
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
@@ -278,6 +369,11 @@ def build_dataframe(image_dir: Path) -> pd.DataFrame:
     # Convert lat/lon to EPSG:3857 if pyproj available
     # Note: Coordinates from AUX are already in EPSG:3857, no transformation needed
     
+=======
+    for col in ("N", "left"):
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+>>>>>>> origin/feat/cache-by-hash
     return df
 
 
@@ -313,8 +409,13 @@ def choose_source(candidates: list[Path]) -> Optional[Path]:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
+<<<<<<< HEAD
     parser.add_argument("--image-dir", default=str(data_path("images")), help="Directory with images")
     parser.add_argument("--out", default=str(data_path("new_all_tiles.csv")), help="Output CSV path")
+=======
+    parser.add_argument("--image-dir", default="data/images", help="Directory with images")
+    parser.add_argument("--out", default="data/new_all_tiles.csv", help="Output CSV path")
+>>>>>>> origin/feat/cache-by-hash
     parser.add_argument("--force-source", help="Force a specific source CSV to use for provenance")
     args = parser.parse_args(argv)
 
@@ -322,6 +423,7 @@ def main(argv=None) -> int:
     image_dir = Path(args.image_dir)
     out = Path(args.out)
 
+<<<<<<< HEAD
     base_path = data_path("KDR100_foliage_with_files_epsg3857.csv")
 
     # If there is a vetted "final" CSV present in data, prefer it for provenance
@@ -382,6 +484,21 @@ def main(argv=None) -> int:
     # Add extracted year column
     df['extracted_year'] = df['longName'].apply(extract_year)
 
+=======
+    # If there is a vetted "final" CSV present in data, prefer it for provenance
+    final_candidates = [
+        root / "data" / "all_png_tiles_final_ultimative.csv",
+        root / "data" / "all_png_tiles_final_from_dbf.csv",
+        root / "data" / "KDR100_foliage_with_files_epsg3857.csv",
+    ]
+    src = Path(args.force_source) if args.force_source else choose_source(final_candidates)
+
+    df = build_dataframe(image_dir)
+    if df.empty:
+        print("No images found; aborting.")
+        return 1
+
+>>>>>>> origin/feat/cache-by-hash
     # Write CSV atomically and provenance
     atomic_write_csv(df, out)
     if src:

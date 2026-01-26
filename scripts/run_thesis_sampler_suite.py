@@ -135,9 +135,9 @@ if __name__ == "__main__":
         print("Running autoscale to determine best n_samples and hyperparams (this may take some time)...")
         # Prefer running autoscale inside the canonical environment if wrapper exists
         if wrapper.exists():
-            ./scripts/exec_in_env.sh --env dataselector -- autoscale_cmd = f"{wrapper} --env dataselector -- python scripts/optuna_autoscale.py --n-candidates {n_candidates}"
+            autoscale_cmd = f"{wrapper} --env dataselector -- python scripts/optuna_autoscale.py --n-candidates {n_candidates}"
         else:
-            ./scripts/exec_in_env.sh --env dataselector -- autoscale_cmd = f"python scripts/optuna_autoscale.py --n-candidates {n_candidates}"
+            autoscale_cmd = f"python scripts/optuna_autoscale.py --n-candidates {n_candidates}"
         print(autoscale_cmd)
         proc = subprocess.run(autoscale_cmd, shell=True, capture_output=True, text=True)
         print(proc.stdout)
@@ -197,7 +197,11 @@ if __name__ == "__main__":
     samplers_arg = " ".join(args.samplers)
     datasets_arg = " ".join(args.datasets)
 
-    ./scripts/exec_in_env.sh --env dataselector -- compare_cmd = f"python scripts/compare_samplers_multi_seed.py --samplers {samplers_arg} --seeds {seeds_arg} --n-trials {args.n_trials} --datasets {datasets_arg} --sequential --output {suite_dir} --n-candidates {n_candidates}"
+    if wrapper.exists():
+        compare_cmd = f"{wrapper} --env dataselector -- python scripts/compare_samplers_multi_seed.py --samplers {samplers_arg} --seeds {seeds_arg} --n-trials {args.n_trials} --datasets {datasets_arg} --sequential --output {suite_dir} --n-candidates {n_candidates}"
+    else:
+        compare_cmd = f"python scripts/compare_samplers_multi_seed.py --samplers {samplers_arg} --seeds {seeds_arg} --n-trials {args.n_trials} --datasets {datasets_arg} --sequential --output {suite_dir} --n-candidates {n_candidates}"
+
     if best_n_samples is not None:
         compare_cmd += f" --n-samples {best_n_samples}"
     
@@ -241,13 +245,19 @@ if __name__ == "__main__":
     else:
         # Hamburg full run
         run_name_h = f"suite_full_{best}_hamburg_{timestamp}"
-        ./scripts/exec_in_env.sh --env dataselector -- cmd_h = f"env PYTHONPATH=. python scripts/run_adaptive_pipeline.py --yes --n-trials {args.n_trials_full} --n-candidates {n_candidates} --sampler {best} --seed {args.seeds[0]} --hamburg"
+        if wrapper.exists():
+            cmd_h = f"{wrapper} --env dataselector -- env PYTHONPATH=. python scripts/run_adaptive_pipeline.py --yes --n-trials {args.n_trials_full} --n-candidates {n_candidates} --sampler {best} --seed {args.seeds[0]} --hamburg"
+        else:
+            cmd_h = f"env PYTHONPATH=. python scripts/run_adaptive_pipeline.py --yes --n-trials {args.n_trials_full} --n-candidates {n_candidates} --sampler {best} --seed {args.seeds[0]} --hamburg"
         print(f"Launching full Hamburg run: {cmd_h}")
         run_cmd(cmd_h)
 
         # KDR100 full run (no preselection)
         run_name_k = f"suite_full_{best}_kdr100_{timestamp}"
-        ./scripts/exec_in_env.sh --env dataselector -- cmd_k = f"env PYTHONPATH=. python scripts/run_adaptive_pipeline.py --yes --n-trials {args.n_trials_full} --n-candidates {n_candidates} --sampler {best} --seed {args.seeds[0]}"
+        if wrapper.exists():
+            cmd_k = f"{wrapper} --env dataselector -- env PYTHONPATH=. python scripts/run_adaptive_pipeline.py --yes --n-trials {args.n_trials_full} --n-candidates {n_candidates} --sampler {best} --seed {args.seeds[0]}"
+        else:
+            cmd_k = f"env PYTHONPATH=. python scripts/run_adaptive_pipeline.py --yes --n-trials {args.n_trials_full} --n-candidates {n_candidates} --sampler {best} --seed {args.seeds[0]}"
         print(f"Launching full KDR100 run: {cmd_k}")
         run_cmd(cmd_k)
 

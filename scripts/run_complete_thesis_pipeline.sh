@@ -248,8 +248,6 @@ PY
                 ${ROOT}/scripts/exec_in_env.sh --env ${DATASELECTOR_ENV} -- python "${ROOT}/scripts/build_new_all_tiles.py" --image-dir "${DATA_DIR}/images" || {
                     log_warning "Regeneration of new_all_tiles.csv failed - scripts will fall back to defaults"
                 }
-                
-                # Also ensure we prefer running subsequent helper scripts via RUNNER when available
             else
                 if [ -n "${RUNNER:-}" ]; then
                     ${RUNNER} python "${ROOT}/scripts/build_new_all_tiles.py" --image-dir "${DATA_DIR}/images" || {

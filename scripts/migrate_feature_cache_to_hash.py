@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Migration script to move legacy outputs/features.npy -> features-{meta_hash}.npy
 
+<<<<<<< HEAD
 Usage: ./scripts/exec_in_env.sh --env dataselector -- python scripts/migrate_feature_cache_to_hash.py [--out-dir outputs] [--csv data/new_all_tiles.csv]
+=======
+Usage: python scripts/migrate_feature_cache_to_hash.py [--out-dir outputs] [--csv data/new_all_tiles.csv]
+>>>>>>> origin/feat/cache-by-hash
 """
 import argparse
 import shutil
