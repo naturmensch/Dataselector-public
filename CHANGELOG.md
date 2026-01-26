@@ -1,5 +1,10 @@
 # Changelog
 
+## [2026-01-26] - DINOv2 wiederhergestellt, README & WandB ergänzt
+- **DINOv2:** Wiederhergestellt in `src/feature_extractor.py` (ViT-Small, 384-dim) mit robustem Wrapper für Torch-Hub-Outputs. Unit-Tests hinzugefügt: `tests/test_feature_extractor.py`.
+- **Dokumentation:** `README.md` ergänzt um DINOv2-Hinweis, WandB-Integration und Infos zu Autoscale-Artefakten (`optuna_autoscale_*`, `selected_sampler.json`).
+- **Requirements:** `requirements.txt` ergänzt um `wandb>=0.15.0`.
+
 ## [2026-01-11] - Final master grid fixes
 - Fixed 28 sheets using final master_coords list.
 - See `data/changes_applied.csv` and `data/duplikate_manual_followup.csv` for remaining manual cases.

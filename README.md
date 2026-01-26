@@ -6,6 +6,14 @@
 
 Dieses Projekt implementiert einen hybriden Active-Learning-Workflow zur objektiven Auswahl von Trainingsbeispielen aus dem heterogenen KDR100-Kartendatensatz. Anstatt manueller "Hand-Picking"-Methoden nutzt das System Deep Learning und submodulare Optimierung, um mathematisch optimale, diverse Samples zu identifizieren.
 
+## Aktuelles (2026-01-26)
+
+- **DINOv2 wiederhergestellt:** `src/feature_extractor.py` unterstützt jetzt `model: "dinov2"` (ViT‑Small, 384‑dim). Unit‑Tests wurden hinzugefügt (`tests/test_feature_extractor.py`).
+- **Weights & Biases (wandb):** Integration ist implementiert und dokumentiert in `docs/05_ADVANCED/wandb_quickstart.md` und `docs/WANDB_INTEGRATION.md`. Installiere `wandb>=0.15.0` oder setze `WANDB_DISABLED=true`, um Logging zu deaktivieren.
+- **Autoscale & Pipeline Artefakte:** Die moderne Orchestrierung erzeugt `outputs/optuna_autoscale_selected_n_samples.txt`, `outputs/optuna_autoscale_best_latest.json` und `outputs/selected_sampler.json` — diese Artefakte werden automatisch von den Orchestrator‑Skripten verwendet.
+
+(Änderungen dokumentiert: `CHANGELOG.md` / `README.md` ergänzt.)
+
 ### Kernfunktionalitäten
 
 - **Feature Extraction**: Extraktion visueller Features mittels vortrainiertem ResNet50
@@ -240,6 +248,9 @@ df = processor.add_temporal_metadata()  # Extrahiert Jahr aus Dateinamen
 ```python
 from src.feature_extractor import FeatureExtractor
 
+# Use ResNet50 (default) or DINOv2
+# - ResNet50: 2048-dim (ImageNet baseline)
+# - DINOv2: 384-dim (ViT-Small) — to use set model_name='dinov2' or in config: feature_extraction.model: 'dinov2'
 extractor = FeatureExtractor(model_name='resnet50')
 features = extractor.extract_features_batch(
     image_paths=df['longName'].tolist(),
