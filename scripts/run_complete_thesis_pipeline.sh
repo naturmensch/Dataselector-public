@@ -115,7 +115,7 @@ step_1_sampler_suite() {
     
     # Run sampler suite WITHOUT timeout constraints
     timeout_val="" # No timeout
-    ./scripts/exec_in_env.sh --env dataselector -- ${RUNNER} python scripts/run_thesis_sampler_suite.py \
+    ${RUNNER} python scripts/run_thesis_sampler_suite.py \
         --seeds 42 43 44 45 46 47 48 49 50 51 \
         --n-trials 1000 \
         --datasets hamburg kdr100 \
@@ -165,14 +165,17 @@ step_2_xxl_pipeline() {
     if [ -f "${OUTPUTS_DIR}/optuna_autoscale_selected_n_samples.txt" ]; then
         AUTOSCALE_N_SAMPLES=$(cat "${OUTPUTS_DIR}/optuna_autoscale_selected_n_samples.txt")
         log_info "Autoscale n_samples: $AUTOSCALE_N_SAMPLES"
+    else
+        log_error "Autoscale outputs missing: ${OUTPUTS_DIR}/optuna_autoscale_selected_n_samples.txt. Run 'scripts/optuna_autoscale.py' before invoking the XXL pipeline."
+        exit 1
     fi
     
     # If a small test config is provided (e.g., via monitor tests), run XXL in smoke mode
     if [ -n "${CONFIG_PATH:-}" ]; then
         log_info "CONFIG_PATH set -> running XXL in smoke mode for faster, deterministic test runs"
-        ./scripts/exec_in_env.sh --env dataselector -- ${RUNNER} python scripts/xxl_KDR146_run_thesis_complete_modern.py --best-sampler "$BEST_SAMPLER" --smoke 2>&1 | tee "${LOGS_DIR}/XXL_FULL_RUN.log"
+        ${RUNNER} python scripts/xxl_KDR146_run_thesis_complete_modern.py --best-sampler "$BEST_SAMPLER" --smoke 2>&1 | tee "${LOGS_DIR}/XXL_FULL_RUN.log"
     else
-        ./scripts/exec_in_env.sh --env dataselector -- ${RUNNER} python scripts/xxl_KDR146_run_thesis_complete_modern.py \
+        ${RUNNER} python scripts/xxl_KDR146_run_thesis_complete_modern.py \
             --best-sampler "$BEST_SAMPLER" \
             2>&1 | tee "${LOGS_DIR}/XXL_FULL_RUN.log"
     fi
@@ -249,7 +252,7 @@ PY
                 # Also ensure we prefer running subsequent helper scripts via RUNNER when available
             else
                 if [ -n "${RUNNER:-}" ]; then
-                    ./scripts/exec_in_env.sh --env dataselector -- ${RUNNER} python "${ROOT}/scripts/build_new_all_tiles.py" --image-dir "${DATA_DIR}/images" || {
+                    ${RUNNER} python "${ROOT}/scripts/build_new_all_tiles.py" --image-dir "${DATA_DIR}/images" || {
                         log_warning "Regeneration of new_all_tiles.csv failed - scripts will fall back to defaults"
                     }
                 else
