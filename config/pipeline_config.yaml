@@ -6,6 +6,10 @@ data:
   csv_path: "data/new_all_tiles.csv"
   image_dir: "data/images"
 
+# Global feature flags
+features:
+  geo: true  # Enable geo-aware processing (requires geo stack: geopandas, pyproj, shapely, fiona, rtree)
+
 # Feature Extraction (Deep Learning)
 feature_extraction:
   model: "dinov2"  # Optionen: 'resnet50', 'dinov2'

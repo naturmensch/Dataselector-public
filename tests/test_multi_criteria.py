@@ -2,10 +2,19 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.multi_criteria_facility_location import MultiCriteriaFacilityLocation
+pytestmark = pytest.mark.integration
 
 
-def test_multi_criteria_weight_validation():
+@pytest.fixture(scope="module")
+def MultiCriteriaFacilityLocation():
+    pytest.importorskip("numba", exc_type=ImportError)
+    import importlib
+
+    mod = importlib.import_module("src.multi_criteria_facility_location")
+    return mod.MultiCriteriaFacilityLocation
+
+
+def test_multi_criteria_weight_validation(MultiCriteriaFacilityLocation):
     # Create minimal metadata
     meta = pd.DataFrame({"N": [0.0, 1.0], "left": [0.0, 1.0], "year": [1900, 1901]})
 
@@ -20,7 +29,7 @@ def test_multi_criteria_weight_validation():
         )
 
 
-def test_greedy_selection_spatial_constraint():
+def test_greedy_selection_spatial_constraint(MultiCriteriaFacilityLocation):
     # Three points: 0 and 1 are at same coordinates (distance 0), 2 is far away
     meta = pd.DataFrame(
         {

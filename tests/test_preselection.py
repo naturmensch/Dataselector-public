@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 import numpy as np
 import pandas as pd
 import pytest
@@ -9,16 +10,74 @@ import src.io
 <<<<<<< HEAD
 =======
 def test_preselection_includes_seed(tmp_path, mock_features_path):
+=======
+import pytest
+
+pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(scope="module")
+def DiversitySelector():
+    pytest.importorskip("numba", exc_type=ImportError)
+    import importlib
+
+    mod = importlib.import_module("src.diversity_selector")
+    return mod.DiversitySelector
+
+
+@pytest.fixture(scope="module")
+def load_metadata():
+    pytest.importorskip("numba", exc_type=ImportError)
+    import importlib
+
+    mod = importlib.import_module("src.io")
+    return mod.load_metadata
+
+
+@pytest.fixture(scope="module")
+def load_or_extract_features():
+    pytest.importorskip("numba", exc_type=ImportError)
+    import importlib
+
+    mod = importlib.import_module("src.io")
+    return mod.load_or_extract_features
+
+
+@pytest.fixture(scope="module")
+def haversine_distance():
+    pytest.importorskip("numba", exc_type=ImportError)
+    import importlib
+
+    mod = importlib.import_module("src.spatial_facility_location")
+    return mod.haversine_distance
+
+
+def test_preselection_includes_seed(
+    tmp_path,
+    mock_features_path,
+    load_metadata,
+    load_or_extract_features,
+    DiversitySelector,
+    haversine_distance,
+):
+>>>>>>> chore/ci-lint-attrs-gdf
     # Use the mock features path to avoid expensive extraction
     # Copy mock features to tmp_path so load_or_extract_features finds them
     import shutil
+
     src = mock_features_path / "features.npy"
     dst = tmp_path / "features.npy"
     if src.resolve() != dst.resolve():
         shutil.copy(src, dst)
     meta = load_metadata("data/new_all_tiles.csv")
+<<<<<<< HEAD
     features = load_or_extract_features(tmp_path, csv_meta=str("data/new_all_tiles.csv"), cache=True)
 >>>>>>> ci/add-smoke-tests
+=======
+    features = load_or_extract_features(
+        tmp_path, csv_meta=str("data/new_all_tiles.csv"), cache=True
+    )
+>>>>>>> chore/ci-lint-attrs-gdf
 
 @pytest.mark.parametrize("test_case", [
     {"name": "includes_seed", "n_samples": 1, "min_distance_km": 0.0, "check_seed": True, "spatial_constraint": False},
@@ -52,16 +111,26 @@ def test_preselection(tmp_path, test_case, stub_feature_extraction):
     # Spatial distance checks removed from this test; see `tests/test_spatial_logic.py` for comprehensive spatial constraint validation.
 =======
 
-def test_preselection_respects_min_distance(tmp_path, mock_features_path):
+def test_preselection_respects_min_distance(
+    tmp_path,
+    mock_features_path,
+    load_metadata,
+    load_or_extract_features,
+    DiversitySelector,
+    haversine_distance,
+):
     # Use the mock features path to avoid expensive extraction
     # Copy mock features to tmp_path so load_or_extract_features finds them
     import shutil
+
     src = mock_features_path / "features.npy"
     dst = tmp_path / "features.npy"
     if src.resolve() != dst.resolve():
         shutil.copy(src, dst)
     meta = load_metadata("data/new_all_tiles.csv")
-    features = load_or_extract_features(tmp_path, csv_meta=str("data/new_all_tiles.csv"), cache=True)
+    features = load_or_extract_features(
+        tmp_path, csv_meta=str("data/new_all_tiles.csv"), cache=True
+    )
 
     mask = meta["longName"].str.contains("Hamburg", case=False)
     seed_pos = int(mask[mask].index[0])
@@ -87,5 +156,11 @@ def test_preselection_respects_min_distance(tmp_path, mock_features_path):
         lat = meta.iloc[idx]["N"]
         lon = meta.iloc[idx]["left"]
         d = haversine_distance(seed_lat, seed_lon, lat, lon)
+<<<<<<< HEAD
         assert d >= 50.0, f"Selected index {idx} is within min_distance of seed ({d:.1f} km)"
 >>>>>>> ci/add-smoke-tests
+=======
+        assert (
+            d >= 50.0
+        ), f"Selected index {idx} is within min_distance of seed ({d:.1f} km)"
+>>>>>>> chore/ci-lint-attrs-gdf

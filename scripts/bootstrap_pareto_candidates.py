@@ -17,22 +17,46 @@ ROOT = Path(__file__).resolve().parents[1]
 =======
   PYTHONPATH=. python scripts/bootstrap_pareto_candidates.py --pareto outputs/fine_sweep/pareto_solutions.csv --n-boot 200 --out outputs/fine_sweep/bootstrap_results.csv
 """
-from pathlib import Path
+
 import argparse
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from tqdm import trange
 
 ROOT = Path(__file__).resolve().parents[1]
-import sys
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
+<<<<<<< HEAD
 from src.diversity_selector import DiversitySelector
 from src.metrics import compute_metrics
 from src.clustering import ClusteringPipeline
 from src.io import load_metadata, load_or_extract_features
 >>>>>>> ci/add-smoke-tests
+=======
+# Note: Project imports (src.*) are deferred into functions to keep this module
+# import-safe for tests and linters (avoid import-time side-effects).
+# Expose module-level loader hooks so tests can monkeypatch them (e.g., set 'load_metadata')
+load_metadata = None
+load_or_extract_features = None
+ClusteringPipeline = None
+try:
+    from src.io import load_metadata as _lm
+    from src.io import load_or_extract_features as _lof
+
+    load_metadata = _lm
+    load_or_extract_features = _lof
+except Exception:
+    # If unavailable at import time, functions will be imported lazily inside main
+    pass
+try:
+    # Allow tests to monkeypatch ClusteringPipeline at module level
+    from src.clustering import ClusteringPipeline as _cls
+
+    ClusteringPipeline = _cls
+except Exception:
+    # Keep None; will be imported lazily inside main
+    pass
+>>>>>>> chore/ci-lint-attrs-gdf
 
 
 def jaccard(a, b):
@@ -46,6 +70,9 @@ def jaccard(a, b):
 
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> chore/ci-lint-attrs-gdf
 def bootstrap_candidate(
     alpha,
     beta,
@@ -60,18 +87,26 @@ def bootstrap_candidate(
 ):
     # Local imports to keep module import-safe
     from tqdm import trange
+<<<<<<< HEAD
+=======
+
+>>>>>>> chore/ci-lint-attrs-gdf
     from src.clustering import ClusteringPipeline
     from src.diversity_selector import DiversitySelector
     from src.metrics import compute_metrics
 
+<<<<<<< HEAD
 =======
 def bootstrap_candidate(alpha, beta, gamma, min_d, features, metadata, original_selection, cluster_labels_full, n_boot=200, random_seed=42):
 >>>>>>> ci/add-smoke-tests
+=======
+>>>>>>> chore/ci-lint-attrs-gdf
     rng = np.random.default_rng(random_seed)
     N = features.shape[0]
     results = []
 
     for i in range(n_boot):
+<<<<<<< HEAD
 <<<<<<< HEAD
         for _ in trange(1, desc=f"Boot candidate {alpha:.2f},{beta:.2f},{gamma:.2f} (iter {i+1})", leave=False):
             pass
@@ -93,19 +128,45 @@ def bootstrap_candidate(alpha, beta, gamma, min_d, features, metadata, original_
             random_state=int(1000 + i),
         )
 =======
+=======
+        for _ in trange(
+            1,
+            desc=f"Boot candidate {alpha:.2f},{beta:.2f},{gamma:.2f} (iter {i+1})",
+            leave=False,
+        ):
+            pass
+
+>>>>>>> chore/ci-lint-attrs-gdf
         sample_idx = rng.integers(0, N, size=N)
         boot_features = features[sample_idx]
         boot_meta = metadata.iloc[sample_idx].reset_index(drop=True)
+        # Preserve projected coords in the bootstrap sample if present
+        from src.io import attach_metric_gdf, get_metric_gdf
+
+        gdf_metric = get_metric_gdf(metadata)
+        if gdf_metric is not None:
+            attach_metric_gdf(
+                boot_meta, gdf_metric.iloc[sample_idx].reset_index(drop=True)
+            )
 
         # clustering on boot features (not used for metrics -- metrics computed on original mapping)
         clustering = ClusteringPipeline(n_clusters=8)
         try:
-            embeddings, cluster_labels_boot = clustering.fit_transform(boot_features)
+            _embeddings, _cluster_labels_boot = clustering.fit_transform(boot_features)
         except Exception:
-            cluster_labels_boot = np.zeros(N, dtype=int)
+            # if clustering fails, continue with metrics computed on original labels
+            pass
 
+<<<<<<< HEAD
         ds = DiversitySelector(n_samples=len(original_selection), use_multi_criteria=True, random_state=int(1000 + i))
 >>>>>>> ci/add-smoke-tests
+=======
+        ds = DiversitySelector(
+            n_samples=len(original_selection),
+            use_multi_criteria=True,
+            random_state=int(1000 + i),
+        )
+>>>>>>> chore/ci-lint-attrs-gdf
         selected_boot = ds.select(
             features=boot_features,
             metadata=boot_meta,
@@ -123,18 +184,26 @@ def bootstrap_candidate(alpha, beta, gamma, min_d, features, metadata, original_
         metrics = compute_metrics(mapped, metadata, cluster_labels_full, features)
         # compute jaccard with original_selection
 <<<<<<< HEAD
+<<<<<<< HEAD
         metrics["jaccard_with_original"] = jaccard(mapped, original_selection)
         metrics["bootstrap_i"] = i
 =======
         metrics['jaccard_with_original'] = jaccard(mapped, original_selection)
         metrics['bootstrap_i'] = i
 >>>>>>> ci/add-smoke-tests
+=======
+        metrics["jaccard_with_original"] = jaccard(mapped, original_selection)
+        metrics["bootstrap_i"] = i
+>>>>>>> chore/ci-lint-attrs-gdf
         results.append(metrics)
 
     return pd.DataFrame(results)
 
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> chore/ci-lint-attrs-gdf
 def main(
     pareto_csv,
     n_boot=200,
@@ -146,6 +215,7 @@ def main(
     pre_selected_names=None,
     pre_selected_indices=None,
 ):
+<<<<<<< HEAD
     # Local imports to keep module import-safe
     from src.io import load_metadata, load_or_extract_features
     from src.clustering import ClusteringPipeline
@@ -176,6 +246,35 @@ def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str
     metadata = load_metadata(str(Path(ROOT) / 'data' / 'new_all_tiles.csv')) if (Path(ROOT) / 'outputs' / 'metadata.csv').exists() is False else pd.read_csv(Path(ROOT) / 'outputs' / 'metadata.csv')
     features = load_or_extract_features(Path(ROOT) / 'outputs', csv_meta=str(Path(ROOT) / 'outputs' / 'metadata.csv') if (Path(ROOT) / 'outputs' / 'metadata.csv').exists() else None, cache=True)
 >>>>>>> ci/add-smoke-tests
+=======
+    # Local imports to keep module import-safe, but prefer module-level hooks if tests patched them
+    if load_metadata is None or load_or_extract_features is None:
+        from src.io import load_metadata as _load_metadata_fn
+        from src.io import load_or_extract_features as _load_or_extract_features_fn
+    else:
+        _load_metadata_fn = load_metadata
+        _load_or_extract_features_fn = load_or_extract_features
+    from src.clustering import ClusteringPipeline
+    from src.diversity_selector import DiversitySelector
+
+    pareto = pd.read_csv(pareto_csv)
+
+    # load full metadata and features
+    metadata = (
+        _load_metadata_fn(str(Path(ROOT) / "data" / "new_all_tiles.csv"))
+        if (Path(ROOT) / "outputs" / "metadata.csv").exists() is False
+        else _load_metadata_fn(str(Path(ROOT) / "outputs" / "metadata.csv"))
+    )
+    features = _load_or_extract_features_fn(
+        Path(ROOT) / "outputs",
+        csv_meta=(
+            str(Path(ROOT) / "outputs" / "metadata.csv")
+            if (Path(ROOT) / "outputs" / "metadata.csv").exists()
+            else None
+        ),
+        cache=True,
+    )
+>>>>>>> chore/ci-lint-attrs-gdf
 
     # full clustering (for cluster labels)
     clustering = ClusteringPipeline(n_clusters=8)
@@ -192,6 +291,7 @@ def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str
 
     # option: ensemble-based UQ (faster inference after modest training)
 <<<<<<< HEAD
+<<<<<<< HEAD
     use_ensemble = uq_method == "ensemble"
 
     for idx, row in pareto.iterrows():
@@ -204,14 +304,23 @@ def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str
         )
 =======
     use_ensemble = uq_method == 'ensemble'
+=======
+    use_ensemble = uq_method == "ensemble"
+>>>>>>> chore/ci-lint-attrs-gdf
 
     for idx, row in pareto.iterrows():
-        alpha, beta, gamma = row['alpha'], row['beta'], row['gamma']
-        min_d = row['min_distance_km']
+        alpha, beta, gamma = row["alpha"], row["beta"], row["gamma"]
+        min_d = row["min_distance_km"]
 
         # compute original selection on full dataset
+<<<<<<< HEAD
         ds = DiversitySelector(n_samples=int(row['n_selected']), use_multi_criteria=True, random_state=42)
 >>>>>>> ci/add-smoke-tests
+=======
+        ds = DiversitySelector(
+            n_samples=int(row["n_selected"]), use_multi_criteria=True, random_state=42
+        )
+>>>>>>> chore/ci-lint-attrs-gdf
         selected = ds.select(
             features=features,
             metadata=metadata,
@@ -229,6 +338,9 @@ def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str
             # Train small ensemble on a reduced number of bootstrap resamples
             n_boot_train = min(50, max(10, int(n_boot // 4)))
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> chore/ci-lint-attrs-gdf
             df_boot_train = bootstrap_candidate(
                 alpha,
                 beta,
@@ -241,6 +353,7 @@ def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str
                 n_boot=n_boot_train,
                 random_seed=random_seed,
             )
+<<<<<<< HEAD
             # attach hyperparameter columns so ensemble training can use them
             df_boot_train["alpha"] = alpha
             df_boot_train["beta"] = beta
@@ -258,23 +371,30 @@ def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str
                 targets = ["temporal_std", "wwi_percent", "jaccard_with_original"]
 =======
             df_boot_train = bootstrap_candidate(alpha, beta, gamma, min_d, features, metadata, original_sel, cluster_labels_full, n_boot=n_boot_train, random_seed=random_seed)
+=======
+>>>>>>> chore/ci-lint-attrs-gdf
             # attach hyperparameter columns so ensemble training can use them
-            df_boot_train['alpha'] = alpha
-            df_boot_train['beta'] = beta
-            df_boot_train['gamma'] = gamma
-            df_boot_train['min_distance_km'] = min_d
+            df_boot_train["alpha"] = alpha
+            df_boot_train["beta"] = beta
+            df_boot_train["gamma"] = gamma
+            df_boot_train["min_distance_km"] = min_d
 
             # Fit ensembles for each target metric
             try:
-                from scripts.uncertainty_quantification import fit_ensemble_on_bootstrap_df, predict_with_uncertainty
-                input_cols = ['alpha', 'beta', 'gamma', 'min_distance_km']
-                targets = ['temporal_std', 'wwi_percent', 'jaccard_with_original']
+                from scripts.uncertainty_quantification import (
+                    fit_ensemble_on_bootstrap_df,
+                    predict_with_uncertainty,
+                )
+
+                input_cols = ["alpha", "beta", "gamma", "min_distance_km"]
+                targets = ["temporal_std", "wwi_percent", "jaccard_with_original"]
 
 >>>>>>> ci/add-smoke-tests
                 preds = {}
                 X_query = [[float(alpha), float(beta), float(gamma), float(min_d)]]
                 for t in targets:
                     if t not in df_boot_train.columns:
+<<<<<<< HEAD
 <<<<<<< HEAD
                         preds[t] = (float("nan"), float("nan"))
                         continue
@@ -290,11 +410,25 @@ def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str
                         continue
                     models = fit_ensemble_on_bootstrap_df(df_boot_train, input_cols=input_cols, target_col=t, n_models=n_ensemble_models, epochs=ensemble_epochs)
 >>>>>>> ci/add-smoke-tests
+=======
+                        preds[t] = (float("nan"), float("nan"))
+                        continue
+                    models = fit_ensemble_on_bootstrap_df(
+                        df_boot_train,
+                        input_cols=input_cols,
+                        target_col=t,
+                        n_models=n_ensemble_models,
+                        epochs=ensemble_epochs,
+                    )
+>>>>>>> chore/ci-lint-attrs-gdf
                     mean, std = predict_with_uncertainty(models, np.array(X_query))
                     preds[t] = (float(mean[0]), float(std[0]))
 
                 summary = {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> chore/ci-lint-attrs-gdf
                     "pareto_idx": idx,
                     "alpha": alpha,
                     "beta": beta,
@@ -308,6 +442,7 @@ def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str
                     "jaccard_mean": preds["jaccard_with_original"][0],
                     "jaccard_std": preds["jaccard_with_original"][1],
                     "method": "ensemble",
+<<<<<<< HEAD
                 }
 
             except Exception as e:
@@ -381,37 +516,53 @@ def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str
                     'jaccard_mean': preds['jaccard_with_original'][0],
                     'jaccard_std': preds['jaccard_with_original'][1],
                     'method': 'ensemble',
+=======
+>>>>>>> chore/ci-lint-attrs-gdf
                 }
 
                 # For ensemble mode we do not record per-resample rows, only the summary.
             except Exception as e:
-                print(f"Ensemble UQ failed ({e}), falling back to standard bootstrap for this candidate")
-                df_boot = bootstrap_candidate(alpha, beta, gamma, min_d, features, metadata, original_sel, cluster_labels_full, n_boot=n_boot, random_seed=random_seed)
-                df_boot['alpha'] = alpha
-                df_boot['beta'] = beta
-                df_boot['gamma'] = gamma
-                df_boot['min_distance_km'] = min_d
-                df_boot['n_selected'] = int(row['n_selected'])
-                df_boot['pareto_idx'] = idx
+                print(
+                    f"Ensemble UQ failed ({e}), falling back to standard bootstrap for this candidate"
+                )
+                df_boot = bootstrap_candidate(
+                    alpha,
+                    beta,
+                    gamma,
+                    min_d,
+                    features,
+                    metadata,
+                    original_sel,
+                    cluster_labels_full,
+                    n_boot=n_boot,
+                    random_seed=random_seed,
+                )
+                df_boot["alpha"] = alpha
+                df_boot["beta"] = beta
+                df_boot["gamma"] = gamma
+                df_boot["min_distance_km"] = min_d
+                df_boot["n_selected"] = int(row["n_selected"])
+                df_boot["pareto_idx"] = idx
                 all_boot.append(df_boot)
 
                 summary = {
-                    'pareto_idx': idx,
-                    'alpha': alpha,
-                    'beta': beta,
-                    'gamma': gamma,
-                    'min_distance_km': min_d,
-                    'n_selected': int(row['n_selected']),
-                    'temporal_std_mean': df_boot['temporal_std'].mean(),
-                    'temporal_std_std': df_boot['temporal_std'].std(),
-                    'wwi_percent_mean': df_boot['wwi_percent'].mean(),
-                    'wwi_percent_std': df_boot['wwi_percent'].std(),
-                    'jaccard_mean': df_boot['jaccard_with_original'].mean(),
-                    'jaccard_std': df_boot['jaccard_with_original'].std(),
-                    'method': 'bootstrap',
+                    "pareto_idx": idx,
+                    "alpha": alpha,
+                    "beta": beta,
+                    "gamma": gamma,
+                    "min_distance_km": min_d,
+                    "n_selected": int(row["n_selected"]),
+                    "temporal_std_mean": df_boot["temporal_std"].mean(),
+                    "temporal_std_std": df_boot["temporal_std"].std(),
+                    "wwi_percent_mean": df_boot["wwi_percent"].mean(),
+                    "wwi_percent_std": df_boot["wwi_percent"].std(),
+                    "jaccard_mean": df_boot["jaccard_with_original"].mean(),
+                    "jaccard_std": df_boot["jaccard_with_original"].std(),
+                    "method": "bootstrap",
                 }
         else:
             # Bootstrap
+<<<<<<< HEAD
             df_boot = bootstrap_candidate(alpha, beta, gamma, min_d, features, metadata, original_sel, cluster_labels_full, n_boot=n_boot, random_seed=random_seed)
             df_boot['alpha'] = alpha
             df_boot['beta'] = beta
@@ -420,11 +571,34 @@ def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str
             df_boot['n_selected'] = int(row['n_selected'])
             df_boot['pareto_idx'] = idx
 >>>>>>> ci/add-smoke-tests
+=======
+            df_boot = bootstrap_candidate(
+                alpha,
+                beta,
+                gamma,
+                min_d,
+                features,
+                metadata,
+                original_sel,
+                cluster_labels_full,
+                n_boot=n_boot,
+                random_seed=random_seed,
+            )
+            df_boot["alpha"] = alpha
+            df_boot["beta"] = beta
+            df_boot["gamma"] = gamma
+            df_boot["min_distance_km"] = min_d
+            df_boot["n_selected"] = int(row["n_selected"])
+            df_boot["pareto_idx"] = idx
+>>>>>>> chore/ci-lint-attrs-gdf
             all_boot.append(df_boot)
 
             # summary
             summary = {
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> chore/ci-lint-attrs-gdf
                 "pareto_idx": idx,
                 "alpha": alpha,
                 "beta": beta,
@@ -438,6 +612,7 @@ def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str
                 "jaccard_mean": df_boot["jaccard_with_original"].mean(),
                 "jaccard_std": df_boot["jaccard_with_original"].std(),
                 "method": "bootstrap",
+<<<<<<< HEAD
 =======
                 'pareto_idx': idx,
                 'alpha': alpha,
@@ -453,6 +628,8 @@ def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str
                 'jaccard_std': df_boot['jaccard_with_original'].std(),
                 'method': 'bootstrap',
 >>>>>>> ci/add-smoke-tests
+=======
+>>>>>>> chore/ci-lint-attrs-gdf
             }
 
         summary_rows.append(summary)
@@ -464,11 +641,15 @@ def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str
     df_summary = pd.DataFrame(summary_rows)
 
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> chore/ci-lint-attrs-gdf
     outdir = (
         Path(output_csv).parent
         if output_csv is not None
         else Path(ROOT) / "outputs" / "fine_sweep"
     )
+<<<<<<< HEAD
     outdir.mkdir(parents=True, exist_ok=True)
     if output_csv is None:
         # Default legacy path
@@ -504,47 +685,107 @@ def main(pareto_csv, n_boot=200, output_csv=None, random_seed=42, uq_method: str
     print("Bootstrap finished. Results saved.")
 =======
     outdir = Path(output_csv).parent if output_csv is not None else Path(ROOT) / 'outputs' / 'fine_sweep'
+=======
+>>>>>>> chore/ci-lint-attrs-gdf
     outdir.mkdir(parents=True, exist_ok=True)
     if output_csv is None:
         # Default legacy path
-        default_dir = Path(ROOT) / 'outputs' / 'fine_sweep'
+        default_dir = Path(ROOT) / "outputs" / "fine_sweep"
         if not df_all.empty:
-            df_all.to_csv(default_dir / 'bootstrap_results_full.csv', index=False)
-        df_summary.to_csv(default_dir / 'bootstrap_summary.csv', index=False)
+            df_all.to_csv(default_dir / "bootstrap_results_full.csv", index=False)
+        df_summary.to_csv(default_dir / "bootstrap_summary.csv", index=False)
     else:
         if not df_all.empty:
             df_all.to_csv(output_csv, index=False)
-        df_summary.to_csv(Path(output_csv).with_name(Path(output_csv).stem + '_summary.csv'), index=False)
+        df_summary.to_csv(
+            Path(output_csv).with_name(Path(output_csv).stem + "_summary.csv"),
+            index=False,
+        )
 
     # If attached to an ExperimentManager, persist into the run directory
     import os
-    exp_dir = os.environ.get('EXPERIMENT_RUN_DIR')
+
+    exp_dir = os.environ.get("EXPERIMENT_RUN_DIR")
     if exp_dir:
         try:
             from src.experiment_manager import ExperimentManager
+
             em = ExperimentManager.from_existing(exp_dir)
             if not df_all.empty:
-                em.save_results('bootstrap_results_full', df_all, format='csv')
-            em.save_results('bootstrap_summary', df_summary, format='csv')
-            em.mark_stage_complete('bootstrap', summary={'n_candidates': len(df_summary)})
+                em.save_results("bootstrap_results_full", df_all, format="csv")
+            em.save_results("bootstrap_summary", df_summary, format="csv")
+            em.mark_stage_complete(
+                "bootstrap", summary={"n_candidates": len(df_summary)}
+            )
         except Exception as e:
-            print(f'Warning: could not save bootstrap results to experiment manager: {e}')
+            print(
+                f"Warning: could not save bootstrap results to experiment manager: {e}"
+            )
 
-    print('Bootstrap finished. Results saved.')
+    print("Bootstrap finished. Results saved.")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--pareto', type=str, default=str(Path(ROOT) / 'outputs' / 'fine_sweep' / 'pareto_solutions.csv'))
-    parser.add_argument('--n-boot', type=int, default=200)
-    parser.add_argument('--out', type=str, default=str(Path(ROOT) / 'outputs' / 'fine_sweep' / 'bootstrap_results.csv'))
-    parser.add_argument('--seed', type=int, default=42)
-    parser.add_argument('--uq-method', choices=['bootstrap', 'ensemble'], default='bootstrap', help='Uncertainty quantification method to use')
-    parser.add_argument('--n-ensemble-models', type=int, default=5, help='Number of ensemble members when using ensemble UQ')
-    parser.add_argument('--ensemble-epochs', type=int, default=50, help='Epochs per ensemble member when training ensemble UQ')
-    parser.add_argument('--pre-names', type=str, nargs='*', default=None, help='Optional pre-selected tile names (e.g. Hamburg)')
-    parser.add_argument('--pre-indices', type=int, nargs='*', default=None, help='Optional pre-selected tile indices')
+    parser.add_argument(
+        "--pareto",
+        type=str,
+        default=str(Path(ROOT) / "outputs" / "fine_sweep" / "pareto_solutions.csv"),
+    )
+    parser.add_argument("--n-boot", type=int, default=200)
+    parser.add_argument(
+        "--out",
+        type=str,
+        default=str(Path(ROOT) / "outputs" / "fine_sweep" / "bootstrap_results.csv"),
+    )
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--uq-method",
+        choices=["bootstrap", "ensemble"],
+        default="bootstrap",
+        help="Uncertainty quantification method to use",
+    )
+    parser.add_argument(
+        "--n-ensemble-models",
+        type=int,
+        default=5,
+        help="Number of ensemble members when using ensemble UQ",
+    )
+    parser.add_argument(
+        "--ensemble-epochs",
+        type=int,
+        default=50,
+        help="Epochs per ensemble member when training ensemble UQ",
+    )
+    parser.add_argument(
+        "--pre-names",
+        type=str,
+        nargs="*",
+        default=None,
+        help="Optional pre-selected tile names (e.g. Hamburg)",
+    )
+    parser.add_argument(
+        "--pre-indices",
+        type=int,
+        nargs="*",
+        default=None,
+        help="Optional pre-selected tile indices",
+    )
     args = parser.parse_args()
 
+<<<<<<< HEAD
     main(args.pareto, n_boot=args.n_boot, output_csv=args.out, random_seed=args.seed, uq_method=args.uq_method, n_ensemble_models=args.n_ensemble_models, ensemble_epochs=args.ensemble_epochs, pre_selected_names=args.pre_names, pre_selected_indices=args.pre_indices)
 >>>>>>> ci/add-smoke-tests
+=======
+    main(
+        args.pareto,
+        n_boot=args.n_boot,
+        output_csv=args.out,
+        random_seed=args.seed,
+        uq_method=args.uq_method,
+        n_ensemble_models=args.n_ensemble_models,
+        ensemble_epochs=args.ensemble_epochs,
+        pre_selected_names=args.pre_names,
+        pre_selected_indices=args.pre_indices,
+    )
+>>>>>>> chore/ci-lint-attrs-gdf

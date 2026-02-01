@@ -1,6 +1,13 @@
 import json
 from pathlib import Path
-import scripts.archive_workspace as aw
+
+from tests._helpers.load_script import load_script
+
+ROOT = Path(__file__).resolve().parents[1]
+aw = load_script(
+    ROOT / "scripts" / "archive_workspace.py",
+    module_name="scripts.archive_workspace_test",
+)
 
 
 def touch(p: Path):
@@ -23,8 +30,9 @@ def test_archive_outputs_with_manifest(tmp_path, monkeypatch):
     monkeypatch.setattr(aw, "ARCHIVE_DIR", archive_dir)
 
     monkeypatch.setattr(
-        aw, "WHITELIST_PATTERNS",
-        set(aw.WHITELIST_PATTERNS) | {"outputs/tuning_weights", "tuning_weights"}
+        aw,
+        "WHITELIST_PATTERNS",
+        set(aw.WHITELIST_PATTERNS) | {"outputs/tuning_weights", "tuning_weights"},
     )
 
     cat = aw.ArchiveCategory("old_outputs", "Test outputs")

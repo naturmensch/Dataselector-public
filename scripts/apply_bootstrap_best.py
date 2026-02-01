@@ -128,16 +128,22 @@ def _normalize_and_aggregate_bootstrap_df(df: pd.DataFrame) -> pd.DataFrame:
 """
 
 import argparse
+import shutil
 import sys
 from pathlib import Path
+
 import pandas as pd
 import yaml
+<<<<<<< HEAD
 import shutil
 >>>>>>> ci/add-smoke-tests
+=======
+>>>>>>> chore/ci-lint-attrs-gdf
 
 
 def find_best_bootstrap_candidate(df: pd.DataFrame) -> dict:
     """Find best bootstrap candidate based on composite score.
+<<<<<<< HEAD
 <<<<<<< HEAD
 
     Criteria:
@@ -191,6 +197,9 @@ def find_best_bootstrap_candidate(df: pd.DataFrame) -> dict:
         "jaccard_mean": float(best_row["jaccard_with_original_mean"]),
 =======
     
+=======
+
+>>>>>>> chore/ci-lint-attrs-gdf
     Criteria:
     - Lowest temporal_std_std (most stable)
     - Lowest wwi_percent_mean (best temporal diversity)
@@ -198,20 +207,31 @@ def find_best_bootstrap_candidate(df: pd.DataFrame) -> dict:
     """
     if len(df) == 0:
         raise ValueError("Empty bootstrap summary")
-    
+
     # Normalize scores (0-1)
     df = df.copy()
-    df['stability_score'] = 1 - (df['temporal_std_std'] - df['temporal_std_std'].min()) / (df['temporal_std_std'].max() - df['temporal_std_std'].min() + 1e-9)
-    df['diversity_score'] = 1 - (df['wwi_percent_mean'] - df['wwi_percent_mean'].min()) / (df['wwi_percent_mean'].max() - df['wwi_percent_mean'].min() + 1e-9)
-    df['reproducibility_score'] = (df['jaccard_mean'] - df['jaccard_mean'].min()) / (df['jaccard_mean'].max() - df['jaccard_mean'].min() + 1e-9)
-    
+    df["stability_score"] = 1 - (
+        df["temporal_std_std"] - df["temporal_std_std"].min()
+    ) / (df["temporal_std_std"].max() - df["temporal_std_std"].min() + 1e-9)
+    df["diversity_score"] = 1 - (
+        df["wwi_percent_mean"] - df["wwi_percent_mean"].min()
+    ) / (df["wwi_percent_mean"].max() - df["wwi_percent_mean"].min() + 1e-9)
+    df["reproducibility_score"] = (df["jaccard_mean"] - df["jaccard_mean"].min()) / (
+        df["jaccard_mean"].max() - df["jaccard_mean"].min() + 1e-9
+    )
+
     # Composite: 40% stability + 30% diversity + 30% reproducibility
-    df['composite_score'] = 0.4 * df['stability_score'] + 0.3 * df['diversity_score'] + 0.3 * df['reproducibility_score']
-    
-    best_idx = df['composite_score'].idxmax()
+    df["composite_score"] = (
+        0.4 * df["stability_score"]
+        + 0.3 * df["diversity_score"]
+        + 0.3 * df["reproducibility_score"]
+    )
+
+    best_idx = df["composite_score"].idxmax()
     best_row = df.loc[best_idx]
-    
+
     return {
+<<<<<<< HEAD
         'alpha': float(best_row['alpha']),
         'beta': float(best_row['beta']),
         'gamma': float(best_row['gamma']),
@@ -221,6 +241,16 @@ def find_best_bootstrap_candidate(df: pd.DataFrame) -> dict:
         'wwi_percent_mean': float(best_row['wwi_percent_mean']),
         'jaccard_mean': float(best_row['jaccard_mean']),
 >>>>>>> ci/add-smoke-tests
+=======
+        "alpha": float(best_row["alpha"]),
+        "beta": float(best_row["beta"]),
+        "gamma": float(best_row["gamma"]),
+        "min_distance_km": float(best_row["min_distance_km"]),
+        "composite_score": float(best_row["composite_score"]),
+        "temporal_std_mean": float(best_row["temporal_std_mean"]),
+        "wwi_percent_mean": float(best_row["wwi_percent_mean"]),
+        "jaccard_mean": float(best_row["jaccard_mean"]),
+>>>>>>> chore/ci-lint-attrs-gdf
     }
 
 
@@ -230,6 +260,7 @@ def inject_into_config(cfg_path: Path, params: dict, backup: bool = True):
     if backup:
         shutil.copy2(cfg_path, bak)
 <<<<<<< HEAD
+<<<<<<< HEAD
 
     with open(cfg_path, "r") as f:
         cfg = yaml.safe_load(f)
@@ -240,15 +271,25 @@ def inject_into_config(cfg_path: Path, params: dict, backup: bool = True):
         cfg = yaml.safe_load(f)
     
 >>>>>>> ci/add-smoke-tests
+=======
+
+    with open(cfg_path, "r") as f:
+        cfg = yaml.safe_load(f)
+
+>>>>>>> chore/ci-lint-attrs-gdf
     cfg.setdefault("selection", {})
     cfg["selection"]["alpha_visual"] = params["alpha"]
     cfg["selection"]["beta_spatial"] = params["beta"]
     cfg["selection"]["gamma_temporal"] = params["gamma"]
     cfg["selection"]["min_distance_km"] = params["min_distance_km"]
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
     
 >>>>>>> ci/add-smoke-tests
+=======
+
+>>>>>>> chore/ci-lint-attrs-gdf
     # Add provenance
     cfg["selection"]["_bootstrap_provenance"] = {
         "composite_score": params["composite_score"],
@@ -256,6 +297,7 @@ def inject_into_config(cfg_path: Path, params: dict, backup: bool = True):
         "wwi_percent_mean": params["wwi_percent_mean"],
         "jaccard_mean": params["jaccard_mean"],
     }
+<<<<<<< HEAD
 <<<<<<< HEAD
 
     with open(cfg_path, "w") as f:
@@ -275,27 +317,42 @@ def write_new_config(
 
 =======
     
+=======
+
+>>>>>>> chore/ci-lint-attrs-gdf
     with open(cfg_path, "w") as f:
         yaml.safe_dump(cfg, f, sort_keys=False)
-    
+
     return bak if backup else None
 
 
-def write_new_config(out_path: Path, params: dict, base_cfg_path: Path = Path("config/pipeline_config.yaml")):
+def write_new_config(
+    out_path: Path,
+    params: dict,
+    base_cfg_path: Path = Path("config/pipeline_config.yaml"),
+):
     """Write new config file with bootstrap-best params."""
     with open(base_cfg_path, "r") as f:
         cfg = yaml.safe_load(f)
+<<<<<<< HEAD
     
 >>>>>>> ci/add-smoke-tests
+=======
+
+>>>>>>> chore/ci-lint-attrs-gdf
     cfg.setdefault("selection", {})
     cfg["selection"]["alpha_visual"] = params["alpha"]
     cfg["selection"]["beta_spatial"] = params["beta"]
     cfg["selection"]["gamma_temporal"] = params["gamma"]
     cfg["selection"]["min_distance_km"] = params["min_distance_km"]
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
     
 >>>>>>> ci/add-smoke-tests
+=======
+
+>>>>>>> chore/ci-lint-attrs-gdf
     cfg["selection"]["_bootstrap_provenance"] = {
         "composite_score": params["composite_score"],
         "temporal_std_mean": params["temporal_std_mean"],
@@ -303,6 +360,7 @@ def write_new_config(out_path: Path, params: dict, base_cfg_path: Path = Path("c
         "jaccard_mean": params["jaccard_mean"],
     }
 <<<<<<< HEAD
+<<<<<<< HEAD
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     with open(out_path, "w") as f:
@@ -315,14 +373,26 @@ def write_new_config(out_path: Path, params: dict, base_cfg_path: Path = Path("c
         yaml.safe_dump(cfg, f, sort_keys=False)
     
 >>>>>>> ci/add-smoke-tests
+=======
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w") as f:
+        yaml.safe_dump(cfg, f, sort_keys=False)
+
+>>>>>>> chore/ci-lint-attrs-gdf
     return out_path
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--bootstrap-summary", required=True, help="Path to bootstrap_summary.csv")
+    parser.add_argument(
+        "--bootstrap-summary", required=True, help="Path to bootstrap_summary.csv"
+    )
     group = parser.add_mutually_exclusive_group(required=True)
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> chore/ci-lint-attrs-gdf
     group.add_argument(
         "--inject",
         action="store_true",
@@ -332,6 +402,7 @@ def main(argv=None):
         "--write-config", help="Write a separate YAML config with injected values"
     )
 
+<<<<<<< HEAD
     args = parser.parse_args(argv)
 
 =======
@@ -341,10 +412,15 @@ def main(argv=None):
     args = parser.parse_args(argv)
     
 >>>>>>> ci/add-smoke-tests
+=======
+    args = parser.parse_args(argv)
+
+>>>>>>> chore/ci-lint-attrs-gdf
     bootstrap_csv = Path(args.bootstrap_summary)
     if not bootstrap_csv.exists():
         print(f"Bootstrap summary not found: {bootstrap_csv}")
         return 1
+<<<<<<< HEAD
 <<<<<<< HEAD
 
     df = pd.read_csv(bootstrap_csv)
@@ -442,6 +518,12 @@ def main(argv=None):
     best = find_best_bootstrap_candidate(df)
     
 >>>>>>> ci/add-smoke-tests
+=======
+
+    df = pd.read_csv(bootstrap_csv)
+    best = find_best_bootstrap_candidate(df)
+
+>>>>>>> chore/ci-lint-attrs-gdf
     print(f"\n{'='*60}")
     print("BEST BOOTSTRAP CANDIDATE")
     print(f"{'='*60}")
@@ -451,19 +533,27 @@ def main(argv=None):
     print(f"Gamma (temporal): {best['gamma']:.2f}")
     print(f"Min Distance:     {best['min_distance_km']:.0f} km")
 <<<<<<< HEAD
+<<<<<<< HEAD
     print("\nExpected Metrics:")
 =======
     print(f"\nExpected Metrics:")
 >>>>>>> ci/add-smoke-tests
+=======
+    print("\nExpected Metrics:")
+>>>>>>> chore/ci-lint-attrs-gdf
     print(f"  Temporal STD:   {best['temporal_std_mean']:.2f} years")
     print(f"  WWI Fraction:   {best['wwi_percent_mean']:.1f}%")
     print(f"  Jaccard (stab): {best['jaccard_mean']:.3f}")
     print(f"{'='*60}\n")
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 =======
     
 >>>>>>> ci/add-smoke-tests
+=======
+
+>>>>>>> chore/ci-lint-attrs-gdf
     if args.inject:
         cfg_path = Path("config/pipeline_config.yaml")
         bak = inject_into_config(cfg_path, best, backup=True)
@@ -474,9 +564,13 @@ def main(argv=None):
         write_new_config(out, best)
         print(f"✅ Wrote new config with injected params to: {out}")
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
     
 >>>>>>> ci/add-smoke-tests
+=======
+
+>>>>>>> chore/ci-lint-attrs-gdf
     return 0
 
 

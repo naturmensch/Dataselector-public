@@ -10,9 +10,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.clustering import ClusteringPipeline
-from src.diversity_selector import DiversitySelector
-
 
 def main() -> None:
     OUT = Path("outputs")
@@ -27,6 +24,10 @@ def main() -> None:
         csv_meta if csv_meta is not None else "data/new_all_tiles.csv"
     )
 
+    # Runtime imports (deferred to avoid import-time side-effects)
+    from src.clustering import ClusteringPipeline
+    from src.diversity_selector import DiversitySelector
+
     print("=" * 80)
     print("TEMPORAL WEIGHT SENSITIVITY TEST (Constraint-Integrated)")
     print("=" * 80)
@@ -40,6 +41,9 @@ def main() -> None:
         if n:
             feat = features[:n]
             meta = metadata.iloc[:n].reset_index(drop=True)
+            # preserve projected coords if available
+            if getattr(metadata, "gdf_metric", None) is not None:
+                meta.gdf_metric = metadata.gdf_metric.iloc[:n].reset_index(drop=True)
         else:
             feat = features
             meta = metadata
@@ -74,19 +78,32 @@ def main() -> None:
                 float(np.max(years) - np.min(years)) if len(years) > 0 else np.nan
             )
 
-            # Spatial
-            from src.spatial_facility_location import haversine_distance
+            # Spatial: prefer projected coords if present
+            from src.io import get_metric_gdf
 
+            use_metric = get_metric_gdf(meta) is not None
             pairwise = []
             for i in range(len(selected)):
                 for j in range(i + 1, len(selected)):
-                    r1 = meta.iloc[selected[i]]
-                    r2 = meta.iloc[selected[j]]
-                    pairwise.append(
-                        haversine_distance(
-                            r1["N"], r1["left"], r2["N"], r2["left"]
+                    if use_metric:
+                        from src.io import get_metric_gdf
+
+                        gdf = get_metric_gdf(meta)
+                        a = gdf.loc[selected[i], ["_proj_x", "_proj_y"]].values.astype(
+                            float
                         )
-                    )
+                        b = gdf.loc[selected[j], ["_proj_x", "_proj_y"]].values.astype(
+                            float
+                        )
+                        pairwise.append(float((((a - b) ** 2).sum()) ** 0.5 / 1000.0))
+                    else:
+                        from src.spatial_facility_location import haversine_distance
+
+                        r1 = meta.iloc[selected[i]]
+                        r2 = meta.iloc[selected[j]]
+                        pairwise.append(
+                            haversine_distance(r1["N"], r1["left"], r2["N"], r2["left"])
+                        )
             mean_pairwise = float(np.mean(pairwise)) if pairwise else np.nan
 
             print(

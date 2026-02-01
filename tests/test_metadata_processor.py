@@ -1,4 +1,5 @@
 <<<<<<< HEAD
+<<<<<<< HEAD
 import pytest
 from pathlib import Path
 
@@ -9,8 +10,21 @@ _mp_mod = load_module_from_path("test_metadata_processor_mod", REPO_ROOT / "src"
 MetadataProcessor = _mp_mod.MetadataProcessor
 =======
 from src.metadata_processor import MetadataProcessor
+=======
+>>>>>>> chore/ci-lint-attrs-gdf
 import pytest
 >>>>>>> ci/add-smoke-tests
+
+pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(scope="module")
+def MetadataProcessor():
+    pytest.importorskip("numba", exc_type=ImportError)
+    import importlib
+
+    mod = importlib.import_module("src.metadata_processor")
+    return mod.MetadataProcessor
 
 
 def write_csv(tmp_path, content: str) -> str:
@@ -19,7 +33,7 @@ def write_csv(tmp_path, content: str) -> str:
     return str(p)
 
 
-def test_metadata_standard_flow(tmp_path):
+def test_metadata_standard_flow(tmp_path, MetadataProcessor):
     csv = """File,N,left
 KDR_001_Someplace_1901.png,52,13.4
 KDR_002_Other_1950.png,52.1,13.5
@@ -32,7 +46,7 @@ KDR_002_Other_1950.png,52.1,13.5
     assert list(df["year"]) == [1901, 1950]
 
 
-def test_resolve_image_paths(tmp_path):
+def test_resolve_image_paths(tmp_path, MetadataProcessor):
     csv = """shortName,longName,N,left
 IMG1,KDR_001_IMG1_1901.png,52,13
 ,KDR_002_IMG2_1950.png,52,14
@@ -49,7 +63,7 @@ IMG1,KDR_001_IMG1_1901.png,52,13
     assert df["image_path"].iloc[1] is not None
 
 
-def test_spatial_distance_and_filter(tmp_path):
+def test_spatial_distance_and_filter(tmp_path, MetadataProcessor):
     csv = """File,N,left\nA.png,0,0\nB.png,0,1\nC.png,50,50\n"""
     path = write_csv(tmp_path, csv)
     proc = MetadataProcessor(path)
@@ -63,7 +77,7 @@ def test_spatial_distance_and_filter(tmp_path):
     assert len(valid) < len(proc.df)
 
 
-def test_convert_dbf_to_csv_raises_for_non_dbf(tmp_path):
+def test_convert_dbf_to_csv_raises_for_non_dbf(tmp_path, MetadataProcessor):
     csv = "File,N,left\nA.png,0,0\n"
     path = write_csv(tmp_path, csv)
     proc = MetadataProcessor(path)

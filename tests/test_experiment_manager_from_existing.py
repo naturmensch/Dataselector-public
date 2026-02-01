@@ -1,9 +1,16 @@
 import json
-from pathlib import Path
+
 import pandas as pd
-import os
+import pytest
 
 from src.experiment_manager import ExperimentManager
+
+pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(autouse=True)
+def skip_if_no_numba():
+    pytest.importorskip("numba", exc_type=ImportError)
 
 
 def test_from_existing_loads_manifest(tmp_path):
@@ -19,12 +26,12 @@ def test_from_existing_loads_manifest(tmp_path):
             "run_id": run_dir.name,
             "timestamp_utc": "20260101_T000000",
             "status": "attached",
-            "stages": {}
+            "stages": {},
         },
         "provenance": {"python_version": "3.11.0"},
         "metadata": {"seed": 123},
         "results": {},
-        "artifacts": []
+        "artifacts": [],
     }
     with open(run_dir / "manifest.json", "w") as f:
         json.dump(manifest, f)
@@ -39,8 +46,10 @@ def test_from_existing_loads_manifest(tmp_path):
 
 
 def test_from_existing_can_save_results(tmp_path):
-    run_dir = tmp_path / "20260101_T000001_testrun2"
-    em_orig = ExperimentManager(name="testrun2", description="original", base_dir=tmp_path)
+    _run_dir = tmp_path / "20260101_T000001_testrun2"
+    em_orig = ExperimentManager(
+        name="testrun2", description="original", base_dir=tmp_path
+    )
     # Ensure a manifest exists
     em_orig.save_manifest()
 

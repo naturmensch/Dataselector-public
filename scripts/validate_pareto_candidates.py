@@ -13,14 +13,7 @@ import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
-import sys
-
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from src.diversity_selector import DiversitySelector
-from src.metrics import compute_metrics
-
+# Avoid modifying sys.path at import time; import project modules at runtime when needed
 OUTDIR = ROOT / "outputs" / "validation"
 OUTDIR.mkdir(parents=True, exist_ok=True)
 
@@ -49,12 +42,13 @@ def validate(
     if (outdir / "metadata.csv").exists():
         metadata_path = outdir / "metadata.csv"
     if (outdir / "features.npy").exists():
-        _features_path = outdir / "features.npy"
+        # features path intentionally not used in this test-mode helper
+        pass
 
     from src.io import load_metadata, load_or_extract_features
 
     metadata = (
-        pd.read_csv(metadata_path)
+        load_metadata(str(metadata_path))
         if metadata_path.exists()
         else load_metadata("data/new_all_tiles.csv")
     )
@@ -63,7 +57,9 @@ def validate(
         csv_meta=(
             str(outdir / "metadata.csv")
             if (outdir / "metadata.csv").exists()
-            else str(metadata_path) if metadata_path.exists() else None
+            else str(metadata_path)
+            if metadata_path.exists()
+            else None
         ),
         batch_size=16,
         cache=True,
@@ -89,6 +85,9 @@ def validate(
     from src.visualizer import Visualizer
 
     viz = Visualizer(output_dir=str(outdir / "plots"))
+
+    from src.diversity_selector import DiversitySelector
+    from src.metrics import compute_metrics
 
     for _, row in pareto.iterrows():
         alpha, beta, gamma = row["alpha"], row["beta"], row["gamma"]

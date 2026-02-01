@@ -4,14 +4,15 @@
 This script provides a stable entry point expected by tests.
 It scans the global outputs folder and writes a simple summary report.
 """
-from pathlib import Path
+
 import sys
-import os
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUTS = ROOT / "outputs"
 REPORT_DIR = OUTPUTS / "reports"
-from datetime import datetime
+from datetime import datetime  # noqa: E402
+
 DATE_STR = datetime.now().strftime("%Y%m%d")
 EXPECTED_REPORT_PATH = OUTPUTS / f"report_{DATE_STR}.md"
 REPORT_PATH = REPORT_DIR / "workspace_report.md"
@@ -25,13 +26,13 @@ def main():
         lines.append(f"Root: {ROOT}\n\n")
         if OUTPUTS.exists():
             lines.append("## Outputs contents\n")
-            for p in sorted(OUTPUTS.rglob('*')):
+            for p in sorted(OUTPUTS.rglob("*")):
                 if p.is_file():
                     rel = p.relative_to(ROOT)
                     lines.append(f"- {rel}\n")
         else:
             lines.append("No outputs directory found.\n")
-        text = ''.join(lines)
+        text = "".join(lines)
         # Write both the workspace report and the expected test target
         REPORT_PATH.write_text(text)
         EXPECTED_REPORT_PATH.write_text(text)
@@ -42,5 +43,5 @@ def main():
         return 1
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

@@ -46,23 +46,26 @@ providing confidence intervals and stability metrics for the thesis.
 Usage:
     python scripts/bootstrap_final_selection.py --run-dir outputs/runs/20260116_T164624_hamburg_full_2000 --n-boot 500
 """
+
 import argparse
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
 import numpy as np
 import pandas as pd
-from tqdm import trange
 
+<<<<<<< HEAD
 from src.diversity_selector import DiversitySelector
 from src.metrics import compute_metrics
 from src.clustering import ClusteringPipeline
 from src.io import load_metadata, load_or_extract_features
 >>>>>>> ci/add-smoke-tests
+=======
+ROOT = Path(__file__).resolve().parents[1]
+
+# Note: Project imports (src.*) are deferred into `main` or helper functions to make
+# this module import-safe for tests and linters (avoid import-time side-effects).
+>>>>>>> chore/ci-lint-attrs-gdf
 
 
 def jaccard(a, b):
@@ -77,6 +80,9 @@ def jaccard(a, b):
 
 def bootstrap_selection(
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> chore/ci-lint-attrs-gdf
     alpha,
     beta,
     gamma,
@@ -90,6 +96,7 @@ def bootstrap_selection(
     random_seed=42,
     pre_selected_names=None,
     pre_selected_indices=None,
+<<<<<<< HEAD
 ):
     """Perform bootstrap resampling to assess selection stability.
 
@@ -105,12 +112,23 @@ def bootstrap_selection(
     features, metadata, original_selection, cluster_labels_full,
     n_boot=500, random_seed=42,
     pre_selected_names=None, pre_selected_indices=None
+=======
+>>>>>>> chore/ci-lint-attrs-gdf
 ):
     """Perform bootstrap resampling to assess selection stability.
-    
+
     Returns DataFrame with metrics for each bootstrap iteration.
     """
+<<<<<<< HEAD
 >>>>>>> ci/add-smoke-tests
+=======
+    # Local imports to keep module import-safe
+    from tqdm import trange
+
+    from src.diversity_selector import DiversitySelector
+    from src.metrics import compute_metrics
+
+>>>>>>> chore/ci-lint-attrs-gdf
     rng = np.random.default_rng(random_seed)
     N = features.shape[0]
     results = []
@@ -128,10 +146,14 @@ def bootstrap_selection(
 
         # Run selection on bootstrap sample
         ds = DiversitySelector(
+<<<<<<< HEAD
             n_samples=n_samples,
             use_multi_criteria=True,
             random_state=int(1000 + i)
 >>>>>>> ci/add-smoke-tests
+=======
+            n_samples=n_samples, use_multi_criteria=True, random_state=int(1000 + i)
+>>>>>>> chore/ci-lint-attrs-gdf
         )
         selected_boot = ds.select(
             features=boot_features,
@@ -151,6 +173,7 @@ def bootstrap_selection(
         # Compute metrics on original data
         metrics = compute_metrics(mapped, metadata, cluster_labels_full, features)
 <<<<<<< HEAD
+<<<<<<< HEAD
         metrics["jaccard_with_original"] = jaccard(mapped, original_selection)
         metrics["bootstrap_iteration"] = i
         metrics["n_samples"] = len(mapped)
@@ -159,6 +182,11 @@ def bootstrap_selection(
         metrics['bootstrap_iteration'] = i
         metrics['n_samples'] = len(mapped)
 >>>>>>> ci/add-smoke-tests
+=======
+        metrics["jaccard_with_original"] = jaccard(mapped, original_selection)
+        metrics["bootstrap_iteration"] = i
+        metrics["n_samples"] = len(mapped)
+>>>>>>> chore/ci-lint-attrs-gdf
         results.append(metrics)
 
     return pd.DataFrame(results)
@@ -167,6 +195,7 @@ def bootstrap_selection(
 def summarize_bootstrap(df_boot, original_metrics):
     """Compute summary statistics (mean, std, CI) for bootstrap results."""
     summary = {}
+<<<<<<< HEAD
 <<<<<<< HEAD
 
     # Key metrics to summarize
@@ -188,14 +217,22 @@ def summarize_bootstrap(df_boot, original_metrics):
             summary[f"{m}_original"] = original_metrics.get(m, np.nan)
 =======
     
+=======
+
+>>>>>>> chore/ci-lint-attrs-gdf
     # Key metrics to summarize
     metrics = [
-        'n_selected', 'clusters_covered', 'temporal_std', 'spatial_mean_km',
-        'wwi_percent', 'jaccard_with_original'
+        "n_selected",
+        "clusters_covered",
+        "temporal_std",
+        "spatial_mean_km",
+        "wwi_percent",
+        "jaccard_with_original",
     ]
-    
+
     for m in metrics:
         if m in df_boot.columns:
+<<<<<<< HEAD
             summary[f'{m}_mean'] = df_boot[m].mean()
             summary[f'{m}_std'] = df_boot[m].std()
             summary[f'{m}_ci_lower'] = df_boot[m].quantile(0.025)
@@ -203,11 +240,20 @@ def summarize_bootstrap(df_boot, original_metrics):
             summary[f'{m}_original'] = original_metrics.get(m, np.nan)
     
 >>>>>>> ci/add-smoke-tests
+=======
+            summary[f"{m}_mean"] = df_boot[m].mean()
+            summary[f"{m}_std"] = df_boot[m].std()
+            summary[f"{m}_ci_lower"] = df_boot[m].quantile(0.025)
+            summary[f"{m}_ci_upper"] = df_boot[m].quantile(0.975)
+            summary[f"{m}_original"] = original_metrics.get(m, np.nan)
+
+>>>>>>> chore/ci-lint-attrs-gdf
     return pd.Series(summary)
 
 
 def main():
     parser = argparse.ArgumentParser(
+<<<<<<< HEAD
 <<<<<<< HEAD
         description="Bootstrap UQ for final Optuna selection"
     )
@@ -222,6 +268,15 @@ def main():
     parser.add_argument('--n-boot', type=int, default=500, help='Number of bootstrap iterations')
     parser.add_argument('--seed', type=int, default=42, help='Random seed')
 >>>>>>> ci/add-smoke-tests
+=======
+        description="Bootstrap UQ for final Optuna selection"
+    )
+    parser.add_argument("--run-dir", required=True, help="Path to run directory")
+    parser.add_argument(
+        "--n-boot", type=int, default=500, help="Number of bootstrap iterations"
+    )
+    parser.add_argument("--seed", type=int, default=42, help="Random seed")
+>>>>>>> chore/ci-lint-attrs-gdf
     args = parser.parse_args()
 
     run_dir = Path(args.run_dir)
@@ -231,23 +286,32 @@ def main():
 
     # Load best trial configuration
 <<<<<<< HEAD
+<<<<<<< HEAD
     best_trial_file = run_dir / "results" / "best_trial.json"
 =======
     best_trial_file = run_dir / 'results' / 'best_trial.json'
 >>>>>>> ci/add-smoke-tests
+=======
+    best_trial_file = run_dir / "results" / "best_trial.json"
+>>>>>>> chore/ci-lint-attrs-gdf
     if not best_trial_file.exists():
         print(f"Error: best_trial.json not found in {run_dir}")
         return 1
 
     import json
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 =======
 >>>>>>> ci/add-smoke-tests
+=======
+
+>>>>>>> chore/ci-lint-attrs-gdf
     with open(best_trial_file) as f:
         best_trial = json.load(f)
 
     # Load best selection config
+<<<<<<< HEAD
 <<<<<<< HEAD
     config_file = run_dir / "config" / "config_best_selection.yaml"
     if config_file.exists():
@@ -277,29 +341,39 @@ def main():
     )
 =======
     config_file = run_dir / 'config' / 'config_best_selection.yaml'
+=======
+    config_file = run_dir / "config" / "config_best_selection.yaml"
+>>>>>>> chore/ci-lint-attrs-gdf
     if config_file.exists():
         import yaml
+
         with open(config_file) as f:
             config = yaml.safe_load(f)
-        sel_config = config.get('selection', {})
+        sel_config = config.get("selection", {})
     else:
         # Fallback: extract from best_trial
         sel_config = {}
-        total = best_trial['a'] + best_trial['b'] + best_trial['c']
-        sel_config['alpha_visual'] = best_trial['a'] / total
-        sel_config['beta_spatial'] = best_trial['b'] / total
-        sel_config['gamma_temporal'] = best_trial['c'] / total
-        sel_config['min_distance_km'] = best_trial['min_distance_km']
-        sel_config['n_samples'] = best_trial['n_samples']
-        sel_config['pre_selected_names'] = best_trial.get('pre_selected_names')
-        sel_config['pre_selected_indices'] = best_trial.get('pre_selected_indices')
+        total = best_trial["a"] + best_trial["b"] + best_trial["c"]
+        sel_config["alpha_visual"] = best_trial["a"] / total
+        sel_config["beta_spatial"] = best_trial["b"] / total
+        sel_config["gamma_temporal"] = best_trial["c"] / total
+        sel_config["min_distance_km"] = best_trial["min_distance_km"]
+        sel_config["n_samples"] = best_trial["n_samples"]
+        sel_config["pre_selected_names"] = best_trial.get("pre_selected_names")
+        sel_config["pre_selected_indices"] = best_trial.get("pre_selected_indices")
 
     print(f"\n{'='*60}")
-    print(f"Bootstrap UQ for Final Selection")
+    print("Bootstrap UQ for Final Selection")
     print(f"{'='*60}")
     print(f"Run: {run_dir.name}")
+<<<<<<< HEAD
     print(f"Config: α={sel_config['alpha_visual']:.3f}, β={sel_config['beta_spatial']:.3f}, γ={sel_config['gamma_temporal']:.3f}")
 >>>>>>> ci/add-smoke-tests
+=======
+    print(
+        f"Config: α={sel_config['alpha_visual']:.3f}, β={sel_config['beta_spatial']:.3f}, γ={sel_config['gamma_temporal']:.3f}"
+    )
+>>>>>>> chore/ci-lint-attrs-gdf
     print(f"Min distance: {sel_config['min_distance_km']} km")
     print(f"n_samples: {sel_config['n_samples']}")
     print(f"Bootstrap iterations: {args.n_boot}")
@@ -307,6 +381,7 @@ def main():
 
     # Load data
     print("Loading metadata and features...")
+<<<<<<< HEAD
 <<<<<<< HEAD
     metadata_path = ROOT / "outputs" / "metadata.csv"
 
@@ -360,15 +435,26 @@ def main():
 
 =======
     metadata_path = ROOT / 'outputs' / 'metadata.csv'
+=======
+    metadata_path = ROOT / "outputs" / "metadata.csv"
+
+    # Local imports to keep module import-safe
+    from src.clustering import ClusteringPipeline
+    from src.diversity_selector import DiversitySelector
+    from src.io import load_metadata, load_or_extract_features
+    from src.metrics import compute_metrics
+
+>>>>>>> chore/ci-lint-attrs-gdf
     if not metadata_path.exists():
-        metadata = load_metadata(str(ROOT / 'data' / 'new_all_tiles.csv'))
+        metadata = load_metadata(str(ROOT / "data" / "new_all_tiles.csv"))
     else:
-        metadata = pd.read_csv(metadata_path)
+        # Ensure any cached metadata retains projected coords
+        metadata = load_metadata(str(metadata_path))
 
     features = load_or_extract_features(
-        ROOT / 'outputs',
+        ROOT / "outputs",
         csv_meta=str(metadata_path) if metadata_path.exists() else None,
-        cache=True
+        cache=True,
     )
 >>>>>>> ci/add-smoke-tests
 
@@ -390,14 +476,19 @@ def main():
     # Compute original selection
     print("Computing original selection...")
     ds = DiversitySelector(
+<<<<<<< HEAD
         n_samples=sel_config['n_samples'],
         use_multi_criteria=True,
         random_state=42
 >>>>>>> ci/add-smoke-tests
+=======
+        n_samples=sel_config["n_samples"], use_multi_criteria=True, random_state=42
+>>>>>>> chore/ci-lint-attrs-gdf
     )
     original_selection = ds.select(
         features=features,
         metadata=metadata,
+<<<<<<< HEAD
 <<<<<<< HEAD
         alpha_visual=sel_config["alpha_visual"],
         beta_spatial=sel_config["beta_spatial"],
@@ -415,8 +506,19 @@ def main():
         pre_selected=sel_config.get('pre_selected_indices'),
         pre_selected_names=sel_config.get('pre_selected_names'),
 >>>>>>> ci/add-smoke-tests
+=======
+        alpha_visual=sel_config["alpha_visual"],
+        beta_spatial=sel_config["beta_spatial"],
+        gamma_temporal=sel_config["gamma_temporal"],
+        spatial_constraint=True,
+        min_distance_km=sel_config["min_distance_km"],
+        pre_selected=sel_config.get("pre_selected_indices"),
+        pre_selected_names=sel_config.get("pre_selected_names"),
     )
-    original_metrics = compute_metrics(original_selection, metadata, cluster_labels_full, features)
+    original_metrics = compute_metrics(
+        original_selection, metadata, cluster_labels_full, features
+>>>>>>> chore/ci-lint-attrs-gdf
+    )
 
     print(f"Original selection: {len(original_selection)} samples")
     print(f"  Clusters: {original_metrics['clusters_covered']}")
@@ -436,18 +538,27 @@ def main():
     # Run bootstrap
     print(f"Running {args.n_boot} bootstrap iterations...\n")
     df_boot = bootstrap_selection(
+<<<<<<< HEAD
         alpha=sel_config['alpha_visual'],
         beta=sel_config['beta_spatial'],
         gamma=sel_config['gamma_temporal'],
         min_distance_km=sel_config['min_distance_km'],
         n_samples=sel_config['n_samples'],
 >>>>>>> ci/add-smoke-tests
+=======
+        alpha=sel_config["alpha_visual"],
+        beta=sel_config["beta_spatial"],
+        gamma=sel_config["gamma_temporal"],
+        min_distance_km=sel_config["min_distance_km"],
+        n_samples=sel_config["n_samples"],
+>>>>>>> chore/ci-lint-attrs-gdf
         features=features,
         metadata=metadata,
         original_selection=original_selection,
         cluster_labels_full=cluster_labels_full,
         n_boot=args.n_boot,
         random_seed=args.seed,
+<<<<<<< HEAD
 <<<<<<< HEAD
         pre_selected_names=sel_config.get("pre_selected_names"),
         pre_selected_indices=sel_config.get("pre_selected_indices"),
@@ -463,6 +574,14 @@ def main():
     # Save full results
     results_file = run_dir / 'results' / 'bootstrap_final_selection_full.csv'
 >>>>>>> ci/add-smoke-tests
+=======
+        pre_selected_names=sel_config.get("pre_selected_names"),
+        pre_selected_indices=sel_config.get("pre_selected_indices"),
+    )
+
+    # Save full results
+    results_file = run_dir / "results" / "bootstrap_final_selection_full.csv"
+>>>>>>> chore/ci-lint-attrs-gdf
     df_boot.to_csv(results_file, index=False)
     print(f"\n✓ Saved full bootstrap results: {results_file}")
 
@@ -470,10 +589,14 @@ def main():
     summary = summarize_bootstrap(df_boot, original_metrics)
     summary_df = summary.to_frame().T
 <<<<<<< HEAD
+<<<<<<< HEAD
     summary_file = run_dir / "results" / "bootstrap_final_selection_summary.csv"
 =======
     summary_file = run_dir / 'results' / 'bootstrap_final_selection_summary.csv'
 >>>>>>> ci/add-smoke-tests
+=======
+    summary_file = run_dir / "results" / "bootstrap_final_selection_summary.csv"
+>>>>>>> chore/ci-lint-attrs-gdf
     summary_df.to_csv(summary_file, index=False)
     print(f"✓ Saved summary: {summary_file}")
 
@@ -482,6 +605,9 @@ def main():
     print("Bootstrap Summary (95% CI)")
     print(f"{'='*60}")
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> chore/ci-lint-attrs-gdf
     for key in [
         "n_selected",
         "clusters_covered",
@@ -498,6 +624,7 @@ def main():
             print(
                 f"{key:25s}: {mean:7.2f} ± {std:6.2f}  [{ci_low:7.2f}, {ci_up:7.2f}]  (orig: {orig:.2f})"
             )
+<<<<<<< HEAD
 =======
     for key in ['n_selected', 'clusters_covered', 'temporal_std', 'spatial_mean_km', 'jaccard_with_original']:
         if f'{key}_mean' in summary.index:
@@ -508,14 +635,20 @@ def main():
             orig = summary.get(f'{key}_original', np.nan)
             print(f"{key:25s}: {mean:7.2f} ± {std:6.2f}  [{ci_low:7.2f}, {ci_up:7.2f}]  (orig: {orig:.2f})")
 >>>>>>> ci/add-smoke-tests
+=======
+>>>>>>> chore/ci-lint-attrs-gdf
     print(f"{'='*60}\n")
 
     return 0
 
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 if __name__ == "__main__":
 =======
 if __name__ == '__main__':
 >>>>>>> ci/add-smoke-tests
+=======
+if __name__ == "__main__":
+>>>>>>> chore/ci-lint-attrs-gdf
     sys.exit(main())

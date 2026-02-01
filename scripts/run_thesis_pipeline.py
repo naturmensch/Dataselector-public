@@ -19,31 +19,21 @@ Usage:
     python scripts/run_thesis_pipeline.py --help
 """
 
+import argparse
+import glob
+import json
 import subprocess
 import sys
 import time
-import json
-import glob
-import argparse
-import numpy as np
-import pandas as pd
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 OUTPUT_DIR = ROOT / "outputs"
 
-# Compute adaptive default for n_lhs based on dataset size
-# Faustregel: Thesis nutzt mehr Samples für bessere Visualisierungen (2× sqrt)
-try:
-    metadata_path = ROOT / "data" / "new_all_tiles.csv"
-    if metadata_path.exists():
-        n_tiles = len(pd.read_csv(metadata_path))
-        n_lhs_thesis_default = max(50, int(2 * np.sqrt(n_tiles)))  # Thesis: mehr Samples
-    else:
-        n_lhs_thesis_default = 50
-except Exception:
-    n_lhs_thesis_default = 50
+# NOTE: Do not perform dataset I/O at import time. The thesis default for `n_lhs`
+# will be computed inside `main()` if the user does not provide `--n-lhs`.
+n_lhs_thesis_default = 50  # conservative fallback if metadata cannot be read at runtime
 
 
 def run_step(step_name: str, command: list, skip: bool = False):
@@ -74,9 +64,7 @@ def run_step(step_name: str, command: list, skip: bool = False):
 
 def find_latest_optuna_file():
     """Finde automatisch die neueste Optuna-Resultatdatei."""
-    optuna_files = sorted(
-        glob.glob(str(OUTPUT_DIR / "optuna_autoscale_best_*.json"))
-    )
+    optuna_files = sorted(glob.glob(str(OUTPUT_DIR / "optuna_autoscale_best_*.json")))
     if optuna_files:
         latest = optuna_files[-1]
         print(f"✅ Gefunden: {Path(latest).name}")
@@ -89,7 +77,9 @@ def find_latest_optuna_file():
 def find_latest_pareto_file():
     """Finde automatisch die neueste Pareto-CSV-Datei."""
     pareto_files = sorted(
-        glob.glob(str(OUTPUT_DIR / "tuning_weights" / "pareto" / "pareto_solutions.csv"))
+        glob.glob(
+            str(OUTPUT_DIR / "tuning_weights" / "pareto" / "pareto_solutions.csv")
+        )
     )
     if pareto_files:
         latest = pareto_files[-1]
@@ -130,11 +120,12 @@ Beispiele:
   python scripts/run_thesis_pipeline.py --skip-exploration --skip-optimization
         """,
     )
+    # Note: default is None; compute adaptive default at runtime to avoid import-time I/O
     parser.add_argument(
         "--n-lhs",
         type=int,
-        default=n_lhs_thesis_default,
-        help=f"Anzahl LHS-Samples für Phase 1 (default: {n_lhs_thesis_default}, adaptive basierend auf Datensatz-Größe)",
+        default=None,
+        help=f"Anzahl LHS-Samples für Phase 1 (computed from dataset if omitted; fallback: {n_lhs_thesis_default})",
     )
     parser.add_argument(
         "--skip-exploration",
@@ -158,6 +149,26 @@ Beispiele:
     )
 
     args = parser.parse_args()
+
+    # If user didn't provide n_lhs, compute an adaptive default now (deferred I/O)
+    if args.n_lhs is None:
+        try:
+            import numpy as np
+            import pandas as pd
+
+            metadata_path = ROOT / "data" / "new_all_tiles.csv"
+            if metadata_path.exists():
+                n_tiles = len(pd.read_csv(metadata_path))
+                args.n_lhs = max(50, int(2 * np.sqrt(n_tiles)))
+                print(f"📊 Adaptive n_lhs computed from dataset: {args.n_lhs}")
+            else:
+                args.n_lhs = n_lhs_thesis_default
+                print(f"⚠️ Metadata not found; using fallback n_lhs={args.n_lhs}")
+        except Exception:
+            args.n_lhs = n_lhs_thesis_default
+            print(
+                f"⚠️ Could not compute adaptive n_lhs; using fallback n_lhs={args.n_lhs}"
+            )
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -183,7 +194,9 @@ Beispiele:
     if args.dry_run:
         print(f"[DRY-RUN] würde ausführen: {' '.join(cmd_phase1)}")
     else:
-        if not run_step("Phase 1: Exploration (LHS)", cmd_phase1, args.skip_exploration):
+        if not run_step(
+            "Phase 1: Exploration (LHS)", cmd_phase1, args.skip_exploration
+        ):
             all_success = False
             if not args.skip_optimization and not args.skip_validation:
                 print("⚠️  Phase 1 fehlgeschlagen, aber fahre fort...")
@@ -253,7 +266,9 @@ Beispiele:
 
     print("1️⃣  EXPLORATION (Phase 1 - Pareto-Front für Thesis-Plots):")
     print(f"   📁 Plots:  {OUTPUT_DIR / 'tuning_weights' / 'pareto'}")
-    print(f"   📋 CSV:    {OUTPUT_DIR / 'tuning_weights' / 'pareto' / 'pareto_solutions.csv'}")
+    print(
+        f"   📋 CSV:    {OUTPUT_DIR / 'tuning_weights' / 'pareto' / 'pareto_solutions.csv'}"
+    )
 
     print("\n2️⃣  OPTIMIZATION (Phase 2/3 - Best Parameters):")
     optuna_file = find_latest_optuna_file()
@@ -261,7 +276,7 @@ Beispiele:
         print(f"   📁 Best:   {optuna_file}")
         best_params = load_optuna_best(optuna_file)
         if best_params:
-            print(f"   ✅ Parameters:")
+            print("   ✅ Parameters:")
             for key, val in best_params.items():
                 print(f"      - {key}: {val}")
     else:

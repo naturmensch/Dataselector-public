@@ -23,15 +23,19 @@ from scripts.common import data_path
     PYTHONPATH=. python scripts/tune_weights_and_run.py --n-samples 100
 """
 
-from pathlib import Path
-import sys
 import argparse
+<<<<<<< HEAD
 >>>>>>> ci/add-smoke-tests
 import numpy as np
+=======
+import sys
+from pathlib import Path
+>>>>>>> chore/ci-lint-attrs-gdf
 
 # Error-handling für scipy.stats.qmc (scipy>=1.7.0)
 try:
-    from scipy.stats import qmc
+    from scipy.stats import qmc  # noqa: F401
+
     HAS_LHS = True
 except ImportError:
     print("⚠️  scipy.stats.qmc nicht gefunden. Fallback auf manuelles Grid...")
@@ -40,10 +44,14 @@ except ImportError:
 # Config
 ROOT = Path(__file__).resolve().parents[1]
 <<<<<<< HEAD
+<<<<<<< HEAD
 DATA_META = data_path("new_all_tiles.csv")
 =======
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+=======
+# Avoid modifying sys.path at import time; runtime imports will handle project modules
+>>>>>>> chore/ci-lint-attrs-gdf
 
 DATA_META = ROOT / "data" / "new_all_tiles.csv"
 >>>>>>> ci/add-smoke-tests
@@ -57,13 +65,7 @@ MIN_DISTANCE_KM = 28.0  # Median des Datensatzes (wissenschaftlich begründet)
 # --- WISSENSCHAFTLICHE PARAMETER-GENERIERUNG (LHS) ---
 
 
-from src.sampling_strategies import (
-    sample_weights_on_simplex_lhs,
-    sample_weights_on_simplex_sobol,
-)
-
-
-def generate_weights(n_points: int = 50, seed: int = 42, sampler: str = 'lhs'):
+def generate_weights(n_points: int = 50, seed: int = 42, sampler: str = "lhs"):
     """
     Generate weight combinations on the simplex using the specified sampler.
 
@@ -75,13 +77,17 @@ def generate_weights(n_points: int = 50, seed: int = 42, sampler: str = 'lhs'):
     Returns:
         List of (alpha, beta, gamma) tuples summing to 1.0
     """
-    if sampler.lower() == 'sobol':
-        if not hasattr(sample_weights_on_simplex_sobol, '__call__'):
+    if sampler.lower() == "sobol":
+        from src.sampling_strategies import sample_weights_on_simplex_sobol
+
+        if not hasattr(sample_weights_on_simplex_sobol, "__call__"):
             raise RuntimeError("Sobol sampler not available")
         return sample_weights_on_simplex_sobol(n_points, dim=3, seed=seed)
 
     # default to LHS behavior (existing behavior)
-    if sampler.lower() == 'lhs':
+    if sampler.lower() == "lhs":
+        from src.sampling_strategies import sample_weights_on_simplex_lhs
+
         return sample_weights_on_simplex_lhs(n_points, dim=3, seed=seed)
 
     raise ValueError(f"Unknown sampler: {sampler}")
@@ -102,8 +108,8 @@ def main():
     )
     parser.add_argument(
         "--sampler",
-        choices=['lhs', 'sobol'],
-        default='lhs',
+        choices=["lhs", "sobol"],
+        default="lhs",
         help="Sampler für die Generierung der Gewichtungen (lhs=LatinHypercube, sobol=QMC Sobol), default: lhs",
     )
     parser.add_argument(
@@ -115,19 +121,36 @@ def main():
         default=MIN_DISTANCE_KM,
         help=f"Min distance constraint in km (default: {MIN_DISTANCE_KM})",
     )
-    parser.add_argument("--pre-names", type=str, nargs="*", default=None, help="Optional pre-selected tile names (e.g. 'Hamburg')")
-    parser.add_argument("--pre-indices", type=int, nargs="*", default=None, help="Optional pre-selected tile indices (zero-based)")
+    parser.add_argument(
+        "--pre-names",
+        type=str,
+        nargs="*",
+        default=None,
+        help="Optional pre-selected tile names (e.g. 'Hamburg')",
+    )
+    parser.add_argument(
+        "--pre-indices",
+        type=int,
+        nargs="*",
+        default=None,
+        help="Optional pre-selected tile indices (zero-based)",
+    )
     args = parser.parse_args()
 
     # Pipeline integration: attach to existing ExperimentManager if EXPERIMENT_RUN_DIR is set
     import os
+
     em = None
-    exp_dir = os.environ.get('EXPERIMENT_RUN_DIR')
+    exp_dir = os.environ.get("EXPERIMENT_RUN_DIR")
     if exp_dir:
         from src.experiment_manager import ExperimentManager
+
         em = ExperimentManager.from_existing(exp_dir)
-        em.log('Attached to pipeline run (exploration stage)')
-        em.save_config('exploration', {'n_samples': args.n_samples, 'sampler': args.sampler, 'seed': args.seed})
+        em.log("Attached to pipeline run (exploration stage)")
+        em.save_config(
+            "exploration",
+            {"n_samples": args.n_samples, "sampler": args.sampler, "seed": args.seed},
+        )
 
     try:
         from src.experiments import ExperimentRunner
@@ -187,7 +210,7 @@ def main():
 
         # Visualisierungen speichern (wichtig für Thesis!)
         if em is not None:
-            viz_dir = em.get_path('artifacts') / "pareto"
+            viz_dir = em.get_path("artifacts") / "pareto"
             viz_dir.mkdir(parents=True, exist_ok=True)
         else:
             viz_dir = OUTPUT_DIR / "pareto"
@@ -203,13 +226,22 @@ def main():
         # Save into ExperimentManager if attached
         try:
             import pandas as _pd
+
             if em is not None:
-                em.save_results('pareto_solutions', _pd.read_csv(report_path), format='csv')
-                em.mark_stage_complete('exploration', summary={'pareto_count': len(pareto_front), 'n_samples': args.n_samples})
+                em.save_results(
+                    "pareto_solutions", _pd.read_csv(report_path), format="csv"
+                )
+                em.mark_stage_complete(
+                    "exploration",
+                    summary={
+                        "pareto_count": len(pareto_front),
+                        "n_samples": args.n_samples,
+                    },
+                )
         except Exception as e:
             print(f"Warning: could not save pareto to experiment manager: {e}")
 
-        print(f"\n✅ Phase 1 ABGESCHLOSSEN")
+        print("\n✅ Phase 1 ABGESCHLOSSEN")
         print(f"📊 Plots: {viz_dir}")
         print(f"📋 CSV:   {report_path}")
 

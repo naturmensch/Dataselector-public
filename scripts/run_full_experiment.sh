@@ -257,8 +257,12 @@ if [[ $SKIP_OPTUNA -eq 0 ]]; then
   if [[ -n "${N_SAMPLES}" ]]; then
     SAMPLES_ARG="--n-samples ${N_SAMPLES}"
   fi
+<<<<<<< HEAD
   run_step "optuna" PYTHONPATH=. ./scripts/exec_in_env.sh --env ${ENV_NAME:-dataselector} -- python scripts/optuna_optimize.py --n-trials ${N_TRIALS} --n-candidates ${N_CANDIDATES} --dim ${DIM} ${SAMPLES_ARG} --min-distance-km ${MIN_DISTANCE_KM} --seed ${SEED}
 >>>>>>> ci/add-smoke-tests
+=======
+  run_step "optuna" PYTHONPATH=. ./scripts/exec_in_env.sh --env ${ENV_NAME:-dataselector} -- python -m scripts.optuna_optimize --n-trials ${N_TRIALS} --n-candidates ${N_CANDIDATES} --dim ${DIM} ${SAMPLES_ARG} --min-distance-km ${MIN_DISTANCE_KM} --seed ${SEED}
+>>>>>>> chore/ci-lint-attrs-gdf
   # copy results into experiment folder
   cp -v outputs/optuna_results.csv "${OUT_DIR}/" || true
   cp -v outputs/optuna_study.pkl "${OUT_DIR}/" 2>/dev/null || true

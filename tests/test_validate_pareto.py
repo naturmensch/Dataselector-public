@@ -1,10 +1,20 @@
+<<<<<<< HEAD
 import pytest
+=======
+import importlib.util
+>>>>>>> chore/ci-lint-attrs-gdf
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
-from scripts.validate_pareto_candidates import validate
+pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(autouse=True)
+def skip_if_no_numba():
+    pytest.importorskip("numba", exc_type=ImportError)
 
 
 @pytest.mark.slow
@@ -20,22 +30,44 @@ def _make_pareto_csv(tmp_path):
     # create fake outputs for features and metadata in a temp outdir
     out = tmp_path / "outputs"
     out.mkdir()
-    np.save(out / "features.npy", np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]))
-    pd.DataFrame(
+    # Increase sample size so that n_neighbors (15) < N and UMAP does not trigger the k>=N warning
+    N = 20
+    rng = np.random.RandomState(0)
+    features = rng.rand(N, 2)
+    np.save(out / "features.npy", features)
+    md = pd.DataFrame(
         {
+<<<<<<< HEAD
             "longName": ["a.png", "b.png", "c.png"],
             "N": [50, 51, 52],
             "left": [10, 11, 12],
             "year": [1900, 1914, 1918],
             "image_path": ["a", "b", "c"],
+=======
+            "N": list(range(50, 50 + N)),
+            "left": list(range(10, 10 + N)),
+            "year": [1900 + (i % 30) for i in range(N)],
+            "image_path": [f"img_{i}.png" for i in range(N)],
+>>>>>>> chore/ci-lint-attrs-gdf
         }
-    ).to_csv(out / "metadata.csv", index=False)
+    )
+    md.to_csv(out / "metadata.csv", index=False)
     return str(p), str(out)
 
 
 @pytest.mark.slow
 def test_validate_small(tmp_path, monkeypatch):
     pareto, outdir = _make_pareto_csv(tmp_path)
+
+    # Dynamically load the validate function from script after skip checks
+    ROOT = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "validate_pareto_candidates", ROOT / "scripts" / "validate_pareto_candidates.py"
+    )
+    validate_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(validate_mod)
+    validate = validate_mod.validate
+
     # Run validation with small params to be quick and point to temp outdir
     df = validate(
         pareto, min_distances=[10], seeds=[1, 2], n_samples=2, output_dir=outdir

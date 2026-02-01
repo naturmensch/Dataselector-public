@@ -6,13 +6,14 @@ Usage:
     python scripts/archive_workspace.py --category scripts  # Archive only deprecated scripts
     python scripts/archive_workspace.py --all --yes  # Archive everything non-interactively
 """
+
 import argparse
 import json
 import shutil
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Set
+from typing import Dict, List
 
 ROOT = Path(__file__).resolve().parents[1]
 ARCHIVE_DIR = ROOT / "archive_local"
@@ -53,7 +54,7 @@ def is_whitelisted(path: Path) -> bool:
     """Check if path matches whitelist patterns."""
     rel_path = path.relative_to(ROOT)
     path_str = str(rel_path)
-    
+
     for pattern in WHITELIST_PATTERNS:
         if path_str.startswith(pattern) or pattern in path_str:
             return True
@@ -131,20 +132,20 @@ def identify_archive_candidates() -> Dict[str, ArchiveCategory]:
         for item in outputs_dir.iterdir():
             if is_whitelisted(item):
                 continue
-            
+
             # Keep explicitly protected outputs
             if item.name in OUTPUTS_KEEP:
                 continue
-            
+
             # Archive old experiment folders
             if item.is_dir():
                 age = get_file_age_days(item)
-                
+
                 # Keep experiments < 7 days, archive older ones
                 if "experiments" in item.name or "validation" in item.name:
                     if age > 7:
                         categories["outputs"].add_directory(item)
-                
+
                 # Archive specific old folders
                 elif item.name in [
                     "tuning_weights",
@@ -160,7 +161,7 @@ def identify_archive_candidates() -> Dict[str, ArchiveCategory]:
                     "cache_backup_20260112",
                 ]:
                     categories["outputs"].add_directory(item)
-            
+
             # Archive specific old files
             elif item.is_file():
                 if item.name in [
@@ -243,11 +244,11 @@ def create_manifest(category: ArchiveCategory, archive_path: Path):
             for f in category.files
         ],
     }
-    
+
     manifest_path = archive_path / f"{category.name}_manifest.json"
     with open(manifest_path, "w") as fh:
         json.dump(manifest, fh, indent=2)
-    
+
     return manifest_path
 
 
@@ -276,7 +277,7 @@ def archive_category(category: ArchiveCategory, dry_run: bool = True) -> int:
         rel_path = file.relative_to(ROOT)
         dest = archive_path / rel_path
         dest.parent.mkdir(parents=True, exist_ok=True)
-        
+
         try:
             shutil.copy2(file, dest)
             archived_count += 1
@@ -292,13 +293,28 @@ def archive_category(category: ArchiveCategory, dry_run: bool = True) -> int:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Archive old/redundant workspace files")
-    parser.add_argument("--dry-run", action="store_true", help="Show what would be archived without doing it")
-    parser.add_argument("--category", choices=["scripts", "outputs", "docs", "configs", "notebooks", "all"], 
-                        default="all", help="Category to archive")
-    parser.add_argument("--yes", action="store_true", help="Non-interactive mode (assume yes)")
-    parser.add_argument("--delete-after-archive", action="store_true", 
-                        help="Delete original files after archiving (DANGEROUS)")
+    parser = argparse.ArgumentParser(
+        description="Archive old/redundant workspace files"
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would be archived without doing it",
+    )
+    parser.add_argument(
+        "--category",
+        choices=["scripts", "outputs", "docs", "configs", "notebooks", "all"],
+        default="all",
+        help="Category to archive",
+    )
+    parser.add_argument(
+        "--yes", action="store_true", help="Non-interactive mode (assume yes)"
+    )
+    parser.add_argument(
+        "--delete-after-archive",
+        action="store_true",
+        help="Delete original files after archiving (DANGEROUS)",
+    )
     args = parser.parse_args()
 
     print("=" * 80)
@@ -327,7 +343,7 @@ def main():
             print(f"  {cat.summary()}")
             total_files += len(cat.files)
             total_size += cat.total_size
-    
+
     total_size_mb = total_size / (1024 * 1024)
     print("-" * 80)
     print(f"TOTAL: {total_files} files, {total_size_mb:.1f} MB")
@@ -369,7 +385,9 @@ def main():
                         print(f"Warning: Failed to delete {file}: {e}")
             print(f"✓ Deleted {deleted} original files")
         else:
-            print("Original files preserved. Use --delete-after-archive to remove them.")
+            print(
+                "Original files preserved. Use --delete-after-archive to remove them."
+            )
     print("=" * 80)
 
     return 0

@@ -7,40 +7,43 @@ Creates:
 
 This is a convenience tool for legacy analysis scripts.
 """
-from pathlib import Path
+
 import sys
+from pathlib import Path
+
 
 def main():
-    root = Path('outputs')
-    runs = root / 'runs'
+    root = Path("outputs")
+    runs = root / "runs"
     if not runs.exists():
-        print('No runs/ directory found; nothing to link.')
+        print("No runs/ directory found; nothing to link.")
         return 0
 
     candidates = sorted([d for d in runs.iterdir() if d.is_dir()])
     if not candidates:
-        print('No run directories found.')
+        print("No run directories found.")
         return 0
 
     latest = candidates[-1]
-    src_trials = latest / 'results' / 'trials.csv'
-    src_best = latest / 'results' / 'best_trial.json'
+    src_trials = latest / "results" / "trials.csv"
+    src_best = latest / "results" / "best_trial.json"
 
     if src_trials.exists():
-        target = root / 'optuna_results.csv'
+        target = root / "optuna_results.csv"
         if target.exists() or target.is_symlink():
             target.unlink()
         target.symlink_to(src_trials)
-        print(f'Linked {target} -> {src_trials}')
+        print(f"Linked {target} -> {src_trials}")
 
     if src_best.exists():
-        target = root / 'best_trial.json'
+        target = root / "best_trial.json"
         if target.exists() or target.is_symlink():
             target.unlink()
         target.symlink_to(src_best)
-        print(f'Linked {target} -> {src_best}')
+        print(f"Linked {target} -> {src_best}")
 
     return 0
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     sys.exit(main())

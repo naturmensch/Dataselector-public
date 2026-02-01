@@ -43,3 +43,12 @@ pytest>=7.0.0
 # Linting & Type Checking
 flake8>=6.0.0
 mypy>=1.9.0
+
+# Geo / Spatial (pinned; prefer conda-forge install via environment.yml)
+# These are optional for CPU-only installs but required for Geo workflows
+geopandas==0.15.1
+pyproj==3.7.1
+shapely==2.0.1
+fiona==1.9.4
+rtree==0.9.8
+rasterio==1.3.8
