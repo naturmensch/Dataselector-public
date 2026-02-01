@@ -19,21 +19,6 @@ def main() -> int:
     OUT = Path("outputs")
     OUT.mkdir(exist_ok=True, parents=True)
 
-<<<<<<< HEAD
-# Ensure features/metadata exists or extract on-the-fly
-csv_meta = OUT / "metadata.csv"
-csv_meta = str(csv_meta) if csv_meta.exists() else None
-features = load_or_extract_features(
-    out_dir=OUT, csv_meta=csv_meta, batch_size=16, cache=True
-)
-from scripts.common import data_path
-
-metadata = load_metadata(csv_meta if csv_meta is not None else str(data_path("new_all_tiles.csv")))
-=======
-    # Runtime imports
-    from src.clustering import ClusteringPipeline
-    from src.io import load_metadata, load_or_extract_features
->>>>>>> chore/ci-lint-attrs-gdf
 
     # Ensure features/metadata exists or extract on-the-fly
     csv_meta = OUT / "metadata.csv"

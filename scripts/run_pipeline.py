@@ -10,22 +10,6 @@ from pathlib import Path
 
 __all__ = ["should_run_tuning"]
 
-<<<<<<< HEAD
-# Delay heavy imports (umap/numba/torch) until needed to improve testability
-# from src.experiments import ExperimentRunner
-# from src.main import KDR100SelectionPipeline
-=======
-"""Run pipeline with optional tuning.
-
-Usage:
-    python scripts/run_pipeline.py [--tune] [--force-tune] [--tune-ttl DAYS] [--interactive]
-"""
-
-ROOT = Path(__file__).resolve().parents[1]
-
-# NOTE: imports from `src.*` are done inside `main()` to avoid module-level
-# side-effects and to make this module importable for tests.
->>>>>>> chore/ci-lint-attrs-gdf
 
 
 def _file_hash(path: Path) -> str:

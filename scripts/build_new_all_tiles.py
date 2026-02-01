@@ -1,32 +1,4 @@
 #!/usr/bin/env python3
-<<<<<<< HEAD
-"""Build `data/new_all_tiles.csv` by enriching the canonical `KDR100_foliage_with_files_epsg3857.csv` with image paths and metadata from XML sidecars.
-
-- Loads the canonical table (676 tiles, EPSG:3857) as base if available.
-- Scans an image directory for image files (png/jpg/jpeg) and extracts metadata from sidecars.
-- Converts extracted lat/lon to EPSG:3857 to match base coordinates.
-- Merges base and extracted data on 'longName', filling NaN without overwriting existing values.
-- Writes `new_all_tiles.csv` (or `--out` path) atomically, creates a backup of an existing file, and writes a provenance JSON next to the CSV.
-
-Usage:
-  ./scripts/exec_in_env.sh --env dataselector -- python scripts/build_new_all_tiles.py --image-dir data/images --out data/new_all_tiles.csv
-
-This script ensures no data is overwritten, coordinates stay in EPSG:3857 (meters), and missing fields are filled from images.
-=======
-"""Build minimal `data/new_all_tiles.csv` from raw image files and XML sidecars.
-
-- Scans an image directory for image files (png/jpg/jpeg)
-- For each image, tries to find a sidecar with suffixes (".aux.xml", ".xml")
-  and parse basic metadata (lat / lon) if present.
-- Writes `new_all_tiles.csv` (or `--out` path) atomically, creates a backup of
-  an existing file, and writes a provenance JSON next to the CSV.
-
-Usage:
-  python scripts/build_new_all_tiles.py --image-dir data/images --out data/new_all_tiles.csv
-
-This script is intentionally small and robust: missing XML fields are allowed,
-but are logged and left blank (NaN in CSV).
->>>>>>> origin/feat/cache-by-hash
 """
 
 from __future__ import annotations
@@ -42,57 +14,11 @@ import time
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Dict, Optional
-<<<<<<< HEAD
-from scripts.common import data_path
-
-import pandas as pd
-
-try:
-    from pyproj import Transformer
-    HAS_PYPROJ = True
-except ImportError:
-    HAS_PYPROJ = False
-=======
-
-import pandas as pd
-
->>>>>>> origin/feat/cache-by-hash
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg"}
 SIDECAR_SUFFIXES = [".aux.xml", ".xml"]
 
 
-<<<<<<< HEAD
-def extract_city(long_name: str) -> str:
-    """Extract the city/location name from longName like 'KDR_146_Hamburg_1918.png' -> 'Hamburg'"""
-    if not isinstance(long_name, str) or not long_name:
-        return ""
-    parts = long_name.split('_')
-    if len(parts) >= 3:
-        # Assume format: KDR_XXX_City_Year.png, so city is parts[-2]
-        city_part = parts[-2]
-        # Remove any trailing digits if present (e.g., if year has no .png)
-        return ''.join(c for c in city_part if not c.isdigit())
-    return ""
-
-
-def extract_year(long_name: str) -> str:
-    """Extract the year from longName like 'KDR_146_Hamburg_1918.png' -> '1918'"""
-    if not isinstance(long_name, str) or not long_name:
-        return ""
-    parts = long_name.split('_')
-    if len(parts) >= 2:
-        year_part = parts[-1]
-        # Remove .png extension if present
-        if '.' in year_part:
-            year_part = year_part.split('.')[0]
-        # Keep only digits
-        return ''.join(c for c in year_part if c.isdigit())
-    return ""
-
-
-=======
->>>>>>> origin/feat/cache-by-hash
 def sha256_of_file(p: Path) -> str:
     h = hashlib.sha256()
     with p.open("rb") as f:
@@ -102,16 +28,6 @@ def sha256_of_file(p: Path) -> str:
 
 
 def extract_from_xml(xml_path: Path) -> Dict[str, Optional[str]]:
-<<<<<<< HEAD
-    """Try to extract coordinates from GDAL AUX XML.
-
-    Looks for CornerCoordinates or GeoTransform and extracts left, top, right, bottom.
-=======
-    """Try to extract lat / lon or geotransform-like values from XML.
-
-    This is a best-effort parser that looks for common tags/attributes and
-    returns a dict with keys 'N' and 'left' (as strings) when available.
->>>>>>> origin/feat/cache-by-hash
     """
     try:
         tree = ET.parse(str(xml_path))
@@ -121,131 +37,6 @@ def extract_from_xml(xml_path: Path) -> Dict[str, Optional[str]]:
 
     meta: Dict[str, Optional[str]] = {}
 
-<<<<<<< HEAD
-    # Try CornerCoordinates first
-    corner_coords = root.find('.//CornerCoordinates')
-    if corner_coords is not None:
-        upper_left = corner_coords.find('UpperLeft')
-        lower_right = corner_coords.find('LowerRight')
-        if upper_left is not None and upper_left.text:
-            ul = upper_left.text.strip().split(',')
-            if len(ul) == 2:
-                meta['left'] = ul[0].strip()
-                meta['top'] = ul[1].strip()
-        if lower_right is not None and lower_right.text:
-            lr = lower_right.text.strip().split(',')
-            if len(lr) == 2:
-                meta['right'] = lr[0].strip()
-                meta['bottom'] = lr[1].strip()
-
-    # Try GeoTransform if no CornerCoordinates
-    if not meta:
-        geo_transform = root.find('.//GeoTransform')
-        if geo_transform is not None and geo_transform.text:
-            gt = geo_transform.text.strip().split(',')
-            if len(gt) == 6:
-                meta['left'] = gt[0].strip()
-                meta['pixelWidth'] = gt[1].strip()
-                meta['top'] = gt[3].strip()
-                meta['pixelHeight'] = gt[5].strip()
-
-    # Fallback to old lat/lon search if needed
-    if not meta:
-        text = ET.tostring(root, encoding="utf-8", method="text").decode("utf-8")
-        # naive search for digits/decimal in text near keywords
-        for key in ("lat", "latitude", "north", "N"):
-            if key in text.lower() and "=" not in text:
-                meta.setdefault("N", None)
-        for key in ("lon", "longitude", "left", "long", "x"):
-            if key in text.lower() and "=" not in text:
-                meta.setdefault("left", None)
-
-        # More structured: search attributes and tags in root and subelements
-        for elem in root.iter():
-            # attributes
-            for k, v in elem.attrib.items():
-                kl = k.lower()
-                if any(x in kl for x in ("lat", "latitude", "n")) and v:
-                    if not meta.get("N"):
-                        meta["N"] = v
-                if any(x in kl for x in ("lon", "long", "left", "x")) and v:
-                    if not meta.get("left"):
-                        meta["left"] = v
-            # tag names
-            tagname = elem.tag
-            if isinstance(tagname, str) and '}' in tagname:
-                tagname = tagname.split('}', 1)[1]
-            ltag = str(tagname).lower()
-            txt = elem.text.strip() if elem.text and isinstance(elem.text, str) else None
-            if txt:
-                if "lat" in ltag or ltag in ("n", "north"):
-                    if not meta.get("N"):
-                        meta["N"] = txt
-                elif "lon" in ltag or "left" in ltag or "long" in ltag or "x" in ltag:
-                    if not meta.get("left"):
-                        meta["left"] = txt
-
-    # If we detected lat/lon fallback values (stored as 'N' and 'left'), convert them to EPSG:3857 coords
-    if meta.get("N") is not None and meta.get("left") is not None and not meta.get("top"):
-        try:
-            lat = float(str(meta.get("N")).strip().replace(",", "."))
-            lon = float(str(meta.get("left")).strip().replace(",", "."))
-            x, y = latlon_to_epsg3857(lat, lon)
-            meta["left"] = str(x)
-            meta["top"] = str(y)
-        except Exception:
-            # leave as-is if conversion fails
-            pass
-
-    # Normalize any numeric strings (comma -> dot)
-    for k in ("N", "left", "top", "right", "bottom"):
-        if k in meta and isinstance(meta[k], str):
-            s = meta[k].strip()
-            s = s.replace(",", ".")
-=======
-    # Common patterns: elements containing 'lat' / 'lon' or attributes
-    text = ET.tostring(root, encoding="utf-8", method="text").decode("utf-8")
-    # naive search for digits/decimal in text near keywords
-    for key in ("lat", "latitude", "north", "N"):
-        if key in text.lower() and "=" not in text:
-            # attempt manual find
-            meta.setdefault("N", None)
-    for key in ("lon", "longitude", "left", "long", "x"):
-        if key in text.lower() and "=" not in text:
-            meta.setdefault("left", None)
-
-    # More structured: search attributes and tags in root and subelements
-    for elem in root.iter():
-        # attributes (prefer attributes but do not overwrite later)
-        for k, v in elem.attrib.items():
-            kl = k.lower()
-            if any(x in kl for x in ("lat", "latitude", "n")) and v:
-                if not meta.get("N"):
-                    meta["N"] = v
-            if any(x in kl for x in ("lon", "long", "left", "x")) and v:
-                if not meta.get("left"):
-                    meta["left"] = v
-        # tag names (prefer explicit names lat/lon)
-        tagname = elem.tag
-        if isinstance(tagname, str) and '}' in tagname:
-            tagname = tagname.split('}', 1)[1]
-        ltag = str(tagname).lower()
-        txt = elem.text.strip() if elem.text and isinstance(elem.text, str) else None
-        if txt:
-            if "lat" in ltag or ltag in ("n", "north"):
-                if not meta.get("N"):
-                    meta["N"] = txt
-            elif "lon" in ltag or "left" in ltag or "long" in ltag or "x" in ltag:
-                if not meta.get("left"):
-                    meta["left"] = txt
-
-    # Normalize simple numeric strings
-    for k in ("N", "left"):
-        if k in meta and isinstance(meta[k], str):
-            s = meta[k].strip()
-            s = s.replace(",", ".")
-            # keep as string; conversion to numeric can happen downstream
->>>>>>> origin/feat/cache-by-hash
             meta[k] = s
 
     return meta
@@ -260,24 +51,6 @@ def extract_year_from_name(name: str) -> Optional[int]:
     return None
 
 
-<<<<<<< HEAD
-def latlon_to_epsg3857(lat, lon):
-    if not HAS_PYPROJ:
-        raise ImportError("pyproj required for coordinate conversion")
-    transformer = Transformer.from_crs("EPSG:4326", "EPSG:3857", always_xy=True)
-    return transformer.transform(lon, lat)
-
-
-def epsg3857_to_latlon(x, y):
-    if not HAS_PYPROJ:
-        raise ImportError("pyproj required for coordinate conversion")
-    transformer = Transformer.from_crs("EPSG:3857", "EPSG:4326", always_xy=True)
-    lon, lat = transformer.transform(x, y)
-    return lat, lon
-
-
-=======
->>>>>>> origin/feat/cache-by-hash
 def build_dataframe(image_dir: Path) -> pd.DataFrame:
     rows = []
     if not image_dir.exists():
@@ -308,46 +81,6 @@ def build_dataframe(image_dir: Path) -> pd.DataFrame:
         meta: Dict[str, Optional[str]] = {}
         if side is not None:
             meta = extract_from_xml(side)
-<<<<<<< HEAD
-            # Calculate right/bottom from GeoTransform if available
-            if 'pixelWidth' in meta and 'pixelHeight' in meta and 'left' in meta and 'top' in meta:
-                try:
-                    from PIL import Image
-                    with Image.open(str(p)) as img:
-                        width, height = img.size
-                    pixelWidth = float(meta['pixelWidth'])
-                    pixelHeight = float(meta['pixelHeight'])
-                    left = float(meta['left'])
-                    top = float(meta['top'])
-                    meta['right'] = str(left + width * pixelWidth)
-                    meta['bottom'] = str(top + height * pixelHeight)
-                except Exception:
-                    pass
-        year = extract_year_from_name(img_name) or None
-        # Derive a shortName (e.g., 'KDR_003') from the filename when possible for reliable merging
-        stem = Path(img_name).stem
-        parts = stem.split('_')
-        if len(parts) >= 2 and parts[0].upper().startswith('KDR') and parts[1].isdigit():
-            short_name = f"{parts[0]}_{parts[1]}"
-        else:
-            short_name = stem
-        rows.append(
-            {
-                "longName": img_name,
-                "shortName": short_name,
-                "left": meta.get("left"),
-                "top": meta.get("top"),
-                "right": meta.get("right"),
-                "bottom": meta.get("bottom"),
-=======
-        year = extract_year_from_name(img_name) or None
-        rows.append(
-            {
-                "longName": img_name,
-                "shortName": stem,
-                "N": meta.get("N"),
-                "left": meta.get("left"),
->>>>>>> origin/feat/cache-by-hash
                 "image_path": str(p),
                 "image_filename": img_name,
                 "year": year,
@@ -356,24 +89,6 @@ def build_dataframe(image_dir: Path) -> pd.DataFrame:
 
     df = pd.DataFrame(rows)
     # normalize numeric columns
-<<<<<<< HEAD
-    for col in ("N", "left", "top", "right", "bottom"):
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
-    
-    # Keep original 'top' and provide 'N' alias for consistency
-    # This preserves the original source column while maintaining downstream compatibility.
-    if 'top' in df.columns and 'N' not in df.columns:
-        df['N'] = df['top']
-
-    # Convert lat/lon to EPSG:3857 if pyproj available
-    # Note: Coordinates from AUX are already in EPSG:3857, no transformation needed
-    
-=======
-    for col in ("N", "left"):
-        if col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors="coerce")
->>>>>>> origin/feat/cache-by-hash
     return df
 
 
@@ -409,13 +124,6 @@ def choose_source(candidates: list[Path]) -> Optional[Path]:
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
-<<<<<<< HEAD
-    parser.add_argument("--image-dir", default=str(data_path("images")), help="Directory with images")
-    parser.add_argument("--out", default=str(data_path("new_all_tiles.csv")), help="Output CSV path")
-=======
-    parser.add_argument("--image-dir", default="data/images", help="Directory with images")
-    parser.add_argument("--out", default="data/new_all_tiles.csv", help="Output CSV path")
->>>>>>> origin/feat/cache-by-hash
     parser.add_argument("--force-source", help="Force a specific source CSV to use for provenance")
     args = parser.parse_args(argv)
 
@@ -423,82 +131,6 @@ def main(argv=None) -> int:
     image_dir = Path(args.image_dir)
     out = Path(args.out)
 
-<<<<<<< HEAD
-    base_path = data_path("KDR100_foliage_with_files_epsg3857.csv")
-
-    # If there is a vetted "final" CSV present in data, prefer it for provenance
-    final_candidates = [
-        data_path("all_png_tiles_final_ultimative.csv"),
-        data_path("all_png_tiles_final_from_dbf.csv"),
-        base_path,
-    ]
-    src = Path(args.force_source) if args.force_source else choose_source(final_candidates)
-
-    if not base_path.exists():
-        print(f"Warning: Base metadata {base_path} not found. Falling back to image scan only.")
-
-    extracted_df = build_dataframe(image_dir)
-    if extracted_df.empty:
-        print("No images found; aborting.")
-        return 1
-
-    if base_path.exists():
-        base_df = pd.read_csv(base_path)
-        # Rename columns to remove type suffixes (e.g., "longName,C,254" -> "longName")
-        base_df.columns = [col.split(',')[0] for col in base_df.columns]
-        # Keep original 'top' and provide 'N' alias for consistency
-        if 'top' in base_df.columns and 'N' not in base_df.columns:
-            base_df['N'] = base_df['top']
-        # Keep original coordinates in separate columns (use .get to be robust when some cols are missing)
-        base_df['epsg_left'] = base_df.get('left')
-        base_df['epsg_top'] = base_df.get('N')  # Use 'N' alias (mirror of original 'top')
-        base_df['epsg_right'] = base_df.get('right')
-        base_df['epsg_bottom'] = base_df.get('bottom')
-        print(f"Loaded base metadata from {base_path} ({len(base_df)} rows, columns: {list(base_df.columns)})")
-        merge_df = pd.merge(base_df, extracted_df, on='shortName', how='left', suffixes=('', '_extracted'))
-        for col in extracted_df.columns:
-            if col in merge_df.columns and col != 'longName':
-                extracted_col = col + '_extracted'
-                if extracted_col in merge_df.columns:
-                    # Fill missing base values from extracted values (preserve base provenance)
-                    merge_df[col] = merge_df[col].fillna(merge_df[extracted_col])
-        # Ensure 'N' alias is filled from 'top' when missing (preserve base where present)
-        if 'top' in merge_df.columns:
-            if 'N' in merge_df.columns:
-                merge_df['N'] = merge_df['N'].fillna(merge_df['top'])
-            else:
-                merge_df['N'] = merge_df['top']
-        # Recompute epsg_* from the final merged coordinate columns
-        merge_df['epsg_left'] = merge_df.get('left')
-        merge_df['epsg_top'] = merge_df.get('N')
-        merge_df['epsg_right'] = merge_df.get('right')
-        merge_df['epsg_bottom'] = merge_df.get('bottom')
-        cols_to_drop = [c for c in merge_df.columns if c.endswith('_extracted')]
-        merge_df.drop(columns=cols_to_drop, inplace=True)
-        df = merge_df
-    else:
-        df = extracted_df
-
-    # Add extracted city column
-    df['city'] = df['longName'].apply(extract_city)
-    # Add extracted year column
-    df['extracted_year'] = df['longName'].apply(extract_year)
-
-=======
-    # If there is a vetted "final" CSV present in data, prefer it for provenance
-    final_candidates = [
-        root / "data" / "all_png_tiles_final_ultimative.csv",
-        root / "data" / "all_png_tiles_final_from_dbf.csv",
-        root / "data" / "KDR100_foliage_with_files_epsg3857.csv",
-    ]
-    src = Path(args.force_source) if args.force_source else choose_source(final_candidates)
-
-    df = build_dataframe(image_dir)
-    if df.empty:
-        print("No images found; aborting.")
-        return 1
-
->>>>>>> origin/feat/cache-by-hash
     # Write CSV atomically and provenance
     atomic_write_csv(df, out)
     if src:

@@ -5,21 +5,6 @@ Usage:
     ./scripts/exec_in_env.sh --env dataselector -- PYTHONPATH=. python scripts/final_selection.py
 """
 
-<<<<<<< HEAD
-import time
-from pathlib import Path
-try:
-    from scripts.common import data_path
-except Exception:
-    # Allow invocation as a script (not as a package) by ensuring project root is on sys.path
-    import sys
-
-    ROOT = Path(__file__).resolve().parents[1]
-    if str(ROOT) not in sys.path:
-        sys.path.insert(0, str(ROOT))
-    from scripts.common import data_path
-=======
->>>>>>> chore/ci-lint-attrs-gdf
 
 def main():
     import argparse
@@ -29,26 +14,6 @@ def main():
     import pandas as pd
     import yaml
 
-<<<<<<< HEAD
-# STARTUP ENV VALIDATION
-try:
-    from src.compat import validate_environment_full
-    if "--skip-env-check" not in __import__("sys").argv:
-        validate_environment_full()
-except Exception as e:
-    print(f"\n❌ STARTUP VALIDATION FAILED:\n{e}\n", file=__import__("sys").stderr)
-    print("Fix: ./scripts/exec_in_env.sh --env dataselector --create --ensure-packages 'numpy==1.26.4 numba==0.63.1' --yes -- python scripts/final_selection.py", file=__import__("sys").stderr)
-    __import__("sys").exit(1)
-
-from src.clustering import ClusteringPipeline
-from src.diversity_selector import DiversitySelector
-from src.metrics import compute_metrics
-from src.visualizer import Visualizer
-=======
-    ROOT = Path(__file__).resolve().parents[1]
-    if str(ROOT) not in __import__("sys").path:
-        __import__("sys").path.insert(0, str(ROOT))
->>>>>>> chore/ci-lint-attrs-gdf
 
     from src.clustering import ClusteringPipeline
     from src.diversity_selector import DiversitySelector
@@ -128,26 +93,6 @@ from src.visualizer import Visualizer
         else load_metadata(str(ROOT / "data" / "new_all_tiles.csv"))
     )
 
-<<<<<<< HEAD
-OUT_ROOT = ROOT / "outputs"
-features = load_or_extract_features(
-    OUT_ROOT,
-    csv_meta=(
-        str(OUT_ROOT / "metadata.csv") if (OUT_ROOT / "metadata.csv").exists() else None
-    ),
-    batch_size=16,
-    cache=True,
-)
-metadata = (
-    pd.read_csv(OUT_ROOT / "metadata.csv")
-    if (OUT_ROOT / "metadata.csv").exists()
-    else load_metadata(str(data_path("new_all_tiles.csv")))
-)
-=======
-    # Clustering
-    clustering = ClusteringPipeline(n_clusters=8)
-    embeddings_2d, cluster_labels = clustering.fit_transform(features)
->>>>>>> chore/ci-lint-attrs-gdf
 
     # Selection
     selector = DiversitySelector(

@@ -3,11 +3,6 @@ Produces a small CSV and Markdown report in outputs/seed_benchmark.
 """
 
 from pathlib import Path
-<<<<<<< HEAD
-from scripts.common import data_path
-=======
-
->>>>>>> chore/ci-lint-attrs-gdf
 import pandas as pd
 
 
@@ -26,15 +21,6 @@ def main() -> int:
     min_distance_km = cfg.get("selection", {}).get("min_distance_km", 40.0)
     batch_size = cfg.get("feature_extraction", {}).get("batch_size", 8)
 
-<<<<<<< HEAD
-# Load cached features & metadata
-<<<<<<< HEAD
-features = load_or_extract_features(OUT, csv_meta=str(data_path("new_all_tiles.csv")), batch_size=16, cache=True)
-metadata = load_metadata(str(data_path("new_all_tiles.csv")))
-=======
-features = load_or_extract_features(OUT, csv_meta=str(ROOT / "data" / "new_all_tiles.csv"), batch_size=batch_size, cache=True)
-metadata = load_metadata(str(ROOT / "data" / "new_all_tiles.csv"))
->>>>>>> ci/add-smoke-tests
 =======
     OUT = ROOT / "outputs" / "seed_benchmark"
     OUT.mkdir(parents=True, exist_ok=True)

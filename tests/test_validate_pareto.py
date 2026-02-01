@@ -1,8 +1,3 @@
-<<<<<<< HEAD
-import pytest
-=======
-import importlib.util
->>>>>>> chore/ci-lint-attrs-gdf
 from pathlib import Path
 
 import numpy as np
@@ -37,18 +32,6 @@ def _make_pareto_csv(tmp_path):
     np.save(out / "features.npy", features)
     md = pd.DataFrame(
         {
-<<<<<<< HEAD
-            "longName": ["a.png", "b.png", "c.png"],
-            "N": [50, 51, 52],
-            "left": [10, 11, 12],
-            "year": [1900, 1914, 1918],
-            "image_path": ["a", "b", "c"],
-=======
-            "N": list(range(50, 50 + N)),
-            "left": list(range(10, 10 + N)),
-            "year": [1900 + (i % 30) for i in range(N)],
-            "image_path": [f"img_{i}.png" for i in range(N)],
->>>>>>> chore/ci-lint-attrs-gdf
         }
     )
     md.to_csv(out / "metadata.csv", index=False)

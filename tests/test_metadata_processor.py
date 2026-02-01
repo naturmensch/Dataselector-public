@@ -1,17 +1,3 @@
-<<<<<<< HEAD
-<<<<<<< HEAD
-import pytest
-from pathlib import Path
-
-# Import the module directly to avoid importing heavy top-level deps from package
-REPO_ROOT = Path(__file__).resolve().parents[1]
-from tests.utils import load_module_from_path
-_mp_mod = load_module_from_path("test_metadata_processor_mod", REPO_ROOT / "src" / "metadata_processor.py")
-MetadataProcessor = _mp_mod.MetadataProcessor
-=======
-from src.metadata_processor import MetadataProcessor
-=======
->>>>>>> chore/ci-lint-attrs-gdf
 import pytest
 >>>>>>> ci/add-smoke-tests
 

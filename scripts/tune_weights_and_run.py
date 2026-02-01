@@ -10,27 +10,6 @@ Warum LHS?
 - Garantiert stratifizierte Abdeckung in allen Dimensionen
 
 Usage:
-<<<<<<< HEAD
-    ./scripts/exec_in_env.sh --env dataselector -- PYTHONPATH=. python scripts/tune_weights_and_run.py
-
-"""
-
-from pathlib import Path
-from scripts.common import data_path
-
-=======
-    PYTHONPATH=. python scripts/tune_weights_and_run.py
-    PYTHONPATH=. python scripts/tune_weights_and_run.py --n-samples 100
-"""
-
-import argparse
-<<<<<<< HEAD
->>>>>>> ci/add-smoke-tests
-import numpy as np
-=======
-import sys
-from pathlib import Path
->>>>>>> chore/ci-lint-attrs-gdf
 
 # Error-handling für scipy.stats.qmc (scipy>=1.7.0)
 try:
@@ -43,15 +22,6 @@ except ImportError:
 
 # Config
 ROOT = Path(__file__).resolve().parents[1]
-<<<<<<< HEAD
-<<<<<<< HEAD
-DATA_META = data_path("new_all_tiles.csv")
-=======
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-=======
-# Avoid modifying sys.path at import time; runtime imports will handle project modules
->>>>>>> chore/ci-lint-attrs-gdf
 
 DATA_META = ROOT / "data" / "new_all_tiles.csv"
 >>>>>>> ci/add-smoke-tests

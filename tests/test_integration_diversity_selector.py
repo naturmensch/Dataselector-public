@@ -4,25 +4,6 @@ import pytest
 
 import numpy as np
 import pandas as pd
-<<<<<<< HEAD
-from pathlib import Path
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-from tests.utils import load_module_from_path
-=======
-import pytest
-
-pytestmark = pytest.mark.integration
-
-
-@pytest.fixture(scope="module")
-def DiversitySelector():
-    pytest.importorskip("numba", exc_type=ImportError)
-    import importlib
-
-    mod = importlib.import_module("src.diversity_selector")
-    return mod.DiversitySelector
->>>>>>> chore/ci-lint-attrs-gdf
 
 
 # Prefer shared fixtures to centralize data generation
@@ -34,22 +15,6 @@ def make_metadata_local(make_dummy_metadata):
     return make_dummy_metadata
 
 
-<<<<<<< HEAD
-@pytest.fixture
-def make_features_local(make_features):
-    return lambda n, dim=32, seed=0: make_features(n, dim=dim, seed=seed)
-
-
-def test_end_to_end_selection_and_export(tmp_path, make_features_local, make_metadata_local):
-    # Try to import the real selector; skip if native deps are incompatible in this environment
-    try:
-        from src.diversity_selector import DiversitySelector
-    except Exception as e:
-        pytest.skip(f"Skipping integration test due to import error: {e}")
-
-=======
-def test_end_to_end_selection_and_export(tmp_path, DiversitySelector):
->>>>>>> chore/ci-lint-attrs-gdf
     n_candidates = 100
     n_select = 10
     features = make_features_local(n_candidates)
@@ -72,16 +37,6 @@ def test_end_to_end_selection_and_export(tmp_path, DiversitySelector):
     assert "selection_rank" in df.columns
 
 
-<<<<<<< HEAD
-def test_all_three_modes_run(make_features_local, make_metadata_local):
-    try:
-        from src.diversity_selector import DiversitySelector
-    except Exception as e:
-        pytest.skip(f"Skipping integration test due to import error: {e}")
-
-=======
-def test_all_three_modes_run(DiversitySelector):
->>>>>>> chore/ci-lint-attrs-gdf
     n_candidates = 80
     features = make_features_local(n_candidates)
     metadata = make_metadata_local(n_candidates)
@@ -110,16 +65,6 @@ def test_all_three_modes_run(DiversitySelector):
     assert len(res_multi) == 7
 
 
-<<<<<<< HEAD
-def test_coverage_statistics(make_features_local, make_metadata_local):
-    try:
-        from src.diversity_selector import DiversitySelector
-    except Exception as e:
-        pytest.skip(f"Skipping integration test due to import error: {e}")
-
-=======
-def test_coverage_statistics(DiversitySelector):
->>>>>>> chore/ci-lint-attrs-gdf
     n = 50
     features = make_features_local(n)
     metadata = make_metadata_local(n)
