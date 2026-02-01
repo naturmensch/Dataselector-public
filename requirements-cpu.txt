@@ -1,0 +1,43 @@
+# CPU-only requirements for typical laptops (no CUDA, saves ~3.3 GB)
+# Recommended: use the conda/mamba environment (`environment.yml`) for reproducible installs.
+# Installation (pip fallback): pip install -r requirements-cpu.txt
+
+# PyTorch CPU-only (~200 MB statt ~3.5 GB)
+--index-url https://download.pytorch.org/whl/cpu
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Restliche Dependencies
+Pillow>=10.0.0
+pandas>=2.0.0
+numpy>=1.24.0
+dbfread>=2.0.7
+
+# Clustering & Dimensionality Reduction
+scikit-learn>=1.3.0
+umap-learn>=0.5.3
+# Scientific computing (needed for QMC samplers among others)
+scipy>=1.7.0
+# Note: optional packages used in docs/archives (e.g., dppy for determinantal point processes) are not required by default
+# dppy  # Optional: pip install dppy
+
+# Submodular Optimization
+apricot-select>=0.6.0
+
+# Hyperparameter Optimization
+optuna>=3.0.0
+
+# Visualization
+matplotlib>=3.7.0
+seaborn>=0.12.0
+
+# Configuration
+tqdm>=4.65.0
+pyyaml>=6.0
+
+# Development
+pytest>=7.0.0
+
+# Code Quality
+flake8>=6.0.0
+mypy>=1.9.0

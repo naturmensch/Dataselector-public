@@ -16,21 +16,31 @@ from src.metrics import compute_metrics
 OUT = ROOT / "outputs" / "seed_benchmark"
 OUT.mkdir(parents=True, exist_ok=True)
 
-# Config (consistent with final_selection defaults)
-n_samples = 34
-alpha = 0.7
-beta = 0.05
-gamma = 0.25
-min_distance_km = 50.0
+# Config (read from pipeline config for consistency)
+import yaml
+cfg = yaml.safe_load(open(ROOT / "config" / "pipeline_config.yaml"))
+
+n_samples = cfg.get('selection', {}).get('n_samples', 34)
+alpha = cfg.get('selection', {}).get('alpha_visual', 0.7)
+beta = cfg.get('selection', {}).get('beta_spatial', 0.05)
+gamma = cfg.get('selection', {}).get('gamma_temporal', 0.25)
+min_distance_km = cfg.get('selection', {}).get('min_distance_km', 40.0)
+batch_size = cfg.get('feature_extraction', {}).get('batch_size', 8)
 
 # Load cached features & metadata
+<<<<<<< HEAD
 features = load_or_extract_features(OUT, csv_meta=str(data_path("new_all_tiles.csv")), batch_size=16, cache=True)
 metadata = load_metadata(str(data_path("new_all_tiles.csv")))
+=======
+features = load_or_extract_features(OUT, csv_meta=str(ROOT / "data" / "new_all_tiles.csv"), batch_size=batch_size, cache=True)
+metadata = load_metadata(str(ROOT / "data" / "new_all_tiles.csv"))
+>>>>>>> ci/add-smoke-tests
 
 cluster_labels = None
 # compute cluster labels using existing pipeline to be consistent
 from src.clustering import ClusteringPipeline
-clustering = ClusteringPipeline(n_clusters=8)
+n_clusters_cfg = cfg.get('clustering', {}).get('n_clusters', 8)
+clustering = ClusteringPipeline(n_clusters=n_clusters_cfg)
 _, cluster_labels = clustering.fit_transform(features)
 
 results = []

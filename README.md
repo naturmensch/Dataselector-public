@@ -6,14 +6,6 @@
 
 Dieses Projekt implementiert einen hybriden Active-Learning-Workflow zur objektiven Auswahl von Trainingsbeispielen aus dem heterogenen KDR100-Kartendatensatz. Anstatt manueller "Hand-Picking"-Methoden nutzt das System Deep Learning und submodulare Optimierung, um mathematisch optimale, diverse Samples zu identifizieren.
 
-## Aktuelles (2026-01-26)
-
-- **DINOv2 wiederhergestellt:** `src/feature_extractor.py` unterstützt jetzt `model: "dinov2"` (ViT‑Small, 384‑dim). Unit‑Tests wurden hinzugefügt (`tests/test_feature_extractor.py`).
-- **Weights & Biases (wandb):** Integration ist implementiert und dokumentiert in `docs/05_ADVANCED/wandb_quickstart.md` und `docs/WANDB_INTEGRATION.md`. Installiere `wandb>=0.15.0` oder setze `WANDB_DISABLED=true`, um Logging zu deaktivieren.
-- **Autoscale & Pipeline Artefakte:** Die moderne Orchestrierung erzeugt `outputs/optuna_autoscale_selected_n_samples.txt`, `outputs/optuna_autoscale_best_latest.json` und `outputs/selected_sampler.json` — diese Artefakte werden automatisch von den Orchestrator‑Skripten verwendet.
-
-(Änderungen dokumentiert: `CHANGELOG.md` / `README.md` ergänzt.)
-
 ### Kernfunktionalitäten
 
 - **Feature Extraction**: Extraktion visueller Features mittels vortrainiertem ResNet50
@@ -58,6 +50,67 @@ venv\Scripts\activate  # Windows
 pip install -r requirements.txt
 ```
 
+### Development environment (recommended: mamba / conda)
+
+For reproducible experiments and a stable scientific stack we recommend creating a conda environment using `mamba` (fast solver) with an explicit `environment.yml` file. If `mamba` is not installed the script will fall back to `conda`.
+
+Quick start (mamba preferred):
+
+```bash
+# Prefer mamba; fallback to conda if missing
+if command -v mamba >/dev/null 2>&1; then PM=mamba; else PM=conda; fi
+
+# Create environment (Python 3.11 recommended)
+$PM env create -f environment.yml -n dataselector
+conda activate dataselector
+
+# Optional: install pip extras (keeps parity with venv setup)
+pip install -r requirements-cpu.txt
+```
+
+There is also a helper script to automate this process:
+
+```bash
+# Create env (default name: dataselector, python: 3.11)
+./scripts/create_env.sh dataselector 3.11
+
+# Force recreate
+./scripts/create_env.sh dataselector 3.11 --force
+```
+
+You can use `make env` as a convenience target which calls the helper script.
+
+Running repository scripts inside the canonical environment
+
+We provide a canonical wrapper `scripts/exec_in_env.sh` that prefers `mamba run` (if available) or `conda run`, and falls back to a local `.venv` or direct execution when necessary. This keeps behavior consistent between local development and CI.
+
+Example:
+
+```bash
+# Run the adaptive pipeline dry-run inside the `dataselector` env
+./scripts/exec_in_env.sh --env dataselector -- python scripts/run_adaptive_pipeline.py --dry-run --yes --n-lhs 5 --n-trials 5 --n-boot 5 --n-candidates 20
+```
+
+This wrapper also sets safe defaults for thread control via `--threads` or the `OMP_NUM_THREADS` / `MKL_NUM_THREADS` environment variables.
+
+Conda lockfile
+
+For reproducible installs across platforms we generate lockfiles under `locks/` (e.g. `locks/conda-lock-linux-64.lock`). The CI will attempt to generate this lockfile and upload it as an artifact. You can also generate it locally with:
+
+```bash
+./scripts/generate_conda_lock.sh --platform linux-64
+```
+
+To install from a lockfile:
+
+```bash
+conda-lock install --name dataselector locks/conda-lock-linux-64.lock
+```
+
+If you want fully reproducible installs in CI or locally prefer using the generated lockfile, see `conda-lock` docs for how to install from a lockfile on your platform.
+
+See `docs/ENV_SETUP.md` for the complete reproducibility guide and troubleshooting tips.
+
 ## Projektstruktur
 
 ```
@@ -86,124 +139,115 @@ Dataselector/
 ### Daten vorbereiten
 
 1. Platzieren Sie die Metadaten-Datei (`KDR100_foliage_with_files_epsg3857.csv` oder `all_png_tiles.dbf`) im `data/` Verzeichnis
-
-   Hinweis: Falls die Rohbilder und Sidecar-XMLs in `data/images/` vorhanden sind, kann `scripts/build_new_all_tiles.py` automatisch `data/new_all_tiles.csv` erzeugen (z.B. `./scripts/exec_in_env.sh --env dataselector -- python scripts/build_new_all_tiles.py --image-dir data/images --out data/new_all_tiles.csv`).
 2. Erstellen Sie einen Ordner `data/images/` und legen Sie die Kartenbilder dort ab
 
-### Vollständiger Experiment-Workflow (Modern: Autoscale → Sampler Suite → XXL)
+### Vollständiger Experiment-Workflow
 
-Der vollständige, wissenschaftlich fundierte Ablauf besteht aus drei klaren Phasen:
+Es gibt **zwei Hauptmodi** für die Pipeline-Ausführung:
 
-1. **Autoscale** (`scripts/optuna_autoscale.py`) — gestufte Suche nach sinnvoller `n_samples` und globalen Hyperparametern (Stages z.B. 50 → 100 → 300 → full). Ergebnis: `outputs/optuna_autoscale_selected_n_samples.txt` und `outputs/optuna_autoscale_best_latest.json`.
+#### **Option A: Adaptive/Production Pipeline (EMPFOHLEN)** 🚀
 
-2. **Sampler Suite** (`scripts/run_thesis_sampler_suite.py`) — Vergleicht Sampler (QMC, TPE, CMA‑ES) über mehrere Seeds und verwendet die Autoscale‑Ergebnisse zur Einschränkung der Suchräume (Constrained Bounds). Ergebnis: `outputs/selected_sampler.json` und per‑run `results/`-Ordner (prefer CLI: `python -m dataselector sampler-suite -- …`).
-
-3. **XXL Pipeline (Phases 0–5)** — Validierung (Phase 0), große Optimierungsläufe (Phase 1–4), Bootstrap UQ (Phase 5) und Erstellung der Thesis‑Artefakte.
-
-   Canonical entrypoint:
-   ```bash
-   python -m dataselector xxl -- --help
-   python -m dataselector xxl -- --best-sampler tpe
-   ```
-
-   (Implementation note: the CLI currently forwards to `scripts/xxl_KDR146_run_thesis_complete_modern.py` as the runner; do not call the script directly from docs/tests.)
-
-Für die komplette Ausführung nutze das zentrale Orchestrator‑Skript (modernisiert):
+Nutzt **Latin Hypercube Sampling (LHS)** für wissenschaftlich fundierte Parameter-Exploration:
 
 ```bash
-# Vollständige Orchestrierung (Autoscale → Sampler Suite → XXL)
-python -m dataselector thesis-pipeline --
+# Automatischer vollständiger Lauf (LHS → Fine → Optuna → Bootstrap → Final)
+python scripts/run_adaptive_pipeline.py --yes
+
+# Oder mit Bash-Wrapper:
+./scripts/run_full_experiment.sh --adaptive --yes
 ```
 
-Wenn Sie nur die Sampler-Suite mit Autoscale ausführen möchten:
+**Vorteile:**
+- ✅ Gleichmäßige Abdeckung des Parameterraums (keine Lücken)
+- ✅ Adaptiv skalierend: `n_lhs = max(27, √n_tiles)` (Standard)
+- ✅ Wissenschaftlich fundiert (Quasi-Monte-Carlo)
+- ✅ Schneller als manuelle Grid-Suche bei gleicher Coverage
+
+**Parameter:**
+- `--n-lhs`: Anzahl LHS-Samples (Standard: adaptiv, min. 27)
+- `--fine-max-runs`: Fine Grid Runs (Standard: 100)
+- `--n-trials`: Optuna Trials (Standard: 200)
+- `--n-samples`: Target number of final samples (overrides `config.selection.n_samples`; if omitted uses adaptive heuristic)
+- `--n-boot`: Bootstrap Resamples (Standard: 200)
+- `--skip-optuna`: Überspringt Optuna-Phase
+- `--skip-bootstrap-injection`: Überspringt Bootstrap-Injection
+
+#### **Option B: Thesis/Research Pipeline** 📊
+
+Für **doppelte Exploration** und ausführliche Visualisierungen:
 
 ```bash
-python -m dataselector sampler-suite -- --autoscale
+# Thesis-Mode mit doppelter LHS-Dichte
+python scripts/run_thesis_pipeline.py --yes
 ```
 
-Und falls Sie die Suite ohne Autoscale durchführen wollen (z.B. mit festem n_samples):
+**Unterschiede:**
+- 🔬 `n_lhs = max(50, 2×√n_tiles)` statt `max(27, √n_tiles)`
+- 📊 Erweiterte Visualisierungen und Logs
+- 🎯 Optimiert für wissenschaftliche Reproduzierbarkeit
+
+---
+
+**Legacy Manual Grid Sweep (Veraltet):**
+
+Für Rückwärtskompatibilität ist der alte Coarse-Sweep noch verfügbar:
 
 ```bash
-python -m dataselector sampler-suite -- --no-autoscale --n-samples 38
+./scripts/run_full_experiment.sh --yes  # (ohne --adaptive Flag)
 ```
 
-Nur die moderne XXL‑Orchestration (z.B. nach erfolgreicher Suite) läuft so:
+⚠️ **Nicht empfohlen**: Nutzt 9×3=27 manuelles Grid statt adaptivem LHS.
+
+---
+
+**Wichtige Flags:**
+- `--use-optuna-best`: Extrahiert besten Trial nach Optuna → `outputs/experiments/run_<TS>/pipeline_config.optuna.yaml`
+- `--inject-optuna`: Injiziert Optuna-Best direkt in `config/pipeline_config.yaml` (Backup: `.optuna_bak`)
+- `--final-with-optuna-config`: Führt Final-Run temporär mit Optuna-Config aus (Original wird wiederhergestellt)
+- `--detach`: Starte den Run im Hintergrund; schreibt PID und Session‑Log nach `outputs/experiments/` (siehe Beispiel unten)
+
+#### Detached runs (empfohlen für lange Läufe)
+Für lange, nicht-interaktive Läufe kannst du das `--detach` Flag verwenden. Das Skript startet sich im Hintergrund, schreibt eine Session‑Logdatei und eine PID‑Datei in `outputs/experiments/` und beendet sofort die interaktive Shell:
 
 ```bash
-python -m dataselector xxl -- --best-sampler tpe
+# Beispiel: intensiver, detachter Run (Ein‑Thread für Reproduzierbarkeit empfohlen)
+export OMP_NUM_THREADS=1 MKL_NUM_THREADS=1
+./scripts/run_full_experiment.sh --adaptive --detach --n-trials 500 --n-candidates 800 --n-boot 500 --yes
 ```
 
-Hinweis: Die Orchestrator‑Skripte prüfen die Existenz von Artefakten im `outputs/`-Verzeichnis (`optuna_autoscale_*`, `selected_sampler.json`) und verwenden diese automatisiert. Die Skripte brauchen eine Umgebung mit `optuna` installiert, wenn Optuna‑Phasen ausgeführt werden.
+Die Ausgaben findest du dann in `outputs/experiments/run_adaptive_<TIMESTAMP>.session.log` und die PID in `outputs/experiments/run_adaptive_<TIMESTAMP>.pid`.
 
-Provenance & Reproduzierbarkeit:
-- Das Orchestrator-Skript kopiert sämtliche relevanten Artefakte in `outputs/experiments/run_<TIMESTAMP>/`, darunter die `optuna_results.csv`, ggf. die `optuna_study.pkl`, eine `pipeline_config.optuna.yaml` (oder die Backup-Datei bei Injection) und die finalen CSV/Plots. So sind alle Eingaben dokumentiert.
+**Provenance & Reproduzierbarkeit:**
+Alle Artefakte werden nach `outputs/experiments/run_<TIMESTAMP>/` kopiert:
+- `optuna_results.csv`, `optuna_study.pkl`
+- `pipeline_config.optuna.yaml` (oder Backup bei Injection)
+- Finale CSVs und Plots
 
-Schneller Smoke-Run (lokal / CI):
+**Schneller Smoke-Run (CI/Testing):**
 
 ```bash
-# Schneller Test: kleiner Optuna Run (2 Trials) und Unit-Tests
-pytest -q
-python scripts/optuna_optimize.py --n-trials 2 --n-candidates 50 --dim 32 --n-samples 5 --min-distance-km 10
+# Unit-Tests
+pytest
+
+# Minimal-Pipeline zum Testen
+python scripts/run_adaptive_pipeline.py --n-lhs 5 --fine-max-runs 3 --skip-optuna
 ```
 
-Diese Commands sind absichtlich klein gehalten, damit sie schnell laufen und als Smoke-Test in CI nutzbar sind.
 
-### E2E Tests (empfohlener Ablauf) ✅
-Für vollständige E2E-Tests (Monitor, Orchestrator und Resume-Verhalten) empfehlen wir den folgenden, sicheren Ablauf:
-
-1. Umgebung erstellen/aktualisieren (einmalig oder bei Bedarf):
+### Pipeline ausführen
 
 ```bash
-make ensure-env
+python src/main.py
 ```
 
-2. E2E Smoke-Tests ausführen (führt Tests mit `pytest -m e2e` im Environment aus):
+Die Pipeline führt automatisch folgende Schritte aus:
 
-```bash
-make test-e2e
-# Oder: Erzeuge die Umgebung falls sie fehlt und führe E2E aus
-make test-e2e-auto
-```
+1. **Metadaten-Verarbeitung**: Lädt CSV und extrahiert temporale/räumliche Informationen
+2. **Feature Extraction**: Generiert 2048-dimensionale Vektoren für jede Kachel
+3. **Clustering**: Reduziert auf 2D mittels UMAP und gruppiert mit K-Means
+4. **Diversity Selection**: Wählt 34 optimale Samples via Facility Location
+5. **Visualisierung**: Erstellt Plots und Zusammenfassungen
 
-Für CI: verwende das nicht-interaktive Target, das die Umgebung automatisch erstellt und anschließend die E2E-Tests ausführt:
-
-```bash
-make test-e2e-ci
-```
-
-Hinweis: Die Make-Targets verwenden `./scripts/exec_in_env.sh` und stellen sicher, dass die **wissenschaftlich validierten** Paketversionen (z. B. `numpy==1.26.4`, `numba==0.63.1`) in der Environment vorhanden sind. Automatisches Erstellen/Ändern der Environment während eines einzelnen `pytest`-Laufs erfolgt nicht stillschweigend — das ist eine bewusste Designentscheidung, um Nebenwirkungen und lange Laufzeiten zu vermeiden.
-
-
-### Pipeline ausführen (modern)
-
-Die empfohlene Methode ist die 3‑Phasen Orchestrierung (Autoscale → Sampler Suite → XXL). Für den kompletten Durchlauf benutze:
-
-```bash
-python -m dataselector thesis-pipeline --
-```
-
-Alternativen für gezielte Ausführung einzelner Schritte:
-
-- Nur Autoscale (Schneller Test / Debugging):
-```bash
-python -m dataselector autoscale -- --n-trials 20 --stages 50 100 --n-candidates 100
-```
-
-- Sampler Suite (mit oder ohne Autoscale):
-```bash
-# Mit automatischem Autoscale
-python -m dataselector sampler-suite -- --autoscale
-
-# Ohne Autoscale, mit festem n_samples
-python -m dataselector sampler-suite -- --no-autoscale --n-samples 38
-```
-
-- Nur XXL Pipeline (nach Suite):
-```bash
-python -m dataselector xxl -- --best-sampler tpe
-```
-
-Die allgemeinen Pipeline-Schritte (Metadaten → Feature Extraction → Clustering → Selection → Visualisierung) bleiben als konzeptionelles Gerüst erhalten; die Orchestrations-Skripte fügen die wissenschaftlichen Optimierungs- und Validierungsphasen hinzu (Autoscale / Sampler‑Suite / XXL).
 ### Konfiguration anpassen
 
 Bearbeiten Sie `config/pipeline_config.yaml`:
@@ -256,9 +300,6 @@ df = processor.add_temporal_metadata()  # Extrahiert Jahr aus Dateinamen
 ```python
 from src.feature_extractor import FeatureExtractor
 
-# Use ResNet50 (default) or DINOv2
-# - ResNet50: 2048-dim (ImageNet baseline)
-# - DINOv2: 384-dim (ViT-Small) — to use set model_name='dinov2' or in config: feature_extraction.model: 'dinov2'
 extractor = FeatureExtractor(model_name='resnet50')
 features = extractor.extract_features_batch(
     image_paths=df['longName'].tolist(),
@@ -426,6 +467,12 @@ selection:
 - ResNet: He et al., "Deep Residual Learning for Image Recognition" (2016)
 - UMAP: McInnes et al., "UMAP: Uniform Manifold Approximation and Projection" (2018)
 - Submodular Optimization: Krause & Golovin, "Submodular Function Maximization" (2014)
+
+## Entwickler-Workflow (Kurz)
+
+- **Debug:** `pytest --lf` (schnelle Iteration)
+- **Vor Commit:** `pytest` (Regressionstests)
+- **CI Simulation:** `pytest --junitxml=test-results/junit.xml`
 
 > **Hinweis:**
 > Der empfohlene Default für `min_distance_km` ist 50.0 km (siehe `config/pipeline_config.yaml`).

@@ -1,6 +1,7 @@
 # KDR100 Datenselektion Requirements
 
-# Deep Learning & Image Processing
+# Deep Learning & Image Processing (CPU-only für i5-12500H)
+# Install mit: pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
 torch>=2.0.0
 torchvision>=0.15.0
 Pillow>=10.0.0
@@ -15,11 +16,15 @@ dbfread>=2.0.7
 scikit-learn>=1.3.0
 umap-learn==0.5.11
 
+# Statistical Sampling (LHS for parameter exploration)
+scipy>=1.7.0
+
 # Submodular Optimization (Facility Location)
 apricot-select==0.6.1
 
 # Hyperparameter Optimization
 optuna>=3.0.0
+cmaes>=0.10.0  # Required for CmaEsSampler in Optuna
 
 # Visualization
 matplotlib>=3.7.0

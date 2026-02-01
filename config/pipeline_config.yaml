@@ -8,7 +8,7 @@ data:
 
 # Feature Extraction (Deep Learning)
 feature_extraction:
-  model: "resnet50"  # Optionen: 'resnet50', 'dinov2'
+  model: "dinov2"  # Optionen: 'resnet50', 'dinov2'
   batch_size: 8
   crop_size: [2048, 2048]
   device: "auto"  # 'cuda', 'cpu', oder 'auto'
@@ -26,34 +26,38 @@ clustering:
   umap_n_jobs: 1
 
 # Diversity Selection (Multi-Criteria Facility Location)
-# Updated: 2026-01-12 based on dataset analysis and parameter optimization
-# Dataset: 673 tiles, 42.8% WWI-clustering (1906-1918)
-# Default: finale Auswahlgröße auf 5% gesetzt (≈34 Samples)
+# Updated: 2026-01-15 based on Optuna optimization and Fine Sweep validation
+# Dataset: 673 tiles, 42.8% WWI-clustering (1906-1918), median neighbor distance ~28 km
+# Default: historically set to 5% (≈34 Samples) — changed so no hard default is enforced
 selection:
-  n_samples: 34  # 5% von 673 (~34) — Standard für finale Auswahl
+  n_samples: null  # If null, n_samples is computed adaptively via `src.pipeline_utils.compute_adaptive_n_initial` or set persistently here to an int.
+                 # Recommended: set persistently in this config (e.g. n_samples: 50) or override on the CLI with `--n-samples` when invoking pipeline
+                 # Rationale: prefer dataset-adaptive selection rather than a fixed 5% heuristic
   metric: "euclidean"
   
   # DEPRECATED: Legacy parameters (use multi-criteria instead)
   temporal_weight: 0.25  # Kept for backward compatibility
   
   # Multi-Criteria weights (REQUIRED for use_multi_criteria=true)
-  alpha_visual: 0.70     # Empfohlene visuelle Gewichtung für finale Auswahl
-  beta_spatial: 0.05     # Empfohlene räumliche Gewichtung für finale Auswahl
-  gamma_temporal: 0.25   # Empfohlene zeitliche Gewichtung (gegen WWI-Clustering)
+  alpha_visual: 0.40     # Optuna-best (empirisch validiert) — Default für quick runs
+  beta_spatial: 0.30      # Optuna-best (empirisch validiert)
+  gamma_temporal: 0.30    # Optuna-best (empirisch validiert)
   # Optional: Pre-selection (seed) — set names (e.g. ['Hamburg']) or indices (e.g. [145])
-  pre_selected_names: ['Hamburg']
+  pre_selected_names: null  # DISABLED FOR OPTUNA COMPARISON
   # pre_selected_indices: [145]
   
   # Spatial constraint
+  # Wissenschaftlich validiert: Fine Sweep (40 km optimal), Optuna (36-39 km), Median ~28 km
   spatial_constraint: true
-  min_distance_km: 50.0  # Empfohlener Abstand für finale Auswahl (km)
+  min_distance_km: 40.0  # Optimaler Abstand basierend auf empirischer Validierung
   
   # Method selection (IMPORTANT)
   use_multi_criteria: true           # REQUIRED: Unified distance metric
   use_constraint_integration: false  # Legacy constraint-integrated mode
   
-  # Seed for reproducibility
+  # Seeds for reproducible validation experiments (bootstrap / cv)
   random_state: 42
+  validation_seeds: [42, 43, 44, 45, 46]
   
 # Expected results with optimized config (for n=34):
 # - 34 Samples (≈5% of 673 tiles)
