@@ -509,7 +509,7 @@ usage: validate_pareto_candidates_seeded.py [-h] [--pareto PARETO]
 options:
 ``` |
 
-| `scripts/xxl_KDR146_run_thesis_complete.py` | [2026-01-23 14:06:52] [INFO] ====================================================================== | ```
+| `scripts/xxl_KDR146_run_thesis_complete_modern.py` | [2026-01-23 14:06:52] [INFO] ====================================================================== | ```
 [2026-01-23 14:06:52] [INFO] ======================================================================
 [2026-01-23 14:06:52] [START] XXL KDR146 THESIS COMPLETE PIPELINE
 [2026-01-23 14:06:52] [INFO] ======================================================================
@@ -517,7 +517,7 @@ options:
 [2026-01-23 14:06:52] [PRE-FLIGHT] ======================================================================
 [2026-01-23 14:06:52] [PRE-FLIGHT] PRE-FLIGHT: CONVERGENCE VALIDATION FROM 10-SEED HAMBURG DATA
 [2026-01-23 14:06:52] [PRE-FLIGHT] ======================================================================
-usage: xxl_KDR146_run_thesis_complete.py [-h] [--use-suite-defaults]
+usage: xxl_KDR146_run_thesis_complete_modern.py [-h] [--use-suite-defaults]
 ``` |
 
 | `scripts/xxl_KDR146_run_thesis_complete_OLD.py` | Traceback (most recent call last): | ```

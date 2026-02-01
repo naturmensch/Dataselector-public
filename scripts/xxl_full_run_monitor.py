@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Start full XXL pipeline run and monitor progress.
 
-This script launches `scripts/xxl_KDR146_run_thesis_complete.py` as a subprocess,
+This script launches `scripts/xxl_KDR146_run_thesis_complete_modern.py` (or falls back to the legacy `scripts/xxl_KDR146_run_thesis_complete.py`) as a subprocess,
 streams stdout/stderr to `outputs/XXL_FULL_RUN.log`, monitors progress by
 inspecting the log and `outputs/runs/` for the final XXL run directory, and
 writes a monitor report `monitor_report.md` inside the discovered run dir

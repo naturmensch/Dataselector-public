@@ -29,6 +29,8 @@ seaborn>=0.12.0
 tqdm>=4.65.0
 pyyaml>=6.0
 
+# Experiment Tracking
+wandb>=0.15.0
 
 # Testing
 pytest>=7.0.0
