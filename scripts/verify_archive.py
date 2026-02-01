@@ -3,7 +3,7 @@
 
 Checks for textual references to `archive/tests` or `_OLD` test paths and exits with code 1 when found.
 Usage:
-    ./scripts/exec_in_env.sh --env dataselector -- python scripts/verify_archive.py --fail-on-reference
+    python scripts/verify_archive.py --fail-on-reference
 
 It is intentionally conservative (text search). If you have false positives, review matches and adjust.
 """
@@ -42,14 +42,9 @@ if matches:
     print("Found references to archived tests or _OLD files:")
     for fname, token, snippet in matches:
         print(f" - {fname}: '{token}' -> ...{snippet}...")
-    # If there is a migration README in `archive/tests/README.md`, treat references as allowed
-    readme = ROOT / 'archive' / 'tests' / 'README.md'
-    if readme.exists():
-        print('\nNote: migration guide found at archive/tests/README.md — treating references as allowed for this PR.')
-    else:
-        print('\nPlease review and remove references before moving tests to archive or update the reference target.')
-        if "--fail-on-reference" in sys.argv:
-            sys.exit(1)
+    print('\nPlease review and remove references before moving tests to archive or update the reference target.')
+    if "--fail-on-reference" in sys.argv:
+        sys.exit(1)
 else:
     print("No references to archived tests found.")
 

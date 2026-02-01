@@ -19,7 +19,7 @@ def test_env_compatibility_exits_zero():
     if proc.returncode != 0:
         # Not failing here; skip with an actionable message so PRs don't fail when running in an unrelated environment.
         pytest.skip(
-            f"Environment incompatible or missing native deps (code={proc.returncode}). To fix locally, run:\n\n  ./scripts/exec_in_env.sh --env dataselector --create --ensure-packages \"numpy==1.26.4 numba==0.63.1\" --yes -- python -c 'import numpy,numba; print(numpy.__version__,numba.__version__)'\n\nOutput:\n{out}"
+            f"Environment incompatible or missing native deps (code={proc.returncode}). To fix locally, run:\n\n  ./scripts/exec_in_env.sh --env dataselector --create --ensure-packages \"numpy<2.4 numba=0.63.1\" --yes -- python -c 'import numpy,numba; print(numpy.__version__,numba.__version__)'\n\nOutput:\n{out}"
         )
 
     assert "Environment checks passed" in out

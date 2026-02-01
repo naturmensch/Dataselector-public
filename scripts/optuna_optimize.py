@@ -2,7 +2,7 @@
 """Optuna hyperparameter optimization for Multi-Criteria weights.
 
 Usage:
-    ./scripts/exec_in_env.sh --env dataselector -- python scripts/optuna_optimize.py --n-trials 50 --n-candidates 500
+    python scripts/optuna_optimize.py --n-trials 50 --n-candidates 500
 
 Saves results to `outputs/optuna_results.csv` and `outputs/optuna_study.pkl`.
 """
@@ -16,16 +16,6 @@ from pathlib import Path
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
-
-# STARTUP ENV VALIDATION
-try:
-    from src.compat import validate_environment_full
-    if "--skip-env-check" not in sys.argv:
-        validate_environment_full()
-except Exception as e:
-    print(f"\n❌ STARTUP VALIDATION FAILED:\n{e}\n", file=sys.stderr)
-    print("Fix: ./scripts/exec_in_env.sh --env dataselector --create --ensure-packages 'numpy==1.26.4 numba==0.63.1' --yes -- python scripts/optuna_optimize.py", file=sys.stderr)
-    sys.exit(1)
 
 import numpy as np
 import pandas as pd
@@ -46,7 +36,11 @@ except Exception as e:
     DIVERSITY_IMPORT_ERROR = e
 
 # Allow overriding workspace via envvar (set by CLI helpers/tests)
-# OUT_DIR will be set after parsing args
+if os.environ.get("DATASELECTOR_WORKSPACE"):
+    OUT_DIR = Path(os.environ.get("DATASELECTOR_WORKSPACE")) / "outputs"
+else:
+    OUT_DIR = Path("outputs")
+OUT_DIR.mkdir(exist_ok=True)
 
 
 def load_or_create_data(n=500, dim=512, seed=123):
@@ -165,23 +159,7 @@ def run_optuna(
     constrain_bounds=None,
     exp_name: str | None = None,
     checkpoint_every: int = 0,
-    out_dir: Path | None = None,
-    study_db: str | None = None,
 ):
-    """Run Optuna optimization.
-
-    If `study_db` is provided, the Optuna study will be persisted to SQLite using
-    the provided path (e.g. 'outputs/optuna_study.db' or an absolute path). This
-    enables robust resume/reconstruction flows via the monitor.
-    """
-    # Set global OUT_DIR for this run
-    global OUT_DIR
-    if out_dir is None:
-        OUT_DIR = Path("outputs")
-    else:
-        OUT_DIR = out_dir
-    OUT_DIR.mkdir(exist_ok=True)
-
     features, metadata = load_or_create_data(n=n_candidates, dim=dim, seed=seed)
 
     sampler = None
@@ -192,17 +170,7 @@ def run_optuna(
     else:
         sampler = optuna.samplers.TPESampler()
 
-    # If a sqlite DB path was provided, use it as persistent storage for the study
-    if study_db:
-        # Ensure parent dir exists
-        try:
-            Path(study_db).parent.mkdir(parents=True, exist_ok=True)
-        except Exception:
-            pass
-        storage = f"sqlite:///{study_db}"
-        study = optuna.create_study(direction="maximize", study_name=study_name, sampler=sampler, storage=storage)
-    else:
-        study = optuna.create_study(direction="maximize", study_name=study_name, sampler=sampler)
+    study = optuna.create_study(direction="maximize", study_name=study_name, sampler=sampler)
     objective = objective_factory(
         features, metadata, n_samples=n_samples, min_distance_km=min_distance_km, n_samples_range=n_samples_range, constrain_bounds=constrain_bounds
     )
@@ -239,13 +207,8 @@ def run_optuna(
     study.optimize(objective, n_trials=n_trials, callbacks=callbacks)
 
     # Save results
-    print(f"OUT_DIR is {OUT_DIR}")
-    try:
-        results_df = study.trials_dataframe()
-        results_df.to_csv(OUT_DIR / "optuna_results.csv", index=False)
-        print(f"Optuna optimization finished. Results saved to {OUT_DIR / 'optuna_results.csv'}")
-    except Exception as e:
-        print(f"Failed to save results: {e}")
+    results_df = study.trials_dataframe()
+    results_df.to_csv(OUT_DIR / "optuna_results.csv", index=False)
 
     # If an experiment name was provided, also save per-run outputs to a run-specific folder
     if exp_name:
@@ -263,6 +226,8 @@ def run_optuna(
     except Exception:
         # Fallback: save trials dataframe only
         print("joblib not available: only saving trials dataframe")
+
+    print("Optuna optimization finished. Results saved to outputs/optuna_results.csv")
     return study
 
 
@@ -283,9 +248,6 @@ if __name__ == "__main__":
     parser.add_argument("--exp-name", type=str, default=None, help="Experiment name (optional)")
     parser.add_argument("--exp-desc", type=str, default=None, help="Experiment description (optional)")
     parser.add_argument("--hamburg", action="store_true", help="Use Hamburg dataset preselection")
-    # Optuna persistent study DB options
-    parser.add_argument("--use-study-db", action="store_true", help="Create/use default outputs/optuna_study.db for persistent Optuna storage")
-    parser.add_argument("--study-db", type=str, default=None, help="Path to SQLite DB file for Optuna storage (overrides --use-study-db)")
     parser.add_argument("--constrain-a-min", type=float, default=None, help="Constrain a (alpha-proxy) lower bound")
     parser.add_argument("--constrain-a-max", type=float, default=None, help="Constrain a upper bound")
     parser.add_argument("--constrain-b-min", type=float, default=None, help="Constrain b (beta-proxy) lower bound")
@@ -306,15 +268,9 @@ if __name__ == "__main__":
 
     # Allow workspace override for tests
     if args.workspace:
-        print(f"Setting DATASELECTOR_WORKSPACE to {args.workspace}")
-        os.environ.setdefault("DATASELECTOR_WORKSPACE", args.workspace)
+        import os
 
-    # Set OUT_DIR after env var is set
-    if os.environ.get("DATASELECTOR_WORKSPACE"):
-        OUT_DIR = Path(os.environ.get("DATASELECTOR_WORKSPACE")) / "outputs"
-    else:
-        OUT_DIR = Path("outputs")
-    OUT_DIR.mkdir(exist_ok=True)
+        os.environ.setdefault("DATASELECTOR_WORKSPACE", args.workspace)
 
     # If smoke mode requested and DiversitySelector not importable (heavy deps missing),
     # simulate a minimal optuna output instead of running full optimization.
@@ -359,13 +315,6 @@ if __name__ == "__main__":
             "min_dist_max": args.constrain_min_dist_max or 60,
         }
 
-    # Determine optional SQLite DB path for persistent Optuna storage
-    study_db = None
-    if args.use_study_db:
-        study_db = str(OUT_DIR / "optuna_study.db")
-    if args.study_db:
-        study_db = str(args.study_db)
-
     run_optuna(
         n_trials=args.n_trials,
         n_candidates=args.n_candidates,
@@ -378,6 +327,4 @@ if __name__ == "__main__":
         constrain_bounds=constrain_bounds,
         exp_name=args.exp_name,
         checkpoint_every=args.checkpoint_every,
-        out_dir=OUT_DIR,
-        study_db=study_db,
     )

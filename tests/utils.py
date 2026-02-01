@@ -87,6 +87,3 @@ def create_dummy_script(path: Path, marker: str = "DUMMY_RUN_DONE"):
         )
     )
     path.chmod(0o755)
-
-
-

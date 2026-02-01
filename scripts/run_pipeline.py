@@ -1,12 +1,8 @@
-#!/usr/bin/env python3
 # ruff: noqa: E402
 """Run pipeline with optional tuning.
 
 Usage:
-    ./scripts/run_pipeline.py [--tune] [--force-tune] [--tune-ttl DAYS] [--interactive]
-
-Tip: prefer running via the wrapper in automation/CI:
-  ./scripts/exec_in_env.sh --env dataselector -- python scripts/run_pipeline.py
+    python scripts/run_pipeline.py [--tune] [--force-tune] [--tune-ttl DAYS] [--interactive]
 """
 
 import argparse
@@ -19,8 +15,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-
-from scripts.common import data_path
 
 # Delay heavy imports (umap/numba/torch) until needed to improve testability
 # from src.experiments import ExperimentRunner
@@ -131,7 +125,7 @@ def main():
     args = parser.parse_args()
 
     # Config
-    CSV_META = data_path("new_all_tiles.csv")
+    CSV_META = ROOT / "data" / "new_all_tiles.csv"
     OUT_DIR = ROOT / "outputs" / "tuning_weights"
     # Allow overriding workspace for smoke tests / CI
     if args.workspace:
