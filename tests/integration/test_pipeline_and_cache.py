@@ -221,8 +221,18 @@ def test_pipeline_smoke_small(tmp_path, monkeypatch):
 
     # Provide a lightweight `src.metrics` to avoid importing heavy deps
     fake_metrics = types.ModuleType('src.metrics')
-    def compute_metrics(*args, **kwargs):
-        return {'diversity_score': 0.0, 'n_selected': kwargs.get('n_selected', 0)}
+    def compute_metrics(selected_idx=None, metadata=None, cluster_labels=None, features=None):
+            # Minimal metrics consistent with src.metrics.compute_metrics
+            n_selected = len(selected_idx) if selected_idx is not None else 0
+            temporal_std = 0.0
+            spatial_mean_km = 0.0
+            clusters_covered = int(len(set(cluster_labels[selected_idx]))) if (cluster_labels is not None and selected_idx is not None) else 0
+            return {
+                'n_selected': n_selected,
+                'temporal_std': temporal_std,
+                'spatial_mean_km': spatial_mean_km,
+                'clusters_covered': clusters_covered,
+            }
     fake_metrics.compute_metrics = compute_metrics
     monkeypatch.setitem(sys.modules, 'src.metrics', fake_metrics)
 

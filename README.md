@@ -1,268 +1,389 @@
-# KDR100 Data Selection
+# KDR100 Datenselektion
 
-**Algorithmic data selection for the "Karte des Deutschen Reiches" (KDR100) using Optuna-based hyperparameter optimization and deep-learning features.**
+**Algorithmische Datenselektion für die Karte des Deutschen Reiches (KDR100) mittels Unsupervised Deep Clustering**
 
-Scientifically rigorous method to objectively select training examples from 676 heterogeneous map tiles.
+## Überblick
 
----
+Dieses Projekt implementiert einen hybriden Active-Learning-Workflow zur objektiven Auswahl von Trainingsbeispielen aus dem heterogenen KDR100-Kartendatensatz. Anstatt manueller "Hand-Picking"-Methoden nutzt das System Deep Learning und submodulare Optimierung, um mathematisch optimale, diverse Samples zu identifizieren.
 
-## 🚀 Quick Start
+### Kernfunktionalitäten
 
-**For the full production pipeline (Sampler Suite + XXL Run + Bootstrap):**
+- **Feature Extraction**: Extraktion visueller Features mittels vortrainiertem ResNet50
+- **Dimensionsreduktion**: UMAP-Projektion zur Visualisierung des Feature-Raums
+- **Clustering**: K-Means zur automatischen Erkennung von Landschaftstypen
+- **Diversity Sampling**: Facility Location Function für maximale Coverage
+- **Constraint Handling**: Zeitliche und räumliche Diversitäts-Constraints
 
-**Option A: One-shot automation (RECOMMENDED):**
+## Technischer Stack
 
-```bash
-# Activate environment (see Installation below)
-conda activate dataselector
+- **Python**: 3.9+
+- **Deep Learning**: PyTorch, torchvision
+- **Machine Learning**: scikit-learn, umap-learn
+- **Optimierung**: apricot-select (submodulare Optimierung)
+- **Datenverarbeitung**: pandas, numpy
+- **Visualisierung**: matplotlib, seaborn
 
-# One-shot: orchestrates EVERYTHING automatically (Sampler Suite + XXL Phases 0-5)
-bash scripts/run_complete_thesis_pipeline.sh
+## Installation
 
-# Or with a custom environment:
-bash scripts/run_complete_thesis_pipeline.sh --env my-env
-
-# Or with an explicit sampler override (optional):
-bash scripts/run_complete_thesis_pipeline.sh --sampler cmaes  # cmaes, qmc, or tpe
-```
-
-**Option B: Manual steps (if you want to inspect intermediate results):**
-
-```bash
-conda activate dataselector
-
-# STEP 1: Thesis Sampler Suite (auto: 10 seeds, 1000 trials, Hamburg + KDR100)
-python scripts/run_thesis_sampler_suite.py
-
-# STEP 2: XXL Pipeline with integrated Bootstrap (Phases 0-5)
-# Phase 0: Convergence analysis (auto-detects best sampler from Suite)
-# Phase 1-4: Optimization (Hamburg + Reproducibility + Statistics + Summary)
-# Phase 5: Bootstrap UQ (500 resamples)
-python scripts/xxl_KDR146_run_thesis_complete.py
-# Or override sampler explicitly:
-python scripts/xxl_KDR146_run_thesis_complete.py --optuna-sampler cmaes  # qmc, tpe, or cmaes
-```
-
-### ✨ Current status (2026-01-23)
-
-- ✅ **Sampler argument fix:** `--optuna-sampler` now propagates correctly through all phase functions
-- ✅ **Environment:** NumPy pinned to 2.3.x (Numba-compatible); PyTorch CPU available
-- ✅ **XXL Pipeline:** Phases 0–5 fully orchestrated
-- ✅ **Dry-run:** Phase 1–2 validated successfully with QMC sampler
-
-**Estimated durations:**
-- Sampler Suite: 8–12 hours (10 seeds × 3 samplers × 1000 trials)
-- XXL Pipeline + Bootstrap: 3.5–6 hours
-- **Total:** ~12–18 hours
-
-**Two-command, thesis‑ready workflow:**
-- Sampler Suite (10 seeds, 1000 trials per sampler) → `outputs/selected_sampler.json`
-- XXL Pipeline (Phase 0–5) with Bootstrap UQ → `outputs/runs/...`
-
----
-
-## 📋 Overview
-
-### Core features
-
-- ✅ **Multi-seed sampler comparison:** QMC vs TPE vs CMA-ES (10 seeds, 1000 trials per sampler)
-- ✅ **XXL Pipeline:** 5-phase optimization (Convergence → Hamburg → Reproducibility → Statistics → Summary + Bootstrap)
-- ✅ **Convergence analysis:** automatic computation of suggested trial counts (Phase 0)
-- ✅ **Reproducibility:** seed-based validation on Hamburg and KDR100 datasets
-- ✅ **Uncertainty Quantification:** Bootstrap resampling with confidence intervals
-- ✅ **Scientific outputs:** automatic reports, plots, and stability metrics (Jaccard index)
-
-### Tech stack
-
-| Component | Tools |
-|---|---|
-| Language | Python 3.11 |
-| GPU / DL | PyTorch, torchvision (DINOv2 / ResNet50) |
-| Optimization | Optuna (QMC/TPE/CMA-ES), apricot-select |
-| Data | pandas, numpy, geopandas |
-| Dimensionality reduction / clustering | UMAP, scikit-learn |
-| Geospatial | geopandas, pyproj, shapely |
-| Environment / testing | mamba/conda, pytest |
-
----
-
-## 📦 Installation
-
-### 1. Clone repository
+### 1. Repository klonen
 
 ```bash
-git clone https://github.com/username/Dataselector.git
+git clone <repository-url>
 cd Dataselector
 ```
 
-### 2. Create environment (recommended: mamba/conda)
+### 2. Python-Umgebung einrichten
 
 ```bash
-# Fast (mamba recommended)
-mamba env create -f environment.yml -n dataselector
-conda activate dataselector
+# Virtuelle Umgebung erstellen
+python -m venv venv
 
-# Or use helper script
-./scripts/create_env.sh dataselector 3.11
+# Aktivieren
+source venv/bin/activate  # Linux/Mac
+# oder
+venv\Scripts\activate  # Windows
 ```
 
-### 3. Install dependencies
+### 3. Dependencies installieren
 
 ```bash
-# CPU-only setup
-pip install -r requirements-cpu.txt
-
-# Or with CUDA/GPU support
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 pip install -r requirements.txt
 ```
 
-### 4. Run tests
-
-```bash
-pytest -v  # full test suite
-pytest --lf  # only last failures
-```
-
-**Known compatibility note:** NumPy / numba: numba requires NumPy <= 2.3.x. `environment.yml` pins NumPy accordingly.
-
----
-
-## 🎯 Workflows
-
-### A. Production XXL Run (RECOMMENDED)
-
-Full scientific workflow with automatic sampler selection.
-
-#### Step 1: Thesis Sampler Suite (optional when run separately)
-
-```bash
-# 10 seeds, 1000 trials per sampler, datasets: hamburg + kdr100
-python scripts/run_thesis_sampler_suite.py \
-  --seeds 42 43 44 45 46 47 48 49 50 51 \
-  --n-trials 1000 \
-  --datasets hamburg kdr100 \
-  --samplers qmc tpe cmaes
-```
-
-**Output:** `outputs/selected_sampler.json` + plots + CSV reports
-
-**Estimated duration:** 8–12 hours (1000 trials)
-
-#### Step 2: XXL Pipeline with auto parameters (recommended)
-
-```bash
-python scripts/xxl_KDR146_run_thesis_complete.py
-```
-
-**Phases (0–5) summary:**
-
-- Phase 0: Pre-flight convergence validation → computes `n_trials` from cached convergence baseline
-- Phase 1: Hamburg run (e.g., 440 trials) to find best hyperparameters
-- Phase 2: Reproducibility (2 seeds) validation
-- Phase 3: Statistics aggregation
-- Phase 4: Thesis-ready summary/report generation
-- Phase 5: Bootstrap UQ (e.g., 500 resamples)
-
-**Automatic parameter computation:** Phase 0 determines `n_trials = 5 × convergence_baseline` and auto-detects the best sampler via `outputs/selected_sampler.json` unless overridden by `--optuna-sampler`.
-
----
-
-### B. XXL Run with Monitor (recommended)
-
-```bash
-# Run pre-hook sampler suite and the full XXL orchestrator with logging and monitoring
-python scripts/xxl_full_run_monitor.py
-
-# Dry-run mode (plan only):
-python scripts/xxl_full_run_monitor.py --child-dry-run
-```
-
-Monitor features:
-- Pre- and Post- Hooks
-- Timestamped logs
-- Trials.csv reconstruction if interrupted
-- Monitor report when run completes
-
----
-
-### C. Adaptive / Quick tests
-
-```bash
-# Quick smoke test with adaptive pipeline
-python scripts/run_adaptive_pipeline.py --yes \
-  --n-lhs 5 \
-  --n-trials 10 \
-  --n-boot 5 \
-  --skip-optuna
-```
-
-**Use cases:** smoke tests, development, parameter tuning
-
----
-
-### D. Useful single scripts
-
-- `scripts/compare_samplers_multi_seed.py` — fast multi-seed sampler comparison
-- `scripts/tune_weights_and_run.py` — Phase 1: LHS / Sobol weight sweep + Pareto front computation
-- `scripts/run_fine_sweep.py` — Phase 2: fine sweep around Pareto region
-- `scripts/optuna_optimize.py` — low-level Optuna runner called by higher-level scripts
-- `scripts/bootstrap_pareto_candidates.py` — Phase 5: bootstrap UQ on Pareto selections
-- `scripts/generate_experiment_report.py` — per-run report generation (Markdown + plots)
-- `scripts/exec_in_env.sh` — helper to run commands inside conda/mamba environment
-
----
-
-## 📂 Project layout
+## Projektstruktur
 
 ```
 Dataselector/
-├── src/                                  # Python package
-│   ├── io.py                            # data loading / feature extraction
-│   ├── metrics.py                       # metric computations
-│   ├── metadata_processor.py            # CSV/DBF processing
-│   ├── clustering.py                    # UMAP + K-means
-│   ├── diversity_selector.py            # facility-location selection logic
-│   ├── experiment_manager.py            # run/version management
-│   └── visualizer.py                    # plotting helpers
-├── scripts/
-│   ├── run_thesis_sampler_suite.py     # Sampler suite orchestrator (thesis-grade)
-│   ├── xxl_KDR146_run_thesis_complete.py # XXL orchestrator (Phase 0-5)
-│   ├── xxl_full_run_monitor.py         # Monitor + pre/post hooks + logging
-│   ├── run_adaptive_pipeline.py        # Adaptive pipeline (LHS-based)
-│   ├── compare_samplers_multi_seed.py  # Multi-seed sampler comparer
-│   ├── optuna_optimize.py              # low-level Optuna experiment runner
-│   └── [other helper scripts...]
-├── tests/                                # pytest suite
-├── notebooks/
-│   └── 01_data_exploration.ipynb
-├── config/
+├── src/                          # Hauptmodule
+│   ├── __init__.py
+│   ├── main.py                   # Haupt-Pipeline
+│   ├── metadata_processor.py    # CSV/DBF-Verarbeitung
+│   ├── feature_extractor.py     # Deep Learning Features
+│   ├── clustering.py             # UMAP + K-Means
+│   ├── diversity_selector.py    # Facility Location
+│   └── visualizer.py             # Visualisierungen
+├── data/                         # Datenverzeichnis
+│   ├── KDR100_foliage_with_files_epsg3857.csv
+│   └── images/                   # Kartenbilder
+├── config/                       # Konfigurationsdateien
 │   └── pipeline_config.yaml
-├── data/
-│   ├── new_all_tiles.csv               # 676 KDR100 tiles metadata
-│   └── images/
-├── outputs/
-│   ├── runs/
-│   └── selected_sampler.json
-└── environment.yml
+├── notebooks/                    # Jupyter Notebooks
+├── outputs/                      # Ergebnisse
+├── requirements.txt
+└── README.md
 ```
 
----
+## Nutzung
 
-## ⚙️ Configuration
+### Daten vorbereiten
 
-Main config: `config/pipeline_config.yaml`
+1. Platzieren Sie die Metadaten-Datei (`KDR100_foliage_with_files_epsg3857.csv` oder `all_png_tiles.dbf`) im `data/` Verzeichnis
+
+   Hinweis: Falls die Rohbilder und Sidecar-XMLs in `data/images/` vorhanden sind, kann `scripts/build_new_all_tiles.py` automatisch `data/new_all_tiles.csv` erzeugen (z.B. `./scripts/exec_in_env.sh --env dataselector -- python scripts/build_new_all_tiles.py --image-dir data/images --out data/new_all_tiles.csv`).
+2. Erstellen Sie einen Ordner `data/images/` und legen Sie die Kartenbilder dort ab
+
+### Vollständiger Experiment-Workflow (Modern: Autoscale → Sampler Suite → XXL)
+
+Der vollständige, wissenschaftlich fundierte Ablauf besteht aus drei klaren Phasen:
+
+1. **Autoscale** (`scripts/optuna_autoscale.py`) — gestufte Suche nach sinnvoller `n_samples` und globalen Hyperparametern (Stages z.B. 50 → 100 → 300 → full). Ergebnis: `outputs/optuna_autoscale_selected_n_samples.txt` und `outputs/optuna_autoscale_best_latest.json`.
+
+2. **Sampler Suite** (`scripts/run_thesis_sampler_suite.py`) — Vergleicht Sampler (QMC, TPE, CMA‑ES) über mehrere Seeds und verwendet die Autoscale‑Ergebnisse zur Einschränkung der Suchräume (Constrained Bounds). Ergebnis: `outputs/selected_sampler.json` und per‑run `results/`-Ordner.
+
+3. **XXL Pipeline (Phases 0–5)** (`scripts/xxl_KDR146_run_thesis_complete_modern.py`) — Validierung (Phase 0), große Optimierungsläufe (Phase 1–4), Bootstrap UQ (Phase 5) und Erstellung der Thesis‑Artefakte.
+
+Für die komplette Ausführung nutze das zentrale Orchestrator‑Skript (modernisiert):
+
+```bash
+# Vollständige Orchestrierung (Autoscale → Sampler Suite → XXL)
+bash scripts/run_complete_thesis_pipeline.sh
+```
+
+Wenn Sie nur die Sampler-Suite mit Autoscale ausführen möchten:
+
+```bash
+python scripts/run_thesis_sampler_suite.py --autoscale
+```
+
+Und falls Sie die Suite ohne Autoscale durchführen wollen (z.B. mit festem n_samples):
+
+```bash
+python scripts/run_thesis_sampler_suite.py --no-autoscale --n-samples 38
+```
+
+Nur die moderne XXL‑Orchestration (z.B. nach erfolgreicher Suite) läuft so:
+
+```bash
+python scripts/xxl_KDR146_run_thesis_complete_modern.py --best-sampler tpe
+```
+
+Hinweis: Die Orchestrator‑Skripte prüfen die Existenz von Artefakten im `outputs/`-Verzeichnis (`optuna_autoscale_*`, `selected_sampler.json`) und verwenden diese automatisiert. Die Skripte brauchen eine Umgebung mit `optuna` installiert, wenn Optuna‑Phasen ausgeführt werden.
+
+Provenance & Reproduzierbarkeit:
+- Das Orchestrator-Skript kopiert sämtliche relevanten Artefakte in `outputs/experiments/run_<TIMESTAMP>/`, darunter die `optuna_results.csv`, ggf. die `optuna_study.pkl`, eine `pipeline_config.optuna.yaml` (oder die Backup-Datei bei Injection) und die finalen CSV/Plots. So sind alle Eingaben dokumentiert.
+
+Schneller Smoke-Run (lokal / CI):
+
+```bash
+# Schneller Test: kleiner Optuna Run (2 Trials) und Unit-Tests
+pytest -q
+python scripts/optuna_optimize.py --n-trials 2 --n-candidates 50 --dim 32 --n-samples 5 --min-distance-km 10
+```
+
+Diese Commands sind absichtlich klein gehalten, damit sie schnell laufen und als Smoke-Test in CI nutzbar sind.
+
+
+### Pipeline ausführen (modern)
+
+Die empfohlene Methode ist die 3‑Phasen Orchestrierung (Autoscale → Sampler Suite → XXL). Für den kompletten Durchlauf benutze:
+
+```bash
+bash scripts/run_complete_thesis_pipeline.sh
+```
+
+Alternativen für gezielte Ausführung einzelner Schritte:
+
+- Nur Autoscale (Schneller Test / Debugging):
+```bash
+python scripts/optuna_autoscale.py --n-trials 20 --stages 50 100 --n-candidates 100
+```
+
+- Sampler Suite (mit oder ohne Autoscale):
+```bash
+# Mit automatischem Autoscale
+python scripts/run_thesis_sampler_suite.py --autoscale
+
+# Ohne Autoscale, mit festem n_samples
+python scripts/run_thesis_sampler_suite.py --no-autoscale --n-samples 38
+```
+
+- Nur XXL Pipeline (nach Suite):
+```bash
+python scripts/xxl_KDR146_run_thesis_complete_modern.py --best-sampler tpe
+```
+
+Die allgemeinen Pipeline-Schritte (Metadaten → Feature Extraction → Clustering → Selection → Visualisierung) bleiben als konzeptionelles Gerüst erhalten; die Orchestrations-Skripte fügen die wissenschaftlichen Optimierungs- und Validierungsphasen hinzu (Autoscale / Sampler‑Suite / XXL).
+### Konfiguration anpassen
+
+Bearbeiten Sie `config/pipeline_config.yaml`:
 
 ```yaml
+# Anzahl auszuwählender Samples ändern
 selection:
-  n_samples: 34                # approximate target selection size (~5%)
-  min_distance_km: 50.0        # spatial minimum distance constraint
-
-optimization:
-  n_trials: 440                # default optuna trials
-  n_candidates: 676            # all KDR100 tiles (100%)
+  n_samples: 34  # Standard: 5% (~34 von 673)
+  
+# Clustering-Parameter
+clustering:
+  n_clusters: 8  # Mehr/weniger Cluster
+  
+# Räumliche Constraints
+selection:
+  min_distance_km: 50.0  # Minimale Distanz zwischen Samples
 ```
 
----
+## Ausgaben
 
-If you'd like, I can also update the repository README to replace the German file or add a note linking to this English version.
+Nach dem Durchlauf finden Sie im `outputs/` Verzeichnis:
+
+### CSV-Dateien
+- `kdr100_selection_selected.csv`: Liste der ausgewählten Kacheln mit Metadaten
+
+### Visualisierungen
+- `umap_clusters.png`: 2D-Projektion aller Kacheln mit Cluster-Farben
+- `temporal_distribution.png`: Histogramm der zeitlichen Verteilung
+- `spatial_distribution.png`: Geografische Karte der Auswahl
+- `cluster_distribution.png`: Balkendiagramm der Cluster-Coverage
+
+## Workflow-Details
+
+### 1. Metadaten-Extraktion
+
+```python
+from src.metadata_processor import MetadataProcessor
+
+processor = MetadataProcessor("data/all_png_tiles.dbf")  # unterstützt auch .dbf
+df = processor.load_csv()
+df = processor.add_temporal_metadata()  # Extrahiert Jahr aus Dateinamen
+
+# Optional: DBF -> CSV konvertieren
+# csv_path = processor.convert_dbf_to_csv('data/converted_metadata.csv')
+# print(f"CSV erzeugt: {csv_path}")
+```
+
+### 2. Feature Extraction
+
+```python
+from src.feature_extractor import FeatureExtractor
+
+extractor = FeatureExtractor(model_name='resnet50')
+features = extractor.extract_features_batch(
+    image_paths=df['longName'].tolist(),
+    data_dir=Path("data/images")
+)
+```
+
+### 3. Clustering
+
+```python
+from src.clustering import ClusteringPipeline
+
+clustering = ClusteringPipeline(n_clusters=8)
+embeddings_2d, labels = clustering.fit_transform(features)
+```
+
+### 4. Diversity Selection
+
+```python
+from src.diversity_selector import DiversitySelector
+
+selector = DiversitySelector(n_samples=34)
+selected_indices = selector.select(
+    features,
+    metadata=df,
+    temporal_weight=0.2
+)
+```
+
+### Pre-selection / Seeding (optional)
+
+Wenn bereits annotierte Kacheln vorhanden sind (z. B. Hamburg), können diese als *Seed* in den Selektionsprozess integriert werden, sodass der Algorithmus die verbleibenden N-1 Samples optimiert.
+
+Beispiel (Config):
+```yaml
+selection:
+  pre_selected_names: ['Hamburg']  # oder pre_selected_indices: [145]
+```
+
+Das ist wissenschaftlich sauber: es handelt sich um eine Randbedingung (conditional selection), keine nachträgliche Manipulation der Ergebnisse.
+
+## Jupyter Notebooks
+
+Für interaktive Exploration stehen Notebooks im `notebooks/` Verzeichnis zur Verfügung:
+
+```bash
+jupyter notebook notebooks/
+```
+
+Empfohlene Notebooks (zu erstellen):
+- `01_data_exploration.ipynb`: CSV-Analyse und Visualisierung
+- `02_feature_analysis.ipynb`: Feature-Extraktion testen
+- `03_clustering_experiments.ipynb`: Cluster-Parameter optimieren
+- `04_selection_validation.ipynb`: Ergebnisse validieren
+
+## Anpassungen und Erweiterungen
+
+### Alternatives Modell verwenden
+
+```python
+# In config/pipeline_config.yaml
+feature_extraction:
+  model: "dinov2"  # Statt resnet50
+```
+
+## Aufräumen & freigeben von Speicherplatz 🔧
+
+Große, generierte Artefakte wie `data/images/`, lokale virtuelle Umgebungen (`.venv`, `venv/`) oder `outputs/validation/` sollten nicht im Git-Repository versioniert werden.
+
+- `.gitignore` wurde erweitert, um typische Artefakte auszuschließen.
+- Ein sicheres Script steht zur Verfügung, um Kandidaten zu listen, zu archivieren oder optional zu löschen:
+
+```bash
+# nur prüfen
+python scripts/clean_workspace.py --dry-run
+
+# Ausgewählte Ordner löschen (vorsichtig!)
+python scripts/clean_workspace.py --delete-outputs --delete-venvs
+
+# Archivieren
+python scripts/clean_workspace.py --archive data/images /path/to/archive.tar.gz
+```
+
+Bitte prüfen Sie die Ausgabe des Dry-Runs, bevor Sie etwas löschen. Wenn Dateien bereits in Git committed sind, entfernen Sie diese erst aus dem Repo (z. B. `git rm -r --cached <path>`) und committen Sie die `.gitignore`-Änderung.
+
+### Mehr Cluster
+
+```python
+# In config/pipeline_config.yaml
+clustering:
+  n_clusters: 12  # Mehr granulare Gruppierung
+```
+
+### Zeitliche Gewichtung erhöhen
+
+```python
+# In config/pipeline_config.yaml
+selection:
+  temporal_weight: 0.5  # Höheres Gewicht auf zeitliche Diversität
+```
+
+## Wissenschaftliche Grundlagen
+
+### Facility Location Function
+
+Die submodulare Optimierung maximiert folgende Zielfunktion:
+
+$$
+F(S) = \sum_{i \in V} \max_{j \in S} \text{sim}(i, j)
+$$
+
+wobei $S$ die Auswahl, $V$ alle Samples und $\text{sim}$ eine Ähnlichkeitsfunktion ist.
+
+### UMAP
+
+Uniform Manifold Approximation and Projection reduziert hochdimensionale Features unter Erhalt der topologischen Struktur:
+
+- **Metrik**: Cosine-Similarity (optimal für visuelle Features)
+- **n_neighbors**: Kontrolliert lokale vs. globale Struktur
+- **min_dist**: Minimale Distanz zwischen Punkten in 2D
+
+## Troubleshooting
+
+### CUDA nicht verfügbar
+
+```python
+# In config/pipeline_config.yaml
+feature_extraction:
+  device: "cpu"  # Erzwingt CPU-Nutzung
+```
+
+### Out of Memory bei Feature Extraction
+
+```python
+# Reduziere Batch Size
+feature_extraction:
+  batch_size: 4  # Statt 8
+```
+
+### Zu wenige Samples passieren räumlichen Filter
+
+```python
+# Verringere Mindestdistanz
+selection:
+  min_distance_km: 25.0  # Statt 50.0
+```
+
+## Entwicklungsrichtlinien
+
+- **Type Hints**: Alle Funktionen verwenden Type Annotations
+- **Docstrings**: Google-Style Dokumentation
+- **Modularität**: Jede Komponente als eigenständiges Modul
+- **Konfigurierbarkeit**: Parameter in YAML auslagern
+
+## Lizenz
+
+[Lizenz hier einfügen]
+
+## Kontakt
+
+[Kontaktinformationen]
+
+## Referenzen
+
+- ResNet: He et al., "Deep Residual Learning for Image Recognition" (2016)
+- UMAP: McInnes et al., "UMAP: Uniform Manifold Approximation and Projection" (2018)
+- Submodular Optimization: Krause & Golovin, "Submodular Function Maximization" (2014)
+
+> **Hinweis:**
+> Der empfohlene Default für `min_distance_km` ist 50.0 km (siehe `config/pipeline_config.yaml`).
+> In Experimenten und Skripten sollte dieser Wert übernommen werden, um räumliche Diversität zu gewährleisten.
+> Das Logging gibt explizit an, ob der räumliche Constraint aktiv ist (`min_dist=...km`) oder deaktiviert (`min_dist=0.0km (disabled)`).

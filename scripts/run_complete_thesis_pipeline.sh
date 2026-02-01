@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 ################################################################################
 # Complete Thesis Production Pipeline Orchestrator
 # 
@@ -34,8 +34,6 @@ DATASELECTOR_ENV="dataselector"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUTS_DIR="${ROOT}/outputs"
 LOGS_DIR="${OUTPUTS_DIR}"
-# Allow overriding data directory for tests
-DATA_DIR="${DATA_DIR:-${ROOT}/data}"
 
 # Create outputs directory
 mkdir -p "${OUTPUTS_DIR}"
@@ -61,8 +59,8 @@ log_warning() {
 check_environment() {
     log_info "Prüfe Umgebung..."
 
-    # Prefer canonical wrapper if available (skip if SKIP_EXEC_IN_ENV=1)
-    if [ "${SKIP_EXEC_IN_ENV:-0}" != "1" ] && [ -f "${ROOT}/scripts/exec_in_env.sh" ]; then
+    # Prefer canonical wrapper if available
+    if [ -f "${ROOT}/scripts/exec_in_env.sh" ]; then
         RUNNER="${ROOT}/scripts/exec_in_env.sh --env ${DATASELECTOR_ENV} --"
         # Ensure env exists (create if missing) non-interactively
         echo "Ensuring environment '${DATASELECTOR_ENV}' exists (using exec_in_env.sh)"
@@ -115,7 +113,7 @@ step_1_sampler_suite() {
     
     # Run sampler suite WITHOUT timeout constraints
     timeout_val="" # No timeout
-    ${RUNNER} python -m dataselector sampler-suite -- \
+    ${RUNNER} python scripts/run_thesis_sampler_suite.py \
         --seeds 42 43 44 45 46 47 48 49 50 51 \
         --n-trials 1000 \
         --datasets hamburg kdr100 \
@@ -155,14 +153,8 @@ step_2_xxl_pipeline() {
     
     # Read best_sampler and autoscale results from Schritt 1
     if [ -f "${OUTPUTS_DIR}/selected_sampler.json" ]; then
-        # Be robust to optional whitespace in the JSON formatting when extracting the best sampler
-        BEST_SAMPLER=$(grep -o '"best"[[:space:]]*:[[:space:]]*"[^"]*' "${OUTPUTS_DIR}/selected_sampler.json" | cut -d'"' -f4 || true)
-        if [ -z "${BEST_SAMPLER}" ]; then
-            BEST_SAMPLER="tpe"
-            log_warning "Could not parse best sampler from selected_sampler.json; defaulting to TPE"
-        else
-            log_info "Best Sampler (from suite): $BEST_SAMPLER"
-        fi
+        BEST_SAMPLER=$(grep -o '"best":"[^"]*' "${OUTPUTS_DIR}/selected_sampler.json" | cut -d'"' -f4)
+        log_info "Best Sampler (from suite): $BEST_SAMPLER"
     else
         BEST_SAMPLER="tpe"
         log_warning "No best sampler found, defaulting to TPE"
@@ -171,20 +163,11 @@ step_2_xxl_pipeline() {
     if [ -f "${OUTPUTS_DIR}/optuna_autoscale_selected_n_samples.txt" ]; then
         AUTOSCALE_N_SAMPLES=$(cat "${OUTPUTS_DIR}/optuna_autoscale_selected_n_samples.txt")
         log_info "Autoscale n_samples: $AUTOSCALE_N_SAMPLES"
-    else
-        log_error "Autoscale outputs missing: ${OUTPUTS_DIR}/optuna_autoscale_selected_n_samples.txt. Run 'python -m dataselector autoscale -- ...' before invoking the XXL pipeline."
-        exit 1
     fi
     
-    # If a small test config is provided (e.g., via monitor tests), run XXL in smoke mode
-    if [ -n "${CONFIG_PATH:-}" ]; then
-        log_info "CONFIG_PATH set -> running XXL in smoke mode for faster, deterministic test runs"
-        ${RUNNER} python -m dataselector xxl-monitor -- --best-sampler "$BEST_SAMPLER" --smoke 2>&1 | tee "${LOGS_DIR}/XXL_FULL_RUN_monitor.log"
-    else
-        ${RUNNER} python -m dataselector xxl-monitor -- \
-            --best-sampler "$BEST_SAMPLER" \
-            2>&1 | tee "${LOGS_DIR}/XXL_FULL_RUN_monitor.log"
-    fi
+    ${RUNNER} python scripts/xxl_KDR146_run_thesis_complete_modern.py \
+        --best-sampler "$BEST_SAMPLER" \
+        2>&1 | tee "${LOGS_DIR}/XXL_FULL_RUN.log"
     
     if [ $? -ne 0 ]; then
         log_error "XXL Pipeline fehlgeschlagen!"
@@ -201,44 +184,17 @@ step_2_xxl_pipeline() {
 
 # Add CLI argument parsing for dry-run
 DRY_RUN=0
-SHOW_HELP=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run)
             DRY_RUN=1; shift ;;
-        --with-benchmarks)
-            WITH_BENCHMARKS=1; shift ;;
-        --with-reports)
-            WITH_REPORTS=1; shift ;;
         --env)
             DATASELECTOR_ENV="$2"; shift 2 ;;
-        -h|--help)
-            SHOW_HELP=1; shift ;;
         *)
             # pass through other args
             shift ;;
     esac
 done
-
-if [ "$SHOW_HELP" -eq 1 ]; then
-    cat <<'EOF'
-Complete Thesis Production Pipeline Orchestrator
-
-Usage:
-  bash scripts/run_complete_thesis_pipeline.sh [--env <name>] [--dry-run]
-
-Canonical CLI entrypoint:
-  python -m dataselector thesis-pipeline -- [--env <name>] [--dry-run]
-
-Options:
-  --env <name>   Conda/mamba environment name to use (default: dataselector)
-  --dry-run      Run minimal autoscale + sampler-suite + XXL smoke
-  --with-benchmarks  Run benchmark-sampling first and fail-fast if it fails
-  --with-reports     Require report generation during XXL finalization (fail-fast)
-  -h, --help     Show this help and exit
-EOF
-    exit 0
-fi
 
 preflight_check() {
     log_info "Running preflight checks..."
@@ -273,21 +229,23 @@ PY
     fi
 
     # Check presence of important files
-    if [ ! -f "${DATA_DIR}/new_all_tiles.csv" ]; then
+    if [ ! -f "${ROOT}/data/new_all_tiles.csv" ]; then
         log_warning "data/new_all_tiles.csv not found - attempting to regenerate from image sidecars..."
         if [ -f "${ROOT}/scripts/build_new_all_tiles.py" ]; then
             # Prefer running inside canonical env wrapper if available
             if [ -f "${ROOT}/scripts/exec_in_env.sh" ]; then
-                ${ROOT}/scripts/exec_in_env.sh --env ${DATASELECTOR_ENV} -- python "${ROOT}/scripts/build_new_all_tiles.py" --image-dir "${DATA_DIR}/images" || {
+                ${ROOT}/scripts/exec_in_env.sh --env ${DATASELECTOR_ENV} -- python "${ROOT}/scripts/build_new_all_tiles.py" --image-dir "${ROOT}/data/images" || {
                     log_warning "Regeneration of new_all_tiles.csv failed - scripts will fall back to defaults"
                 }
+                
+                # Also ensure we prefer running subsequent helper scripts via RUNNER when available
             else
                 if [ -n "${RUNNER:-}" ]; then
-                    ${RUNNER} python "${ROOT}/scripts/build_new_all_tiles.py" --image-dir "${DATA_DIR}/images" || {
+                    ${RUNNER} python "${ROOT}/scripts/build_new_all_tiles.py" --image-dir "${ROOT}/data/images" || {
                         log_warning "Regeneration of new_all_tiles.csv failed - scripts will fall back to defaults"
                     }
                 else
-                    ./scripts/exec_in_env.sh --env dataselector -- python "${ROOT}/scripts/build_new_all_tiles.py" --image-dir "${DATA_DIR}/images" || {
+                    python "${ROOT}/scripts/build_new_all_tiles.py" --image-dir "${ROOT}/data/images" || {
                         log_warning "Regeneration of new_all_tiles.csv failed - scripts will fall back to defaults"
                     }
                 fi
@@ -297,17 +255,10 @@ PY
         fi
     fi
 
-    if [ ! -f "${ROOT}/scripts/optuna_autoscale.py" ] || [ ! -f "${ROOT}/scripts/compare_samplers_multi_seed.py" ]; then
-        log_error "One or more pipeline scripts are missing (optuna_autoscale.py, compare_samplers_multi_seed.py)"
+    if [ ! -f "${ROOT}/scripts/optuna_autoscale.py" ] || [ ! -f "${ROOT}/scripts/compare_samplers_multi_seed.py" ] || [ ! -f "${ROOT}/scripts/xxl_KDR146_run_thesis_complete_modern.py" ]; then
+        log_error "One or more pipeline scripts are missing (optuna_autoscale.py, compare_samplers_multi_seed.py, xxl_KDR146_run_thesis_complete_modern.py)"
         return 1
     fi
-
-    # Check shell script syntax to catch errors early
-    if ! bash -n "${ROOT}/scripts/run_complete_thesis_pipeline.sh"; then
-        log_error "Shell script syntax error detected in run_complete_thesis_pipeline.sh"
-        return 1
-    fi
-    log_success "Shell script syntax check passed"
 
     log_success "Preflight checks passed (with warnings if any)"
     return 0
@@ -321,23 +272,19 @@ dry_run() {
 
     # Minimal autoscale
     log_info "Running minimal Autoscale (small stages)"
-    ${ROOT}/scripts/exec_in_env.sh --env ${DATASELECTOR_ENV} -- python -m dataselector autoscale -- --n-candidates 50 --stages 40 80 --n-trials 2 2 --patience 1 2>&1 | tee "${LOGS_DIR}/dry_autoscale.log"
+    ${ROOT}/scripts/exec_in_env.sh --env ${DATASELECTOR_ENV} -- python scripts/optuna_autoscale.py --n-candidates 50 --stages 40 80 --n-trials 2 2 --patience 1 2>&1 | tee "${LOGS_DIR}/dry_autoscale.log"
 
     # Minimal sampler suite (no autoscale, short trials)
     log_info "Running minimal Sampler Suite (1 seed × 5 trials)"
-    ${ROOT}/scripts/exec_in_env.sh --env ${DATASELECTOR_ENV} -- python -m dataselector sampler-suite -- --seeds 42 --n-trials 5 --n-trials-full 5 --datasets hamburg --samplers qmc tpe cmaes --no-autoscale --n-candidates 50 2>&1 | tee "${LOGS_DIR}/dry_sampler_suite.log"
+    ${ROOT}/scripts/exec_in_env.sh --env ${DATASELECTOR_ENV} -- python scripts/run_thesis_sampler_suite.py --seeds 42 --n-trials 5 --n-trials-full 5 --datasets hamburg --samplers qmc tpe cmaes --no-autoscale --n-candidates 50 2>&1 | tee "${LOGS_DIR}/dry_sampler_suite.log"
 
     # XXL stub (reads selected_sampler.json if present)
     BEST="tpe"
     if [ -f "${OUTPUTS_DIR}/selected_sampler.json" ]; then
         BEST=$(grep -o '"best":"[^\"]*' "${OUTPUTS_DIR}/selected_sampler.json" | cut -d'"' -f4 || echo "tpe")
     fi
-    log_info "Running XXL stub with best sampler: ${BEST} (dry-run mode)"
-    EXTRA_ARGS=""
-    if [ "${WITH_REPORTS:-0}" = "1" ]; then
-        EXTRA_ARGS="${EXTRA_ARGS} --require-reports"
-    fi
-    ${ROOT}/scripts/exec_in_env.sh --env ${DATASELECTOR_ENV} -- python -m dataselector xxl -- --best-sampler ${BEST} --dry-run ${EXTRA_ARGS} 2>&1 | tee "${LOGS_DIR}/dry_xxl.log"
+    log_info "Running XXL stub with best sampler: ${BEST}"
+    ${ROOT}/scripts/exec_in_env.sh --env ${DATASELECTOR_ENV} -- python scripts/xxl_KDR146_run_thesis_complete_modern.py --best-sampler ${BEST} 2>&1 | tee "${LOGS_DIR}/dry_xxl.log"
 
     log_success "Dry run complete. Check logs: ${LOGS_DIR}/dry_*.log"
 }
@@ -349,17 +296,6 @@ main() {
     log_info ""
 
     check_environment
-
-    # Optional thesis-grade benchmark step (fail-fast)
-    if [ "${WITH_BENCHMARKS:-0}" = "1" ]; then
-        log_info "Running benchmark-sampling (fail-fast)"
-        ${ROOT}/scripts/exec_in_env.sh --env ${DATASELECTOR_ENV} -- python -m dataselector benchmark-sampling -- --require-methods sobol lhs random 2>&1 | tee "${LOGS_DIR}/benchmark_sampling.log"
-        if [ $? -ne 0 ]; then
-            log_error "benchmark-sampling failed; aborting as requested"
-            exit 1
-        fi
-        log_success "benchmark-sampling complete"
-    fi
 
     if [ "$DRY_RUN" -eq 1 ]; then
         dry_run
