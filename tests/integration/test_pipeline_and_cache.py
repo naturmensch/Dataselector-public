@@ -119,6 +119,10 @@ def test_feature_cache_validation_reextracts(tmp_path, monkeypatch):
             df["image_path"] = df.get("image_path", pd.Series([None] * len(df)))
             return df
 
+        def ensure_metric_crs(self, target_epsg: int = 25832):
+            """Return None if no GeoDataFrame available (expected in this test)."""
+            return None
+
     fake_meta.MetadataProcessor = _MP
 
     monkeypatch.setitem(sys.modules, "src.feature_extractor", fake_feat)
