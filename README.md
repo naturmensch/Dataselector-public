@@ -88,33 +88,41 @@ Der vollständige, wissenschaftlich fundierte Ablauf besteht aus drei klaren Pha
 
 1. **Autoscale** (`scripts/optuna_autoscale.py`) — gestufte Suche nach sinnvoller `n_samples` und globalen Hyperparametern (Stages z.B. 50 → 100 → 300 → full). Ergebnis: `outputs/optuna_autoscale_selected_n_samples.txt` und `outputs/optuna_autoscale_best_latest.json`.
 
-2. **Sampler Suite** (`scripts/run_thesis_sampler_suite.py`) — Vergleicht Sampler (QMC, TPE, CMA‑ES) über mehrere Seeds und verwendet die Autoscale‑Ergebnisse zur Einschränkung der Suchräume (Constrained Bounds). Ergebnis: `outputs/selected_sampler.json` und per‑run `results/`-Ordner.
+2. **Sampler Suite** (`scripts/run_thesis_sampler_suite.py`) — Vergleicht Sampler (QMC, TPE, CMA‑ES) über mehrere Seeds und verwendet die Autoscale‑Ergebnisse zur Einschränkung der Suchräume (Constrained Bounds). Ergebnis: `outputs/selected_sampler.json` und per‑run `results/`-Ordner (prefer CLI: `python -m dataselector sampler-suite -- …`).
 
-3. **XXL Pipeline (Phases 0–5)** (`scripts/xxl_KDR146_run_thesis_complete_modern.py`) — Validierung (Phase 0), große Optimierungsläufe (Phase 1–4), Bootstrap UQ (Phase 5) und Erstellung der Thesis‑Artefakte.
+3. **XXL Pipeline (Phases 0–5)** — Validierung (Phase 0), große Optimierungsläufe (Phase 1–4), Bootstrap UQ (Phase 5) und Erstellung der Thesis‑Artefakte.
+
+   Canonical entrypoint:
+   ```bash
+   python -m dataselector xxl -- --help
+   python -m dataselector xxl -- --best-sampler tpe
+   ```
+
+   (Implementation note: the CLI currently forwards to `scripts/xxl_KDR146_run_thesis_complete_modern.py` as the runner; do not call the script directly from docs/tests.)
 
 Für die komplette Ausführung nutze das zentrale Orchestrator‑Skript (modernisiert):
 
 ```bash
 # Vollständige Orchestrierung (Autoscale → Sampler Suite → XXL)
-bash scripts/run_complete_thesis_pipeline.sh
+python -m dataselector thesis-pipeline --
 ```
 
 Wenn Sie nur die Sampler-Suite mit Autoscale ausführen möchten:
 
 ```bash
-python scripts/run_thesis_sampler_suite.py --autoscale
+python -m dataselector sampler-suite -- --autoscale
 ```
 
 Und falls Sie die Suite ohne Autoscale durchführen wollen (z.B. mit festem n_samples):
 
 ```bash
-python scripts/run_thesis_sampler_suite.py --no-autoscale --n-samples 38
+python -m dataselector sampler-suite -- --no-autoscale --n-samples 38
 ```
 
 Nur die moderne XXL‑Orchestration (z.B. nach erfolgreicher Suite) läuft so:
 
 ```bash
-python scripts/xxl_KDR146_run_thesis_complete_modern.py --best-sampler tpe
+python -m dataselector xxl -- --best-sampler tpe
 ```
 
 Hinweis: Die Orchestrator‑Skripte prüfen die Existenz von Artefakten im `outputs/`-Verzeichnis (`optuna_autoscale_*`, `selected_sampler.json`) und verwenden diese automatisiert. Die Skripte brauchen eine Umgebung mit `optuna` installiert, wenn Optuna‑Phasen ausgeführt werden.
@@ -163,28 +171,28 @@ Hinweis: Die Make-Targets verwenden `./scripts/exec_in_env.sh` und stellen siche
 Die empfohlene Methode ist die 3‑Phasen Orchestrierung (Autoscale → Sampler Suite → XXL). Für den kompletten Durchlauf benutze:
 
 ```bash
-bash scripts/run_complete_thesis_pipeline.sh
+python -m dataselector thesis-pipeline --
 ```
 
 Alternativen für gezielte Ausführung einzelner Schritte:
 
 - Nur Autoscale (Schneller Test / Debugging):
 ```bash
-python scripts/optuna_autoscale.py --n-trials 20 --stages 50 100 --n-candidates 100
+python -m dataselector autoscale -- --n-trials 20 --stages 50 100 --n-candidates 100
 ```
 
 - Sampler Suite (mit oder ohne Autoscale):
 ```bash
 # Mit automatischem Autoscale
-python scripts/run_thesis_sampler_suite.py --autoscale
+python -m dataselector sampler-suite -- --autoscale
 
 # Ohne Autoscale, mit festem n_samples
-python scripts/run_thesis_sampler_suite.py --no-autoscale --n-samples 38
+python -m dataselector sampler-suite -- --no-autoscale --n-samples 38
 ```
 
 - Nur XXL Pipeline (nach Suite):
 ```bash
-python scripts/xxl_KDR146_run_thesis_complete_modern.py --best-sampler tpe
+python -m dataselector xxl -- --best-sampler tpe
 ```
 
 Die allgemeinen Pipeline-Schritte (Metadaten → Feature Extraction → Clustering → Selection → Visualisierung) bleiben als konzeptionelles Gerüst erhalten; die Orchestrations-Skripte fügen die wissenschaftlichen Optimierungs- und Validierungsphasen hinzu (Autoscale / Sampler‑Suite / XXL).
