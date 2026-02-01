@@ -1,8 +1,5 @@
 import json
-<<<<<<< HEAD
 import os
-=======
->>>>>>> origin/feat/cache-by-hash
 import subprocess
 from pathlib import Path
 
