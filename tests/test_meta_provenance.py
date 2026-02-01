@@ -2,20 +2,11 @@ import json
 
 import numpy as np
 import pandas as pd
-import pytest
 
-pytestmark = pytest.mark.integration
-
-
-@pytest.fixture(scope="module")
-def experiments_module():
-    pytest.importorskip("numba", exc_type=ImportError)
-    import importlib
-
-    return importlib.import_module("src.experiments")
+from src import experiments as experiments_module
 
 
-def test_meta_provenance_includes_versions(tmp_path, monkeypatch, experiments_module):
+def test_meta_provenance_includes_versions(tmp_path, monkeypatch):
     # Create minimal metadata CSV
     meta_df = pd.DataFrame(
         {

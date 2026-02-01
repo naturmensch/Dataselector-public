@@ -1,17 +1,7 @@
 import numpy as np
 import pandas as pd
-import pytest
 
-pytestmark = pytest.mark.integration
-
-
-@pytest.fixture(scope="module")
-def ExperimentRunner():
-    pytest.importorskip("numba", exc_type=ImportError)
-    import importlib
-
-    mod = importlib.import_module("src.experiments")
-    return mod.ExperimentRunner
+from src.experiments import ExperimentRunner
 
 
 def _fake_meta():
@@ -25,7 +15,7 @@ def _fake_meta():
     )
 
 
-def test_early_stopping(monkeypatch, tmp_path, ExperimentRunner):
+def test_early_stopping(monkeypatch, tmp_path):
     runner = ExperimentRunner(output_dir=str(tmp_path))
 
     # Monkeypatch loading and feature extraction to be lightweight

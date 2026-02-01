@@ -15,7 +15,7 @@ Run a full E2E test locally (manual)
 1) Activate env (example) or use the helper script `scripts/exec_in_env.sh`:
 
    # Create or update the conda environment with pinned deps
-   ./scripts/exec_in_env.sh --env dataselector --create --ensure-packages "numpy<2.4 numba=0.63.1" --yes -- python -c "import numpy; print(numpy.__version__)"
+   ./scripts/exec_in_env.sh --env dataselector --create --ensure-packages "numpy==1.26.4 numba==0.63.1" --yes -- python -c "import numpy; print(numpy.__version__)"
 
    # Or with conda/mamba directly
    conda env create -f environment.yml -n dataselector

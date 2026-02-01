@@ -121,8 +121,8 @@ def test_feature_cache_validation_reextracts(tmp_path, monkeypatch):
 
     fake_meta.MetadataProcessor = _MP
 
-    sys.modules["src.feature_extractor"] = fake_feat
-    sys.modules["src.metadata_processor"] = fake_meta
+    monkeypatch.setitem(sys.modules, "src.feature_extractor", fake_feat)
+    monkeypatch.setitem(sys.modules, "src.metadata_processor", fake_meta)
 
     # ensure src.cache is loadable
     spec = importlib.util.spec_from_file_location("src.cache", REPO_ROOT / "src" / "cache.py")
