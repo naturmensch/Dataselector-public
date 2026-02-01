@@ -21,10 +21,8 @@ def main() -> int:
     min_distance_km = cfg.get("selection", {}).get("min_distance_km", 40.0)
     batch_size = cfg.get("feature_extraction", {}).get("batch_size", 8)
 
-=======
     OUT = ROOT / "outputs" / "seed_benchmark"
     OUT.mkdir(parents=True, exist_ok=True)
->>>>>>> chore/ci-lint-attrs-gdf
 
     # Runtime imports to avoid heavy deps at import-time
     from src.clustering import ClusteringPipeline

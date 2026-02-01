@@ -28,8 +28,6 @@ def choose_best_sampler(results_dir: Path):
                 indent=2,
             )
         )
-=======
->>>>>>> chore/ci-lint-attrs-gdf
     except Exception as e:
         print(f"ERROR selecting best sampler: {e}")
         sys.exit(1)

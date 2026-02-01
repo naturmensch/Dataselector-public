@@ -58,11 +58,9 @@ def bootstrap_selection(
 
         # Compute metrics on original data
         metrics = compute_metrics(mapped, metadata, cluster_labels_full, features)
-=======
         metrics["jaccard_with_original"] = jaccard(mapped, original_selection)
         metrics["bootstrap_iteration"] = i
         metrics["n_samples"] = len(mapped)
->>>>>>> chore/ci-lint-attrs-gdf
         results.append(metrics)
 
     return pd.DataFrame(results)
@@ -88,7 +86,6 @@ def summarize_bootstrap(df_boot, original_metrics):
 
 def main():
     parser = argparse.ArgumentParser(
-=======
         description="Bootstrap UQ for final Optuna selection"
     )
     parser.add_argument("--run-dir", required=True, help="Path to run directory")
@@ -96,7 +93,6 @@ def main():
         "--n-boot", type=int, default=500, help="Number of bootstrap iterations"
     )
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
->>>>>>> chore/ci-lint-attrs-gdf
     args = parser.parse_args()
 
     run_dir = Path(args.run_dir)
@@ -105,17 +101,13 @@ def main():
         return 1
 
     # Load best trial configuration
-=======
     best_trial_file = run_dir / "results" / "best_trial.json"
->>>>>>> chore/ci-lint-attrs-gdf
     if not best_trial_file.exists():
         print(f"Error: best_trial.json not found in {run_dir}")
         return 1
 
     import json
-=======
 
->>>>>>> chore/ci-lint-attrs-gdf
     with open(best_trial_file) as f:
         best_trial = json.load(f)
 
@@ -160,7 +152,6 @@ def main():
         csv_meta=str(metadata_path) if metadata_path.exists() else None,
         cache=True,
     )
->>>>>>> ci/add-smoke-tests
 
     # Full clustering for metrics
     print("Computing cluster labels...")
@@ -174,7 +165,6 @@ def main():
     original_selection = ds.select(
         features=features,
         metadata=metadata,
-=======
         alpha_visual=sel_config["alpha_visual"],
         beta_spatial=sel_config["beta_spatial"],
         gamma_temporal=sel_config["gamma_temporal"],
@@ -185,7 +175,6 @@ def main():
     )
     original_metrics = compute_metrics(
         original_selection, metadata, cluster_labels_full, features
->>>>>>> chore/ci-lint-attrs-gdf
     )
 
     print(f"Original selection: {len(original_selection)} samples")
@@ -198,23 +187,19 @@ def main():
         cluster_labels_full=cluster_labels_full,
         n_boot=args.n_boot,
         random_seed=args.seed,
-=======
         pre_selected_names=sel_config.get("pre_selected_names"),
         pre_selected_indices=sel_config.get("pre_selected_indices"),
     )
 
     # Save full results
     results_file = run_dir / "results" / "bootstrap_final_selection_full.csv"
->>>>>>> chore/ci-lint-attrs-gdf
     df_boot.to_csv(results_file, index=False)
     print(f"\n✓ Saved full bootstrap results: {results_file}")
 
     # Compute and save summary
     summary = summarize_bootstrap(df_boot, original_metrics)
     summary_df = summary.to_frame().T
-=======
     summary_file = run_dir / "results" / "bootstrap_final_selection_summary.csv"
->>>>>>> chore/ci-lint-attrs-gdf
     summary_df.to_csv(summary_file, index=False)
     print(f"✓ Saved summary: {summary_file}")
 
@@ -238,14 +223,10 @@ def main():
             print(
                 f"{key:25s}: {mean:7.2f} ± {std:6.2f}  [{ci_low:7.2f}, {ci_up:7.2f}]  (orig: {orig:.2f})"
             )
-=======
->>>>>>> chore/ci-lint-attrs-gdf
     print(f"{'='*60}\n")
 
     return 0
 
 
-=======
 if __name__ == "__main__":
->>>>>>> chore/ci-lint-attrs-gdf
     sys.exit(main())

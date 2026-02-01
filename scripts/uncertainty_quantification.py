@@ -46,4 +46,3 @@ def fit_ensemble_on_bootstrap_df(
     y = df[target_col].to_numpy(dtype=float)
     models = train_ensemble(X, y, n_models=n_models, epochs=epochs)
     return models
->>>>>>> ci/add-smoke-tests

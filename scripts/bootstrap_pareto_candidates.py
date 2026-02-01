@@ -31,8 +31,6 @@ def bootstrap_candidate(
     from src.diversity_selector import DiversitySelector
     from src.metrics import compute_metrics
 
-=======
->>>>>>> chore/ci-lint-attrs-gdf
     rng = np.random.default_rng(random_seed)
     N = features.shape[0]
     results = []
@@ -74,10 +72,8 @@ def bootstrap_candidate(
         # compute metrics relative to original data using full clustering labels
         metrics = compute_metrics(mapped, metadata, cluster_labels_full, features)
         # compute jaccard with original_selection
-=======
         metrics["jaccard_with_original"] = jaccard(mapped, original_selection)
         metrics["bootstrap_i"] = i
->>>>>>> chore/ci-lint-attrs-gdf
         results.append(metrics)
 
     return pd.DataFrame(results)
@@ -94,7 +90,6 @@ def main(
     pre_selected_names=None,
     pre_selected_indices=None,
 ):
-=======
     # Local imports to keep module import-safe, but prefer module-level hooks if tests patched them
     if load_metadata is None or load_or_extract_features is None:
         from src.io import load_metadata as _load_metadata_fn
@@ -122,7 +117,6 @@ def main(
         ),
         cache=True,
     )
->>>>>>> chore/ci-lint-attrs-gdf
 
     # full clustering (for cluster labels)
     clustering = ClusteringPipeline(n_clusters=8)
@@ -184,12 +178,10 @@ def main(
                 input_cols = ["alpha", "beta", "gamma", "min_distance_km"]
                 targets = ["temporal_std", "wwi_percent", "jaccard_with_original"]
 
->>>>>>> ci/add-smoke-tests
                 preds = {}
                 X_query = [[float(alpha), float(beta), float(gamma), float(min_d)]]
                 for t in targets:
                     if t not in df_boot_train.columns:
-=======
                         preds[t] = (float("nan"), float("nan"))
                         continue
                     models = fit_ensemble_on_bootstrap_df(
@@ -199,7 +191,6 @@ def main(
                         n_models=n_ensemble_models,
                         epochs=ensemble_epochs,
                     )
->>>>>>> chore/ci-lint-attrs-gdf
                     mean, std = predict_with_uncertainty(models, np.array(X_query))
                     preds[t] = (float(mean[0]), float(std[0]))
 
@@ -278,8 +269,6 @@ def main(
                 "jaccard_mean": df_boot["jaccard_with_original"].mean(),
                 "jaccard_std": df_boot["jaccard_with_original"].std(),
                 "method": "bootstrap",
-=======
->>>>>>> chore/ci-lint-attrs-gdf
             }
 
         summary_rows.append(summary)

@@ -20,10 +20,14 @@ def pytest_sessionstart(session):
     the test run aborts with an instructive message describing how to create
     and activate the environment.
 
-    A developer can set SKIP_ENV_CHECK=1 to bypass this guard if desired.
+    A developer can set SKIP_ENV_CHECK=1 or DATASELECTOR_IGNORE_ENV_CHECK=1 to bypass this guard.
     """
     env_name = os.environ.get("DATASELECTOR_ENV_NAME", "dataselector")
     current = os.environ.get("CONDA_DEFAULT_ENV")
+    
+    # Allow bypass for testing
+    if os.environ.get("SKIP_ENV_CHECK") == "1" or os.environ.get("DATASELECTOR_IGNORE_ENV_CHECK") == "1":
+        return
 
     if current != env_name:
         msg = (
@@ -31,14 +35,9 @@ def pytest_sessionstart(session):
             "To create and activate it, run:\n\n"
             f"  mamba env create -f environment.yml -n {env_name} || mamba env update -f environment.yml -n {env_name}\n"
             f"  conda activate {env_name}\n\n"
-            "If you intentionally want to run without the conda env, set SKIP_ENV_CHECK=1 to bypass this guard (not recommended)."
+            "If you intentionally want to run without the conda env, set SKIP_ENV_CHECK=1 or DATASELECTOR_IGNORE_ENV_CHECK=1 to bypass this guard (not recommended)."
         )
-        if os.environ.get("SKIP_ENV_CHECK"):
-            print(
-                "WARNING: SKIP_ENV_CHECK set; proceeding without the recommended conda env."
-            )
-        else:
-            pytest.exit(msg)
+        pytest.exit(msg)
 
 
 @pytest.fixture(scope="session", autouse=True)

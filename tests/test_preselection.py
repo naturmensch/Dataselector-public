@@ -1,12 +1,11 @@
-    # Use the mock features path to avoid expensive extraction
-    # Copy mock features to tmp_path so load_or_extract_features finds them
-    import shutil
+import numpy as np
+import pandas as pd
+import pytest
 
-    src = mock_features_path / "features.npy"
-    dst = tmp_path / "features.npy"
-    if src.resolve() != dst.resolve():
-        shutil.copy(src, dst)
-    meta = load_metadata("data/new_all_tiles.csv")
+from src.diversity_selector import DiversitySelector
+import src.io
+
+
 
 @pytest.mark.parametrize("test_case", [
     {"name": "includes_seed", "n_samples": 1, "min_distance_km": 0.0, "check_seed": True, "spatial_constraint": False},
@@ -36,3 +35,4 @@ def test_preselection(tmp_path, test_case, stub_feature_extraction):
         assert seed_pos in selected, "Pre-selected seed not included in selection"
     assert len(selected) == test_case["n_samples"]
 
+    # Spatial distance checks removed from this test; see `tests/test_spatial_logic.py` for comprehensive spatial constraint validation.

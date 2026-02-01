@@ -57,8 +57,6 @@ def run_single_optuna(
         exp_name,
         "--exp-desc",
         f"{exp_desc} (sampler={sampler}, seed={seed})",
-=======
->>>>>>> chore/ci-lint-attrs-gdf
     ]
     if preselection_flag:
         cmd.append(preselection_flag)
@@ -70,21 +68,17 @@ def run_single_optuna(
         raise RuntimeError(f"Run failed for {sampler} seed {seed}")
 
     # Find latest run dir
-=======
     run_dirs = sorted((ROOT / "outputs" / "runs").glob(f"*{exp_name}"))
->>>>>>> chore/ci-lint-attrs-gdf
     if not run_dirs:
         out = proc.stdout or ""
         err = proc.stderr or ""
         msg = f"No run dir found for {exp_name}\nSubprocess stdout:\n{out}\nSubprocess stderr:\n{err}"
         # common hint: missing optuna in environment
-=======
         if "ModuleNotFoundError" in out or "ModuleNotFoundError" in err:
             msg += "\nHint: a ModuleNotFoundError was observed in the subprocess output; ensure required packages (e.g., optuna) are installed in the environment."
         raise FileNotFoundError(msg)
     run_dir = run_dirs[-1]
     trials_csv = run_dir / "results" / "trials.csv"
->>>>>>> chore/ci-lint-attrs-gdf
 
     # Retry loop for output integrity (filesystem latency)
     for _ in range(5):
@@ -104,7 +98,6 @@ def run_single_optuna(
         if (len(df) > 0 and (cumulative_best >= (best_val * 0.99)).any())
         else (len(df) - 1)
     )
-=======
 
     return {
         "sampler": sampler,
@@ -119,21 +112,17 @@ def run_single_optuna(
             float(threshold_idx / len(df)) if len(df) > 0 else float("nan")
         ),
         "run_dir": str(run_dir),
->>>>>>> chore/ci-lint-attrs-gdf
     }
 
 
 def compare_and_analyze(results_df: pd.DataFrame, out_dir: Path):
     out_dir.mkdir(parents=True, exist_ok=True)
     # Save raw
-=======
     raw_csv = out_dir / "per_run_results.csv"
->>>>>>> chore/ci-lint-attrs-gdf
     results_df.to_csv(raw_csv, index=False)
     print(f"Saved per-run results: {raw_csv}")
 
     # Group by sampler
-=======
     grouped = results_df.groupby("sampler")["best_value"].apply(list).to_dict()
 
     # Basic summary
@@ -142,7 +131,6 @@ def compare_and_analyze(results_df: pd.DataFrame, out_dir: Path):
         .agg(["mean", "std", "median", "count"])
         .reset_index()
     )
->>>>>>> chore/ci-lint-attrs-gdf
 
     # Bootstrap 95% CI for mean & median per sampler
     rng = np.random.default_rng(42)
@@ -166,12 +154,10 @@ def compare_and_analyze(results_df: pd.DataFrame, out_dir: Path):
                 "median_ci_hi": med_hi,
             }
         )
-=======
 
     ci_df = pd.DataFrame(ci_rows)
     summary = summary.merge(ci_df, on="sampler")
     summary_file = out_dir / "summary.csv"
->>>>>>> chore/ci-lint-attrs-gdf
     summary.to_csv(summary_file, index=False)
     print(f"Saved summary: {summary_file}")
 
@@ -179,9 +165,7 @@ def compare_and_analyze(results_df: pd.DataFrame, out_dir: Path):
     stats = []
     samplers = list(grouped.keys())
     for i in range(len(samplers)):
-=======
         for j in range(i + 1, len(samplers)):
->>>>>>> chore/ci-lint-attrs-gdf
             s1 = samplers[i]
             s2 = samplers[j]
             a = np.array(grouped[s1])
@@ -266,24 +250,20 @@ def compare_and_analyze(results_df: pd.DataFrame, out_dir: Path):
         fig, ax = plt.subplots(figsize=(10, 6))
         for s, curve in median_curves.items():
             ax.plot(curve, label=s.upper())
-=======
         ax.set_xlabel("Trial Number")
         ax.set_ylabel("Median Best Objective")
         ax.set_title("Median Convergence Curves (across seeds)")
         ax.legend()
         plt.tight_layout()
         conv_file = out_dir / "median_convergence.png"
->>>>>>> chore/ci-lint-attrs-gdf
         plt.savefig(conv_file, dpi=300)
         plt.close()
         print(f"Saved convergence plot: {conv_file}")
 
     return {
-=======
         "summary_file": str(summary_file),
         "pairwise_stats": str(out_dir / "pairwise_stats.csv"),
         "plots": [str(bp), str(conv_file) if median_curves else ""],
->>>>>>> chore/ci-lint-attrs-gdf
     }
 
 
@@ -314,9 +294,7 @@ def main():
     if args.output:
         global_out_dir = Path(args.output)
     else:
-=======
         global_out_dir = ROOT / "outputs" / "runs" / f"sampler_multi_{timestamp}"
->>>>>>> chore/ci-lint-attrs-gdf
     global_out_dir.mkdir(parents=True, exist_ok=True)
 
     all_results = []
@@ -328,7 +306,6 @@ def main():
             n_candidates = 673
         else:
             preselection_flag = None
->>>>>>> ci/add-smoke-tests
             n_candidates = args.n_candidates
 
         dataset_out = global_out_dir / dataset
@@ -345,10 +322,8 @@ def main():
                     preselection_flag,
                     f"Multi-seed comparison ({dataset})",
                     dataset=dataset,
-=======
                 )
                 meta["dataset"] = dataset
->>>>>>> chore/ci-lint-attrs-gdf
                 all_results.append(meta)
 
     df_results = pd.DataFrame(all_results)
@@ -395,10 +370,8 @@ def main():
     except Exception:
         pass
 
-=======
     return 0
 
 
 if __name__ == "__main__":
->>>>>>> chore/ci-lint-attrs-gdf
     sys.exit(main())

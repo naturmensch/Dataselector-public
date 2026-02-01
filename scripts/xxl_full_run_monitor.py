@@ -13,9 +13,7 @@ def _monitor_log(msg: str, active_log: Path) -> None:
     tsmsg = f"[{datetime.now(timezone.utc).isoformat()}] {msg}"
     print(tsmsg)
     try:
-=======
         with open(active_log, "a") as _lf:
->>>>>>> chore/ci-lint-attrs-gdf
             _lf.write(tsmsg + "\n")
     except Exception:
         pass
@@ -125,9 +123,7 @@ def run_hook(
             time.sleep(2)
 
     # Write hook meta
-=======
     meta_file = base_log_dir / f"{name}_meta_{ts}.json"
->>>>>>> chore/ci-lint-attrs-gdf
     try:
         meta_file.write_text(json.dumps(meta, indent=2))
     except Exception:
@@ -1478,16 +1474,12 @@ def main():
     print(f"PID: {process.pid}, writing logs to: {LOG_FILE}")
 
     # PID Bookkeeping
-=======
     pid_file = LOG_FILE_TS.with_suffix(".pid")
->>>>>>> chore/ci-lint-attrs-gdf
     pgid = None
     try:
         # Use getpgid if available, otherwise just use PID as best-effort
         try:
-=======
             pgid = os.getpgid(process.pid) if hasattr(os, "getpgid") else process.pid
->>>>>>> chore/ci-lint-attrs-gdf
         except Exception:
             pgid = None
         # write file with available information
@@ -1514,9 +1506,7 @@ def main():
             ret = process.poll()
             # Read newly appended log content only from the ACTIVE log file
             try:
-=======
                 with open(ACTIVE_LOG, "r") as f:
->>>>>>> chore/ci-lint-attrs-gdf
                     # Handle log rotation/truncation
                     f.seek(0, os.SEEK_END)
                     if f.tell() < last_size:
@@ -1525,9 +1515,7 @@ def main():
                     new_content = f.read()
                     last_size = f.tell()
             except Exception:
-=======
                 new_content = ""
->>>>>>> chore/ci-lint-attrs-gdf
 
             # Process only new lines to avoid repeated messages
             if new_content:
@@ -1537,9 +1525,7 @@ def main():
                     seen_lines.append(line)
 
                     # Detect running tasks (e.g., "Running 1/20: alpha=...")
-=======
                     m = re.search(r"Running\s+\d+/\d+:\s*(.+)", line)
->>>>>>> chore/ci-lint-attrs-gdf
                     if m:
                         _monitor_log(f"Starte: {m.group(1)}", ACTIVE_LOG)
                         continue
@@ -1605,13 +1591,11 @@ def main():
             xxl_dirs = sorted(xxl_dirs)
             if xxl_dirs:
                 latest_xxl = xxl_dirs[-1]
-=======
                 trials_csv = latest_xxl / "results" / "trials.csv"
 
                 if trials_csv.exists() and trials_csv.stat().st_size > 0:
                     current_size = trials_csv.stat().st_size
 
->>>>>>> chore/ci-lint-attrs-gdf
                     # Check stability: size must be stable across one poll interval
                     if trials_csv == trials_csv_candidate:
                         if current_size == trials_csv_last_size:
@@ -1622,8 +1606,6 @@ def main():
                                     f"Detected stable XXL run directory: {latest_xxl}",
                                     ACTIVE_LOG,
                                 )
-=======
->>>>>>> chore/ci-lint-attrs-gdf
                         else:
                             trials_csv_last_size = current_size
                     else:
@@ -1635,9 +1617,7 @@ def main():
                 break
 
     except KeyboardInterrupt:
-=======
         print("KeyboardInterrupt received: terminating child process group")
->>>>>>> chore/ci-lint-attrs-gdf
         # Robust shutdown sequence: SIGTERM -> wait -> SIGKILL
         try:
             if start_new_session:
@@ -1663,9 +1643,7 @@ def main():
                 process.terminate()
         except Exception:
             pass
-=======
 
->>>>>>> chore/ci-lint-attrs-gdf
         try:
             process.wait(timeout=30)
         except subprocess.TimeoutExpired:
@@ -1705,20 +1683,17 @@ def main():
             cmd_str=args.post_run_cmd,
             base_log_dir=LOG_FILE.parent,
             active_log=ACTIVE_LOG,
-=======
             timeout=600,  # Default timeout for post-run
             retries=0,
             env=env,
             start_new_session=not args.no_new_session,
             pass_dry_run=args.pre_run_dry_run,  # Reuse dry-run flag logic
->>>>>>> chore/ci-lint-attrs-gdf
         )
 
     # After process end: assemble report
     exit_code = process.returncode
     elapsed = end_time - start_time
 
-=======
     # Find latest XXL run dir
     runs_root = ROOT / "outputs" / "runs"
     xxl_dirs = (
@@ -1734,7 +1709,6 @@ def main():
         if runs_root.exists()
         else []
     )
->>>>>>> chore/ci-lint-attrs-gdf
     if xxl_dirs:
         latest_xxl = xxl_dirs[-1]
     else:
@@ -1742,9 +1716,7 @@ def main():
 
     # Load final selection if exists
     final_selection = None
-=======
     final_selection_file = ROOT / "outputs" / "THESIS_FINAL_SELECTION_XXL.json"
->>>>>>> chore/ci-lint-attrs-gdf
     if final_selection_file.exists():
         with open(final_selection_file) as f:
             final_selection = json.load(f)
@@ -1758,11 +1730,9 @@ def main():
     report_lines.append(
         f"**Run finished**: {datetime.fromtimestamp(end_time, timezone.utc).isoformat()}Z"
     )
-=======
     report_lines.append(f"**Elapsed (s)**: {elapsed:.1f}")
     report_lines.append(f"**Exit code**: {exit_code}\n")
     report_lines.append("**Process Info**:")
->>>>>>> chore/ci-lint-attrs-gdf
     report_lines.append(f"- PID: {process.pid}")
     report_lines.append(f"- PGID: {pgid if pgid is not None else 'N/A'}")
     report_lines.append(f"- Log: `{ACTIVE_LOG}`\n")
@@ -1771,7 +1741,6 @@ def main():
     for e in phase_events:
         report_lines.append(f"- {e}")
 
-=======
     report_lines.append("\n## Artifacts")
     if latest_xxl:
         report_lines.append(f"- XXL run dir: {latest_xxl}")
@@ -1794,17 +1763,14 @@ def main():
             report_lines.append(
                 f"  - trials.csv: {trials_path} (size: { trials_path.stat().st_size } bytes)"
             )
->>>>>>> chore/ci-lint-attrs-gdf
     else:
         report_lines.append("- XXL run dir: Not found")
 
     if final_selection:
         report_lines.append(f"- Final selection JSON: {final_selection_file}")
-=======
         report_lines.append(
             f"  - Best value: {final_selection.get('best_value')} @ trial #{final_selection.get('best_trial')}"
         )
->>>>>>> chore/ci-lint-attrs-gdf
         report_lines.append(f"  - n_trials recorded: {final_selection.get('n_trials')}")
     else:
         report_lines.append("- Final selection JSON: Not found")
@@ -1856,9 +1822,7 @@ def main():
                 config_issues.append(f"failed to parse config: {e}")
 
     if config_issues:
-=======
         report_lines.append("\n## Configuration issues detected")
->>>>>>> chore/ci-lint-attrs-gdf
         for issue in config_issues:
             report_lines.append(f"- {issue}")
 
@@ -1899,8 +1863,6 @@ def main():
         "config_issues": config_issues if config_issues else [],
         "pre_run": pre_run_meta,
         "post_run": post_run_meta,
-=======
->>>>>>> chore/ci-lint-attrs-gdf
     }
     try:
         report_meta.write_text(json.dumps(meta, indent=2))
@@ -1914,11 +1876,9 @@ def main():
     except Exception as e:
         _monitor_log(f"Warning: could not write latest meta: {e}", ACTIVE_LOG)
 
-=======
     print(
         f"Wrote report to: {report_md} (latest copies: {report_latest_md}, {report_latest_meta})"
     )
->>>>>>> chore/ci-lint-attrs-gdf
 
     # Also copy the ACTIVE log into the run folder for completeness (versioned)
     try:

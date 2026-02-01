@@ -47,9 +47,7 @@ if os.environ.get("DATASELECTOR_WORKSPACE"):
     OUT_DIR = Path(os.environ.get("DATASELECTOR_WORKSPACE")) / "outputs"
 else:
     OUT_DIR = Path("outputs")
-=======
 OUT_DIR = Path("outputs")
->>>>>>> chore/ci-lint-attrs-gdf
 OUT_DIR.mkdir(exist_ok=True)
 
 
@@ -740,7 +738,6 @@ if __name__ == "__main__":
         n_samples=args.n_samples,
         n_samples_min=args.n_samples_min,
         n_samples_max=args.n_samples_max,
->>>>>>> ci/add-smoke-tests
         min_distance_km=args.min_distance_km,
         min_distance_min=args.min_distance_min,
         min_distance_max=args.min_distance_max,
