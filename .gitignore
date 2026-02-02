@@ -97,6 +97,13 @@ Thumbs.db
 .cache/
 .tox/
 
+# Experiment tracking and temp outputs
+wandb/
+tmp_*/
+
+# Test data artifacts
+tests/test_data/**/images/
+
 # === Ergänzungen (von Copilot, per Anweisung) ===
 # Local archives/backups (werden nicht versioniert)
 /archive_local/

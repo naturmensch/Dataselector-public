@@ -9,7 +9,7 @@ Scans the repository (scripts/, Makefile, .github/workflows/, top-level shell sc
 - suggestions to wrap calls with exec_in_env.sh
 
 Usage:
-  ./scripts/exec_in_env.sh --env dataselector -- python scripts/check_env_usage.py [--paths scripts Makefile .github/workflows]
+  python scripts/check_env_usage.py [--paths scripts Makefile .github/workflows]
 
 Exit status: 0 if no hard issues found, 2 if suspicious direct calls are found.
 """
@@ -62,9 +62,7 @@ def scan_paths(paths):
             continue
         if p.is_dir():
             for f in sorted(p.rglob('*')):
-                if not f.is_file():
-                    continue
-                if f.suffix in {'.sh', '.py', '.yml', '.yaml', '.md'} or f.name.lower() == 'makefile' or f.suffix == '':
+                if f.is_file() and f.suffix in {'.sh', '.py', '.yml', '.yaml', '.md'} or f.name.lower() == 'makefile' or f.suffix == '':
                     findings = scan_file(f)
                     if findings:
                         report[str(f.relative_to(ROOT))] = findings
@@ -89,8 +87,7 @@ def print_report(report):
         print(f"- {path}:")
         for pat, desc, level, match, snippet in findings:
             print(f"    * [{level}] {desc}: '{match}'")
-            # Only 'bad' findings are considered failures; 'suspicious' are informational and should be addressed later
-            if level == 'bad':
+            if level in ('bad', 'suspicious'):
                 bad += 1
         print('')
     if not report:

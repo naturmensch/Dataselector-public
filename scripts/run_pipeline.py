@@ -1,13 +1,5 @@
 #!/usr/bin/env python3
-# ruff: noqa: E402
-"""Run pipeline with optional tuning.
-
-Usage:
-    ./scripts/run_pipeline.py [--tune] [--force-tune] [--tune-ttl DAYS] [--interactive]
-
-Tip: prefer running via the wrapper in automation/CI:
-  ./scripts/exec_in_env.sh --env dataselector -- python scripts/run_pipeline.py
-"""
+from __future__ import annotations
 
 import argparse
 import hashlib
@@ -16,15 +8,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
+__all__ = ["should_run_tuning"]
 
-from scripts.common import data_path
-
-# Delay heavy imports (umap/numba/torch) until needed to improve testability
-# from src.experiments import ExperimentRunner
-# from src.main import KDR100SelectionPipeline
 
 
 def _file_hash(path: Path) -> str:
@@ -130,8 +115,16 @@ def main():
     )
     args = parser.parse_args()
 
+    # Ensure project root is available on sys.path when running as script
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+
+    # Import project modules only at runtime to avoid module-level side-effects
+    from src.experiments import ExperimentRunner
+    from src.main import KDR100SelectionPipeline
+
     # Config
-    CSV_META = data_path("new_all_tiles.csv")
+    CSV_META = ROOT / "data" / "new_all_tiles.csv"
     OUT_DIR = ROOT / "outputs" / "tuning_weights"
     # Allow overriding workspace for smoke tests / CI
     if args.workspace:

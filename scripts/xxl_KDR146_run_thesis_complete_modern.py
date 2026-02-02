@@ -460,12 +460,6 @@ def finalization(dry_run: bool = False, smoke: bool = False, run_dir: Optional[P
     operations and create minimal placeholders for missing artifacts so
     E2E tests can validate expected outputs.
 
-<<<<<<< HEAD
-    If `run_dir` is provided it will be used instead of attempting to find
-    the latest XXL run directory.
-=======
-    If `run_dir` is provided, use it as the target run directory; otherwise auto-detect the latest XXL run.
->>>>>>> origin/feat/strict-autoscale-preflight
     """
     log("PHASE", "=" * 70)
     log("PHASE", "FINALIZATION: Thesis Artifacts & Reports")

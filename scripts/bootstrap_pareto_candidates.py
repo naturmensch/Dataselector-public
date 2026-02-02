@@ -1,18 +1,6 @@
 """Bootstrap-based uncertainty estimates for Pareto candidates.
 
 Usage example:
-  ./scripts/exec_in_env.sh --env dataselector -- PYTHONPATH=. python scripts/bootstrap_pareto_candidates.py --pareto outputs/fine_sweep/pareto_solutions.csv --n-boot 200 --out outputs/fine_sweep/bootstrap_results.csv                       """
-
-import argparse
-from pathlib import Path
-
-import numpy as np
-import pandas as pd
-
-ROOT = Path(__file__).resolve().parents[1]
-
-# Note: Project imports (src.*) are deferred into functions to keep this module
-# import-safe for tests and linters (avoid import-time side-effects).
 
 
 def jaccard(a, b):
@@ -48,12 +36,18 @@ def bootstrap_candidate(
     results = []
 
     for i in range(n_boot):
-        for _ in trange(1, desc=f"Boot candidate {alpha:.2f},{beta:.2f},{gamma:.2f} (iter {i+1})", leave=False):
-            pass
-
         sample_idx = rng.integers(0, N, size=N)
         boot_features = features[sample_idx]
         boot_meta = metadata.iloc[sample_idx].reset_index(drop=True)
+        # Preserve projected coords in the bootstrap sample if present
+        from src.io import attach_metric_gdf, get_metric_gdf
+
+        gdf_metric = get_metric_gdf(metadata)
+        if gdf_metric is not None:
+            attach_metric_gdf(
+                boot_meta, gdf_metric.iloc[sample_idx].reset_index(drop=True)
+            )
+
         # clustering on boot features (not used for metrics -- metrics computed on original mapping)
         clustering = ClusteringPipeline(n_clusters=8)
         try:
@@ -62,11 +56,6 @@ def bootstrap_candidate(
             # if clustering fails, continue with metrics computed on original labels
             pass
 
-        ds = DiversitySelector(
-            n_samples=len(original_selection),
-            use_multi_criteria=True,
-            random_state=int(1000 + i),
-        )
         selected_boot = ds.select(
             features=boot_features,
             metadata=boot_meta,
@@ -101,8 +90,13 @@ def main(
     pre_selected_names=None,
     pre_selected_indices=None,
 ):
-    # Local imports to keep module import-safe
-    from src.io import load_metadata, load_or_extract_features
+    # Local imports to keep module import-safe, but prefer module-level hooks if tests patched them
+    if load_metadata is None or load_or_extract_features is None:
+        from src.io import load_metadata as _load_metadata_fn
+        from src.io import load_or_extract_features as _load_or_extract_features_fn
+    else:
+        _load_metadata_fn = load_metadata
+        _load_or_extract_features_fn = load_or_extract_features
     from src.clustering import ClusteringPipeline
     from src.diversity_selector import DiversitySelector
 
@@ -110,11 +104,11 @@ def main(
 
     # load full metadata and features
     metadata = (
-        load_metadata(str(Path(ROOT) / "data" / "new_all_tiles.csv"))
+        _load_metadata_fn(str(Path(ROOT) / "data" / "new_all_tiles.csv"))
         if (Path(ROOT) / "outputs" / "metadata.csv").exists() is False
-        else pd.read_csv(Path(ROOT) / "outputs" / "metadata.csv")
+        else _load_metadata_fn(str(Path(ROOT) / "outputs" / "metadata.csv"))
     )
-    features = load_or_extract_features(
+    features = _load_or_extract_features_fn(
         Path(ROOT) / "outputs",
         csv_meta=(
             str(Path(ROOT) / "outputs" / "metadata.csv")
@@ -134,16 +128,12 @@ def main(
     summary_rows = []
 
     # option: ensemble-based UQ (faster inference after modest training)
-    use_ensemble = uq_method == "ensemble"
 
     for idx, row in pareto.iterrows():
         alpha, beta, gamma = row["alpha"], row["beta"], row["gamma"]
         min_d = row["min_distance_km"]
 
         # compute original selection on full dataset
-        ds = DiversitySelector(
-            n_samples=int(row["n_selected"]), use_multi_criteria=True, random_state=42
-        )
         selected = ds.select(
             features=features,
             metadata=metadata,
@@ -187,6 +177,7 @@ def main(
 
                 input_cols = ["alpha", "beta", "gamma", "min_distance_km"]
                 targets = ["temporal_std", "wwi_percent", "jaccard_with_original"]
+
                 preds = {}
                 X_query = [[float(alpha), float(beta), float(gamma), float(min_d)]]
                 for t in targets:
@@ -219,8 +210,11 @@ def main(
                     "method": "ensemble",
                 }
 
+                # For ensemble mode we do not record per-resample rows, only the summary.
             except Exception as e:
-                print(f"Ensemble UQ failed ({e}), falling back to standard bootstrap for this candidate")
+                print(
+                    f"Ensemble UQ failed ({e}), falling back to standard bootstrap for this candidate"
+                )
                 df_boot = bootstrap_candidate(
                     alpha,
                     beta,
@@ -258,24 +252,6 @@ def main(
                 }
         else:
             # Bootstrap
-            df_boot = bootstrap_candidate(
-                alpha,
-                beta,
-                gamma,
-                min_d,
-                features,
-                metadata,
-                original_sel,
-                cluster_labels_full,
-                n_boot=n_boot,
-                random_seed=random_seed,
-            )
-            df_boot["alpha"] = alpha
-            df_boot["beta"] = beta
-            df_boot["gamma"] = gamma
-            df_boot["min_distance_km"] = min_d
-            df_boot["n_selected"] = int(row["n_selected"])
-            df_boot["pareto_idx"] = idx
             all_boot.append(df_boot)
 
             # summary
@@ -319,7 +295,8 @@ def main(
         if not df_all.empty:
             df_all.to_csv(output_csv, index=False)
         df_summary.to_csv(
-            Path(output_csv).with_name(Path(output_csv).stem + "_summary.csv"), index=False,
+            Path(output_csv).with_name(Path(output_csv).stem + "_summary.csv"),
+            index=False,
         )
 
     # If attached to an ExperimentManager, persist into the run directory
@@ -338,6 +315,58 @@ def main(
                 "bootstrap", summary={"n_candidates": len(df_summary)}
             )
         except Exception as e:
-            print(f"Warning: could not save bootstrap results to experiment manager: {e}")
+            print(
+                f"Warning: could not save bootstrap results to experiment manager: {e}"
+            )
 
     print("Bootstrap finished. Results saved.")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--pareto",
+        type=str,
+        default=str(Path(ROOT) / "outputs" / "fine_sweep" / "pareto_solutions.csv"),
+    )
+    parser.add_argument("--n-boot", type=int, default=200)
+    parser.add_argument(
+        "--out",
+        type=str,
+        default=str(Path(ROOT) / "outputs" / "fine_sweep" / "bootstrap_results.csv"),
+    )
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--uq-method",
+        choices=["bootstrap", "ensemble"],
+        default="bootstrap",
+        help="Uncertainty quantification method to use",
+    )
+    parser.add_argument(
+        "--n-ensemble-models",
+        type=int,
+        default=5,
+        help="Number of ensemble members when using ensemble UQ",
+    )
+    parser.add_argument(
+        "--ensemble-epochs",
+        type=int,
+        default=50,
+        help="Epochs per ensemble member when training ensemble UQ",
+    )
+    parser.add_argument(
+        "--pre-names",
+        type=str,
+        nargs="*",
+        default=None,
+        help="Optional pre-selected tile names (e.g. Hamburg)",
+    )
+    parser.add_argument(
+        "--pre-indices",
+        type=int,
+        nargs="*",
+        default=None,
+        help="Optional pre-selected tile indices",
+    )
+    args = parser.parse_args()
+

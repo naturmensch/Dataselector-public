@@ -13,27 +13,30 @@ Behavior:
 
 import argparse
 import json
-import os
-import sys
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-import optuna
 import pandas as pd
 
-# ensure repo root on path
-ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if ROOT not in sys.path:
-    sys.path.insert(0, ROOT)
+# Project root (Path) - avoid modifying sys.path at import time
+ROOT = Path(__file__).resolve().parents[1]
+# Ensure 'src' package is importable when script is executed from outside repo root
+try:
+    pass  # type: ignore
+except Exception:
+    import sys as _sys
 
-from src.diversity_selector import DiversitySelector
+    if str(ROOT) not in _sys.path:
+        _sys.path.insert(0, str(ROOT))
+
+# DiversitySelector is imported at runtime in `make_objective` to avoid module-level side-effects
 
 OUT = Path("outputs")
 OUT.mkdir(exist_ok=True)
 
 
-def load_or_create_data(n=500, dim=256, seed=123):
+def load_or_create_data(n=None, dim=256, seed=123):
     features_path = OUT / "features.npy"
     metadata_path = OUT / "metadata.csv"
 
@@ -43,9 +46,14 @@ def load_or_create_data(n=500, dim=256, seed=123):
         features = load_or_extract_features(
             out_dir=OUT, csv_meta=str(metadata_path), batch_size=16, cache=False
         )
-        metadata = pd.read_csv(metadata_path)
+        # Load using loader so gdf_metric is attached if available
+        from src.io import load_metadata
+
+        metadata = load_metadata(str(metadata_path))
     else:
         rng = np.random.RandomState(seed)
+        if n is None:
+            n = 673  # Fallback
         features = rng.randn(n, dim).astype("float32")
         metadata = pd.DataFrame(
             {
@@ -62,8 +70,15 @@ def clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
 
-def make_objective(features, metadata, n_samples, min_distance_bounds):
-    def objective(trial: optuna.trial.Trial):
+def make_objective(
+    features,
+    metadata,
+    n_samples,
+    min_distance_bounds,
+    pre_selected_names=None,
+    pre_selected_indices=None,
+):
+    def objective(trial):
         a = trial.suggest_float("a", *min_distance_bounds["a"])
         b = trial.suggest_float("b", *min_distance_bounds["b"])
         c = trial.suggest_float("c", *min_distance_bounds["c"])
@@ -76,6 +91,9 @@ def make_objective(features, metadata, n_samples, min_distance_bounds):
             "min_distance_km", *min_distance_bounds["min_distance_km"]
         )
 
+        # Lazy import to avoid module-level side effects during import/pytest
+        from src.diversity_selector import DiversitySelector
+
         selector = DiversitySelector(n_samples=n_samples, use_multi_criteria=True)
         selected = selector.select(
             features,
@@ -85,6 +103,8 @@ def make_objective(features, metadata, n_samples, min_distance_bounds):
             alpha_visual=alpha,
             beta_spatial=beta,
             gamma_temporal=gamma,
+            pre_selected=pre_selected_indices,
+            pre_selected_names=pre_selected_names,
         )
 
         n_selected = len(selected)
@@ -113,6 +133,15 @@ def make_objective(features, metadata, n_samples, min_distance_bounds):
 def run_autoscale(
     n_trials_per_stage, stages_samples, features, metadata, patience=2, tol=None
 ):
+    # Optuna is an optional heavy dependency; import lazily and fail with a clear message when missing
+    try:  # pragma: no cover - environment dependent
+        import optuna
+    except Exception:
+        print(
+            "Error: optuna is required to run optuna_autoscale. Install optuna in your environment."
+        )
+        raise SystemExit(2)
+
     # Initialize global search bounds
     bounds = {
         "a": (0.01, 1.0),
@@ -131,7 +160,14 @@ def run_autoscale(
         print(
             f"\n=== Stage {stage_idx+1}/{len(stages_samples)}: n_samples={n_samples} | trials={n_trials_per_stage[stage_idx]} ==="
         )
-        objective = make_objective(features, metadata, n_samples, bounds)
+        objective = make_objective(
+            features,
+            metadata,
+            n_samples,
+            bounds,
+            pre_selected_names=args.pre_names,
+            pre_selected_indices=args.pre_indices,
+        )
 
         # Record starting trial count to slice per-stage trials later
         start_trial_count = len(study.trials)
@@ -143,6 +179,9 @@ def run_autoscale(
 
         # Plot per-stage diagnostics
         try:
+            import matplotlib
+
+            matplotlib.use("Agg")
             import matplotlib.pyplot as plt
             import seaborn as sns
 
@@ -365,10 +404,24 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--n-trials", type=int, nargs="+", default=[20, 40, 80, 160])
     parser.add_argument("--stages", nargs="+", default=["50", "100", "300", "full"])
-    parser.add_argument("--n-candidates", type=int, default=500)
+    parser.add_argument("--n-candidates", type=int, default=None)
     parser.add_argument("--dim", type=int, default=256)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--patience", type=int, default=2)
+    parser.add_argument(
+        "--pre-names",
+        type=str,
+        nargs="*",
+        default=None,
+        help="Optional pre-selected tile names (e.g. Hamburg)",
+    )
+    parser.add_argument(
+        "--pre-indices",
+        type=int,
+        nargs="*",
+        default=None,
+        help="Optional pre-selected tile indices",
+    )
 
     args = parser.parse_args()
 
@@ -376,11 +429,14 @@ if __name__ == "__main__":
         n=args.n_candidates, dim=args.dim, seed=args.seed
     )
 
+    # Resolve actual n if it was None
+    actual_n = len(features)
+
     # interpret stages
     stages = []
     for s in args.stages:
         if s == "full":
-            stages.append(min(args.n_candidates, 1000))
+            stages.append(actual_n)
         else:
             stages.append(int(s))
 

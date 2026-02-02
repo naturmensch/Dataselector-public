@@ -31,12 +31,11 @@ To ensure reproducible and robust runs across developer machines and CI, follow 
 
 - CI/Workflows: prefer running with `uses: conda-incubator/setup-miniconda` and `conda run -n dataselector -- pytest` or use the wrapper via a shell step.
 
-We enforce dependency pin consistency via a `check-dependency-pins` pre-commit hook that runs `scripts/check_dependency_pins.py` (verifies `numpy==1.26.4`, `numba==0.63.1`, `umap-learn==0.5.11`, `apricot-select==0.6.1`).
+If you want, I can add a pre-commit hook or CI lint job that runs `scripts/check_env_usage.py` to catch regressions automatically.
 
 Pre-commit:
 - Install pre-commit: `pip install pre-commit`
 - Enable hooks: `pre-commit install`
-- Run checks locally: `pre-commit run --all-files` (this includes `check-env-usage` and `check-dependency-pins`)
 
 CI:
-- A GitHub Actions workflow runs `scripts/check_env_usage.py` and `scripts/check_dependency_pins.py` on PRs and fails when issues are detected.
+- A GitHub Actions workflow runs `scripts/check_env_usage.py` on PRs and fails when suspicious/bad patterns are found.

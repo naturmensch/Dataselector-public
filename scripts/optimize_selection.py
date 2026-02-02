@@ -13,32 +13,44 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.clustering import ClusteringPipeline
-from src.diversity_selector import DiversitySelector
+# Project-level imports are deferred or lazy-initialized to prevent heavy
+# IO and side-effects at module import time. Use `_init_data()` to populate
+# `features_full` and `metadata_full` before running `run_grid()`.
 
 # Configurable parameter grid
 min_distance_vals = [40.0, 45.0, 50.0]
 temporal_weights = [0.2, 0.35, 0.5]
 # expanded a bit to explore
-n_clusters = [8, 10, 12]
+default_n_clusters = [8, 10, 12]
 
 OUT = Path("outputs")
 OUT.mkdir(exist_ok=True, parents=True)
 
-from src.io import load_metadata, load_or_extract_features
+# Lazy placeholders
+features_full = None
+metadata_full = None
 
-# Load features and metadata (cached or on-demand)
-features_full = load_or_extract_features(
-    OUT,
-    csv_meta=str(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else None,
-    batch_size=16,
-    cache=True,
-)
-metadata_full = (
-    pd.read_csv(OUT / "metadata.csv")
-    if (OUT / "metadata.csv").exists()
-    else load_metadata("data/new_all_tiles.csv")
-)
+
+def _init_data():
+    """Initialize features_full and metadata_full (called on-demand)."""
+    global features_full, metadata_full
+    if features_full is not None and metadata_full is not None:
+        return
+
+    from src.io import load_metadata, load_or_extract_features
+
+    features_full = load_or_extract_features(
+        OUT,
+        csv_meta=str(OUT / "metadata.csv") if (OUT / "metadata.csv").exists() else None,
+        batch_size=16,
+        cache=True,
+    )
+    # Load metadata via loader so any projected coordinates are attached
+    metadata_full = (
+        load_metadata(str(OUT / "metadata.csv"))
+        if (OUT / "metadata.csv").exists()
+        else load_metadata("data/new_all_tiles.csv")
+    )
 
 
 def run_grid(
@@ -46,6 +58,8 @@ def run_grid(
     sample_method: str = "first",
     random_seed: int = 0,
     out_file: str = None,
+    n_samples: int = 40,
+    n_clusters_grid: list = None,
 ):
     """Run the parameter grid; if subset is provided, operate on that subset only."""
     if subset is None:
@@ -63,11 +77,21 @@ def run_grid(
 
         features = features_full[idxs]
         metadata = metadata_full.iloc[idxs].reset_index(drop=True)
+        # preserve projected coords if available
+        from src.io import attach_metric_gdf, get_metric_gdf
+
+        if get_metric_gdf(metadata_full) is not None:
+            attach_metric_gdf(
+                metadata,
+                get_metric_gdf(metadata_full).iloc[idxs].reset_index(drop=True),
+            )
 
     results = []
 
+    clusters_to_test = n_clusters_grid if n_clusters_grid else default_n_clusters
+
     for min_d, tw, nc in itertools.product(
-        min_distance_vals, temporal_weights, n_clusters
+        min_distance_vals, temporal_weights, clusters_to_test
     ):
         run_start = time.perf_counter()
         entry = {
@@ -78,6 +102,10 @@ def run_grid(
         }
 
         try:
+            # Lazily import heavy project classes to avoid import-time side-effects
+            from src.clustering import ClusteringPipeline
+            from src.diversity_selector import DiversitySelector
+
             # Clustering
             cl = ClusteringPipeline(n_clusters=nc)
             emb, labels = cl.fit_transform(features)
@@ -86,7 +114,7 @@ def run_grid(
             )
 
             # Selection
-            sel = DiversitySelector(n_samples=40)
+            sel = DiversitySelector(n_samples=n_samples)
             print(
                 f"  [DEBUG] Calling select with: temporal_weight={tw}, min_distance_km={min_d}"
             )
@@ -126,13 +154,26 @@ def run_grid(
                 c = 2 * atan2(sqrt(a), sqrt(1 - a))
                 return R * c
 
+            # Prefer projected coordinates (_proj_x/_proj_y) when available on metadata
             pairwise = []
             idxs = list(selected_idx)
+            from src.io import get_metric_gdf
+
+            use_metric = get_metric_gdf(metadata) is not None
             for i in range(len(idxs)):
                 for j in range(i + 1, len(idxs)):
-                    r1 = metadata.iloc[idxs[i]]
-                    r2 = metadata.iloc[idxs[j]]
-                    pairwise.append(hav(r1["N"], r1["left"], r2["N"], r2["left"]))
+                    if use_metric:
+                        a = metadata.gdf_metric.loc[
+                            idxs[i], ["_proj_x", "_proj_y"]
+                        ].values.astype(float)
+                        b = metadata.gdf_metric.loc[
+                            idxs[j], ["_proj_x", "_proj_y"]
+                        ].values.astype(float)
+                        pairwise.append(float((((a - b) ** 2).sum()) ** 0.5 / 1000.0))
+                    else:
+                        r1 = metadata.iloc[idxs[i]]
+                        r2 = metadata.iloc[idxs[j]]
+                        pairwise.append(hav(r1["N"], r1["left"], r2["N"], r2["left"]))
             mean_pairwise = float(np.mean(pairwise)) if pairwise else float("nan")
 
             entry.update(
@@ -180,6 +221,16 @@ if __name__ == "__main__":
     )
     parser.add_argument("--seed", type=int, default=0, help="Random seed for sampling")
     parser.add_argument("--out", type=str, default=None, help="Output CSV file path")
+    parser.add_argument(
+        "--n-samples", type=int, default=40, help="Number of samples to select"
+    )
+    parser.add_argument(
+        "--n-clusters",
+        type=int,
+        nargs="+",
+        default=None,
+        help="List of n_clusters to test (default: 8 10 12)",
+    )
     args = parser.parse_args()
 
     df = run_grid(
@@ -187,5 +238,7 @@ if __name__ == "__main__":
         sample_method=args.sample_method,
         random_seed=args.seed,
         out_file=Path(args.out) if args.out else None,
+        n_samples=args.n_samples,
+        n_clusters_grid=args.n_clusters,
     )
     print("\nDone. Results saved.")

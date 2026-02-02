@@ -69,7 +69,7 @@ def archive_path(path: Path, archive_path: Path) -> None:
         tar.add(path, arcname=path.name)
 
 
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--dry-run", action="store_true", help="Only list candidates and sizes"

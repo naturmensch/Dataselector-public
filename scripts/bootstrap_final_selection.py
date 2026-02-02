@@ -1,42 +1,5 @@
 #!/usr/bin/env python3
 """Bootstrap uncertainty quantification for final Optuna selection.
-This extends bootstrap analysis to the actual final selection produced by Optuna,
-providing confidence intervals and stability metrics for the thesis.
-Usage:
-    ./scripts/exec_in_env.sh --env dataselector -- python scripts/bootstrap_final_selection.py --run-dir outputs/runs/<run> --n-boot 500          """
-
-import sys
-import argparse
-from pathlib import Path
-
-import numpy as np
-import pandas as pd
-
-try:
-    from scripts.common import DATA_DIR, data_path
-except Exception:
-    import sys
-    ROOT = Path(__file__).resolve().parents[1]
-    if str(ROOT) not in sys.path:
-        sys.path.insert(0, str(ROOT))
-    from scripts.common import DATA_DIR, data_path
-
-ROOT = Path(__file__).resolve().parents[1]
-
-# STARTUP ENV VALIDATION
-try:
-    if str(ROOT) not in sys.path:
-        sys.path.insert(0, str(ROOT))
-    from src.compat import validate_environment_full
-    if "--skip-env-check" not in sys.argv:
-        validate_environment_full()
-except Exception as e:
-    print(f"\n❌ STARTUP VALIDATION FAILED:\n{e}\n", file=sys.stderr)
-    print("Fix: ./scripts/exec_in_env.sh --env dataselector --create --ensure-packages 'numpy==1.26.4 numba==0.63.1' --yes -- python scripts/bootstrap_final_selection.py", file=sys.stderr)
-    sys.exit(1)
-
-# Note: Project imports (src.*) are deferred into `main` or helper functions to make
-# this module import-safe for tests and linters (avoid import-time side-effects).
 
 
 def jaccard(a, b):
@@ -68,11 +31,6 @@ def bootstrap_selection(
 
     Returns DataFrame with metrics for each bootstrap iteration.
     """
-    # Local imports to keep module import-safe
-    from tqdm import trange
-    from src.diversity_selector import DiversitySelector
-    from src.metrics import compute_metrics
-
     rng = np.random.default_rng(random_seed)
     N = features.shape[0]
     results = []
@@ -82,9 +40,6 @@ def bootstrap_selection(
         sample_idx = rng.integers(0, N, size=N)
         boot_features = features[sample_idx]
         boot_meta = metadata.iloc[sample_idx].reset_index(drop=True)
-        # Run selection on bootstrap sample
-        ds = DiversitySelector(
-            n_samples=n_samples, use_multi_criteria=True, random_state=int(1000 + i)
         )
         selected_boot = ds.select(
             features=boot_features,
@@ -114,7 +69,6 @@ def bootstrap_selection(
 def summarize_bootstrap(df_boot, original_metrics):
     """Compute summary statistics (mean, std, CI) for bootstrap results."""
     summary = {}
-
     # Key metrics to summarize
     metrics = [
         "n_selected",
@@ -127,11 +81,6 @@ def summarize_bootstrap(df_boot, original_metrics):
 
     for m in metrics:
         if m in df_boot.columns:
-            summary[f"{m}_mean"] = df_boot[m].mean()
-            summary[f"{m}_std"] = df_boot[m].std()
-            summary[f"{m}_ci_lower"] = df_boot[m].quantile(0.025)
-            summary[f"{m}_ci_upper"] = df_boot[m].quantile(0.975)
-            summary[f"{m}_original"] = original_metrics.get(m, np.nan)
     return pd.Series(summary)
 
 
@@ -140,9 +89,10 @@ def main():
         description="Bootstrap UQ for final Optuna selection"
     )
     parser.add_argument("--run-dir", required=True, help="Path to run directory")
-    parser.add_argument("--n-boot", type=int, default=500, help="Number of bootstrap iterations")
+    parser.add_argument(
+        "--n-boot", type=int, default=500, help="Number of bootstrap iterations"
+    )
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    parser.add_argument("--smoke", action="store_true", help="Smoke-mode: operate on small synthetic data if real data missing")
     args = parser.parse_args()
 
     run_dir = Path(args.run_dir)
@@ -162,7 +112,6 @@ def main():
         best_trial = json.load(f)
 
     # Load best selection config
-    config_file = run_dir / "config" / "config_best_selection.yaml"
     if config_file.exists():
         import yaml
 
@@ -185,9 +134,6 @@ def main():
     print("Bootstrap UQ for Final Selection")
     print(f"{'='*60}")
     print(f"Run: {run_dir.name}")
-    print(
-        f"Config: α={sel_config['alpha_visual']:.3f}, β={sel_config['beta_spatial']:.3f}, γ={sel_config['gamma_temporal']:.3f}"
-    )
     print(f"Min distance: {sel_config['min_distance_km']} km")
     print(f"n_samples: {sel_config['n_samples']}")
     print(f"Bootstrap iterations: {args.n_boot}")
@@ -195,56 +141,17 @@ def main():
 
     # Load data
     print("Loading metadata and features...")
-    metadata_path = ROOT / "outputs" / "metadata.csv"
+    if not metadata_path.exists():
+        metadata = load_metadata(str(ROOT / "data" / "new_all_tiles.csv"))
+    else:
+        # Ensure any cached metadata retains projected coords
+        metadata = load_metadata(str(metadata_path))
 
-    # Local imports to keep module import-safe
-    from src.io import load_metadata, load_or_extract_features
-    from src.clustering import ClusteringPipeline
-    from src.diversity_selector import DiversitySelector
-    from src.metrics import compute_metrics
-
-    try:
-        if not metadata_path.exists():
-            metadata = load_metadata(str(data_path("new_all_tiles.csv")))
-        else:
-            metadata = pd.read_csv(metadata_path)
-
-        features = load_or_extract_features(
-            ROOT / "outputs",
-            csv_meta=str(metadata_path) if metadata_path.exists() else None,
-            cache=True,
-        )
-    except FileNotFoundError as e:
-        # In smoke mode, try to collect test data automatically
-        if args.smoke:
-            print(f"Warning: {e} — attempting to collect test data for smoke mode")
-            import subprocess
-            try:
-                result = subprocess.run([
-                    "bash", "tests/scripts/collect_test_subset.sh",
-                    "--n-images", "5",
-                    "--datasets", "hamburg", "kdr100"
-                ], capture_output=True, text=True, cwd=ROOT)
-                if result.returncode == 0:
-                    print("Test data collected successfully, creating data symlink...")
-                    # Create symlink from data/ to tests/test_data/ if not exists
-                    data_dir = ROOT / "data"
-                    test_data_dir = ROOT / "tests" / "test_data"
-                    if not data_dir.exists():
-                        data_dir.symlink_to(test_data_dir, target_is_directory=True)
-                    # Retry loading data
-                    features = load_or_extract_features(
-                        ROOT / "outputs",
-                        csv_meta=str(metadata_path) if metadata_path.exists() else None,
-                        cache=True,
-                    )
-                else:
-                    raise FileNotFoundError(f"Failed to collect test data: {result.stderr}")
-            except Exception as collect_e:
-                raise FileNotFoundError(f"Real data required for smoke mode and auto-collection failed: {e}; {collect_e}") from e
-        else:
-            raise
-
+    features = load_or_extract_features(
+        ROOT / "outputs",
+        csv_meta=str(metadata_path) if metadata_path.exists() else None,
+        cache=True,
+    )
 
     # Full clustering for metrics
     print("Computing cluster labels...")
@@ -254,10 +161,6 @@ def main():
     except Exception as e:
         print(f"Warning: Clustering failed ({e}), using dummy labels")
         cluster_labels_full = np.zeros(features.shape[0], dtype=int)
-    # Compute original selection
-    print("Computing original selection...")
-    ds = DiversitySelector(
-        n_samples=sel_config["n_samples"], use_multi_criteria=True, random_state=42
     )
     original_selection = ds.select(
         features=features,
@@ -270,20 +173,14 @@ def main():
         pre_selected=sel_config.get("pre_selected_indices"),
         pre_selected_names=sel_config.get("pre_selected_names"),
     )
-    original_metrics = compute_metrics(original_selection, metadata, cluster_labels_full, features)
+    original_metrics = compute_metrics(
+        original_selection, metadata, cluster_labels_full, features
+    )
 
     print(f"Original selection: {len(original_selection)} samples")
     print(f"  Clusters: {original_metrics['clusters_covered']}")
     print(f"  Temporal std: {original_metrics['temporal_std']:.2f}")
     print(f"  Spatial mean: {original_metrics['spatial_mean_km']:.2f} km\n")
-    # Run bootstrap
-    print(f"Running {args.n_boot} bootstrap iterations...\n")
-    df_boot = bootstrap_selection(
-        alpha=sel_config["alpha_visual"],
-        beta=sel_config["beta_spatial"],
-        gamma=sel_config["gamma_temporal"],
-        min_distance_km=sel_config["min_distance_km"],
-        n_samples=sel_config["n_samples"],
         features=features,
         metadata=metadata,
         original_selection=original_selection,

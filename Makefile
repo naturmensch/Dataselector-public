@@ -81,3 +81,25 @@ restore-outputs:
 	@echo "Restore latest archive from data/archive/"
 	@./scripts/exec_in_env.sh --env $(ENV_NAME) -- python -c "import pathlib,sys; import glob; a=list(pathlib.Path('data/archive').glob('outputs_archive_*.tar.gz')); a.sort(); print('No archive found' if not a else a[-1]); sys.exit(0 if a else 1)" \
 	&& @./scripts/exec_in_env.sh --env $(ENV_NAME) -- python scripts/manage_archives.py restore --archive $(shell ./scripts/exec_in_env.sh --env $(ENV_NAME) -- python -c "import pathlib; a=list(pathlib.Path('data/archive').glob('outputs_archive_*.tar.gz')); a.sort(); print(a[-1])") --dest .
+
+# Phase 2 merge gate helpers
+.PHONY: gate-quick gate-batch-a gate-batch-b gate-comprehensive
+
+gate-quick:
+	@./scripts/validate_merge_gate.sh "Quick Gate" "make test"
+
+gate-batch-a:
+	@./scripts/validate_merge_gate.sh "Batch A Gate" "make test"
+
+gate-batch-b:
+	@./scripts/validate_merge_gate.sh "Batch B Gate" "make check-env && make test"
+
+gate-comprehensive:
+	@./scripts/validate_merge_gate.sh "Phase 2 Complete" "make check-env && make test && make test-integration"
+
+# Branch analysis
+.PHONY: branch-supersets
+
+branch-supersets:
+	@./scripts/check_branch_supersets.sh origin/integration
+

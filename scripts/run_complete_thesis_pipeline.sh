@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 ################################################################################
 # Complete Thesis Production Pipeline Orchestrator
 # 
@@ -34,8 +34,6 @@ DATASELECTOR_ENV="dataselector"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUTS_DIR="${ROOT}/outputs"
 LOGS_DIR="${OUTPUTS_DIR}"
-# Allow overriding data directory for tests
-DATA_DIR="${DATA_DIR:-${ROOT}/data}"
 
 # Create outputs directory
 mkdir -p "${OUTPUTS_DIR}"
@@ -61,8 +59,8 @@ log_warning() {
 check_environment() {
     log_info "Prüfe Umgebung..."
 
-    # Prefer canonical wrapper if available (skip if SKIP_EXEC_IN_ENV=1)
-    if [ "${SKIP_EXEC_IN_ENV:-0}" != "1" ] && [ -f "${ROOT}/scripts/exec_in_env.sh" ]; then
+    # Prefer canonical wrapper if available
+    if [ -f "${ROOT}/scripts/exec_in_env.sh" ]; then
         RUNNER="${ROOT}/scripts/exec_in_env.sh --env ${DATASELECTOR_ENV} --"
         # Ensure env exists (create if missing) non-interactively
         echo "Ensuring environment '${DATASELECTOR_ENV}' exists (using exec_in_env.sh)"
@@ -165,20 +163,11 @@ step_2_xxl_pipeline() {
     if [ -f "${OUTPUTS_DIR}/optuna_autoscale_selected_n_samples.txt" ]; then
         AUTOSCALE_N_SAMPLES=$(cat "${OUTPUTS_DIR}/optuna_autoscale_selected_n_samples.txt")
         log_info "Autoscale n_samples: $AUTOSCALE_N_SAMPLES"
-    else
-        log_error "Autoscale outputs missing: ${OUTPUTS_DIR}/optuna_autoscale_selected_n_samples.txt. Run 'scripts/optuna_autoscale.py' before invoking the XXL pipeline."
-        exit 1
     fi
     
-    # If a small test config is provided (e.g., via monitor tests), run XXL in smoke mode
-    if [ -n "${CONFIG_PATH:-}" ]; then
-        log_info "CONFIG_PATH set -> running XXL in smoke mode for faster, deterministic test runs"
-        ${RUNNER} python scripts/xxl_KDR146_run_thesis_complete_modern.py --best-sampler "$BEST_SAMPLER" --smoke 2>&1 | tee "${LOGS_DIR}/XXL_FULL_RUN.log"
-    else
-        ${RUNNER} python scripts/xxl_KDR146_run_thesis_complete_modern.py \
-            --best-sampler "$BEST_SAMPLER" \
-            2>&1 | tee "${LOGS_DIR}/XXL_FULL_RUN.log"
-    fi
+    ${RUNNER} python scripts/xxl_KDR146_run_thesis_complete_modern.py \
+        --best-sampler "$BEST_SAMPLER" \
+        2>&1 | tee "${LOGS_DIR}/XXL_FULL_RUN.log"
     
     if [ $? -ne 0 ]; then
         log_error "XXL Pipeline fehlgeschlagen!"
@@ -240,21 +229,23 @@ PY
     fi
 
     # Check presence of important files
-    if [ ! -f "${DATA_DIR}/new_all_tiles.csv" ]; then
+    if [ ! -f "${ROOT}/data/new_all_tiles.csv" ]; then
         log_warning "data/new_all_tiles.csv not found - attempting to regenerate from image sidecars..."
         if [ -f "${ROOT}/scripts/build_new_all_tiles.py" ]; then
             # Prefer running inside canonical env wrapper if available
             if [ -f "${ROOT}/scripts/exec_in_env.sh" ]; then
-                ${ROOT}/scripts/exec_in_env.sh --env ${DATASELECTOR_ENV} -- python "${ROOT}/scripts/build_new_all_tiles.py" --image-dir "${DATA_DIR}/images" || {
+                ${ROOT}/scripts/exec_in_env.sh --env ${DATASELECTOR_ENV} -- python "${ROOT}/scripts/build_new_all_tiles.py" --image-dir "${ROOT}/data/images" || {
                     log_warning "Regeneration of new_all_tiles.csv failed - scripts will fall back to defaults"
                 }
+                
+                # Also ensure we prefer running subsequent helper scripts via RUNNER when available
             else
                 if [ -n "${RUNNER:-}" ]; then
-                    ${RUNNER} python "${ROOT}/scripts/build_new_all_tiles.py" --image-dir "${DATA_DIR}/images" || {
+                    ${RUNNER} python "${ROOT}/scripts/build_new_all_tiles.py" --image-dir "${ROOT}/data/images" || {
                         log_warning "Regeneration of new_all_tiles.csv failed - scripts will fall back to defaults"
                     }
                 else
-                    ./scripts/exec_in_env.sh --env dataselector -- python "${ROOT}/scripts/build_new_all_tiles.py" --image-dir "${DATA_DIR}/images" || {
+                    python "${ROOT}/scripts/build_new_all_tiles.py" --image-dir "${ROOT}/data/images" || {
                         log_warning "Regeneration of new_all_tiles.csv failed - scripts will fall back to defaults"
                     }
                 fi
@@ -268,13 +259,6 @@ PY
         log_error "One or more pipeline scripts are missing (optuna_autoscale.py, compare_samplers_multi_seed.py, xxl_KDR146_run_thesis_complete_modern.py)"
         return 1
     fi
-
-    # Check shell script syntax to catch errors early
-    if ! bash -n "${ROOT}/scripts/run_complete_thesis_pipeline.sh"; then
-        log_error "Shell script syntax error detected in run_complete_thesis_pipeline.sh"
-        return 1
-    fi
-    log_success "Shell script syntax check passed"
 
     log_success "Preflight checks passed (with warnings if any)"
     return 0

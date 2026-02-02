@@ -6,4 +6,13 @@ target-version = ['py311']
 profile = "black"
 
 [tool.ruff]
-line-length = 88
+line-length = 100
+exclude = ["scripts/deprecated", "archive_local", ".venv", "venv", ".git", "__pycache__", "docs"]
+
+[tool.ruff.lint]
+# Temporary per-file-ignores for tests have been removed after targeted refactors.
+# If any test still needs to skip E402, add an explicit per-file-ignores entry for that test only.
+
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"

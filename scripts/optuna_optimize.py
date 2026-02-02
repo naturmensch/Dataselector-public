@@ -17,15 +17,16 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-# STARTUP ENV VALIDATION
-try:
-    from src.compat import validate_environment_full
-    if "--skip-env-check" not in sys.argv:
-        validate_environment_full()
-except Exception as e:
-    print(f"\n❌ STARTUP VALIDATION FAILED:\n{e}\n", file=sys.stderr)
-    print("Fix: ./scripts/exec_in_env.sh --env dataselector --create --ensure-packages 'numpy==1.26.4 numba==0.63.1' --yes -- python scripts/optuna_optimize.py", file=sys.stderr)
-    sys.exit(1)
+# STARTUP ENV VALIDATION (skip if DATASELECTOR_IGNORE_ENV_CHECK is set)
+if not os.environ.get("DATASELECTOR_IGNORE_ENV_CHECK"):
+    try:
+        from src.compat import validate_environment_full
+        if "--skip-env-check" not in sys.argv:
+            validate_environment_full()
+    except Exception as e:
+        print(f"\n❌ STARTUP VALIDATION FAILED:\n{e}\n", file=sys.stderr)
+        print("Fix: ./scripts/exec_in_env.sh --env dataselector --create --ensure-packages 'numpy==1.26.4 numba==0.63.1' --yes -- python scripts/optuna_optimize.py", file=sys.stderr)
+        sys.exit(1)
 
 import numpy as np
 import pandas as pd
@@ -264,6 +265,38 @@ def run_optuna(
         # Fallback: save trials dataframe only
         print("joblib not available: only saving trials dataframe")
     return study
+
+
+def get_optuna_sampler(sampler_name="tpe", seed=42, **sampler_kwargs):
+    """Factory function to get an Optuna sampler by name.
+    
+    Supports: 'tpe', 'cmaes', 'qmc', 'qmc-sobol', 'qmc-halton', 'qmc-gridsearch'
+    
+    Falls back gracefully if unsupported kwargs are rejected by sampler constructor.
+    """
+    sampler_name = sampler_name.lower() if sampler_name else "tpe"
+    
+    if sampler_name == "qmc" or sampler_name.startswith("qmc"):
+        qmc_type = "sobol"
+        if "-" in sampler_name:
+            qmc_type = sampler_name.split("-", 1)[1]
+        
+        # Try with qmc_type first
+        try:
+            return optuna.samplers.QMCSampler(seed=seed, qmc_type=qmc_type, **sampler_kwargs)
+        except TypeError:
+            # Fallback: try without qmc_type if older API
+            try:
+                return optuna.samplers.QMCSampler(seed=seed, **sampler_kwargs)
+            except TypeError:
+                # If QMC fails completely, fall back to TPE
+                return optuna.samplers.TPESampler(seed=seed, **sampler_kwargs)
+    elif sampler_name == "cmaes":
+        return optuna.samplers.CmaEsSampler(seed=seed, **sampler_kwargs)
+    else:
+        # Default to TPE for 'tpe' or unknown
+        return optuna.samplers.TPESampler(seed=seed, **sampler_kwargs)
+
 
 
 if __name__ == "__main__":

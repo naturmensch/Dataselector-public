@@ -8,9 +8,9 @@ This implementation is intentionally lightweight and robust:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict, Any
-import sqlite3
+from typing import Any, Dict
 import json
+import sqlite3
 
 try:
     import pandas as pd
