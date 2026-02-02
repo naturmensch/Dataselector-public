@@ -4,10 +4,10 @@ def main():
 
     import numpy as np
 
-    from src.clustering import ClusteringPipeline
-    from src.diversity_selector import DiversitySelector
-    from src.io import load_metadata, load_or_extract_features
-    from src.spatial_facility_location import haversine_distance
+    from dataselector.selection.clustering import ClusteringPipeline
+    from dataselector.selection.diversity_selector import DiversitySelector
+    from dataselector.data.io import load_metadata, load_or_extract_features
+    from dataselector.selection.spatial_facility_location import haversine_distance
 
     OUT = Path("outputs")
 
@@ -53,7 +53,7 @@ def main():
     wwi_fraction = float(np.sum(wwi_years) / len(years)) if len(years) > 0 else np.nan
 
     # Prefer projected coordinates if available
-    from src.io import get_metric_gdf
+    from dataselector.data.io import get_metric_gdf
 
     use_metric = get_metric_gdf(metadata) is not None
     pairwise = []

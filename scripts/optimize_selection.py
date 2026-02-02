@@ -37,7 +37,7 @@ def _init_data():
     if features_full is not None and metadata_full is not None:
         return
 
-    from src.io import load_metadata, load_or_extract_features
+    from dataselector.data.io import load_metadata, load_or_extract_features
 
     features_full = load_or_extract_features(
         OUT,
@@ -78,7 +78,7 @@ def run_grid(
         features = features_full[idxs]
         metadata = metadata_full.iloc[idxs].reset_index(drop=True)
         # preserve projected coords if available
-        from src.io import attach_metric_gdf, get_metric_gdf
+        from dataselector.data.io import attach_metric_gdf, get_metric_gdf
 
         if get_metric_gdf(metadata_full) is not None:
             attach_metric_gdf(
@@ -103,8 +103,8 @@ def run_grid(
 
         try:
             # Lazily import heavy project classes to avoid import-time side-effects
-            from src.clustering import ClusteringPipeline
-            from src.diversity_selector import DiversitySelector
+            from dataselector.selection.clustering import ClusteringPipeline
+            from dataselector.selection.diversity_selector import DiversitySelector
 
             # Clustering
             cl = ClusteringPipeline(n_clusters=nc)
@@ -157,7 +157,7 @@ def run_grid(
             # Prefer projected coordinates (_proj_x/_proj_y) when available on metadata
             pairwise = []
             idxs = list(selected_idx)
-            from src.io import get_metric_gdf
+            from dataselector.data.io import get_metric_gdf
 
             use_metric = get_metric_gdf(metadata) is not None
             for i in range(len(idxs)):

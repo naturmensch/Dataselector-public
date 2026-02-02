@@ -10,11 +10,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.clustering import ClusteringPipeline
-from src.diversity_selector import DiversitySelector
+from dataselector.selection.clustering import ClusteringPipeline
+from dataselector.selection.diversity_selector import DiversitySelector
 
 OUT = Path("outputs")
-from src.io import load_metadata, load_or_extract_features
+from dataselector.data.io import load_metadata, load_or_extract_features
 
 csv_meta = OUT / "metadata.csv"
 csv_meta = str(csv_meta) if csv_meta.exists() else None
@@ -71,7 +71,7 @@ for name, n in [("Subset N=50", 50), ("Full N=673", None)]:
         )
 
         # Spatial
-        from src.spatial_facility_location import haversine_distance
+        from dataselector.selection.spatial_facility_location import haversine_distance
 
         pairwise = []
         for i in range(len(selected)):

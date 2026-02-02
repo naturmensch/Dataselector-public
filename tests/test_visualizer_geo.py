@@ -1,6 +1,6 @@
 import pandas as pd
 
-from src.visualizer import Visualizer
+from dataselector.analysis.visualizer import Visualizer
 
 
 def test_plot_spatial_distribution_without_geo(tmp_path):

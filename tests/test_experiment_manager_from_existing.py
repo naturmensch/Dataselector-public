@@ -3,7 +3,7 @@ import json
 import pandas as pd
 import pytest
 
-from src.experiment_manager import ExperimentManager
+from dataselector.pipeline.experiment_manager import ExperimentManager
 
 pytestmark = pytest.mark.integration
 

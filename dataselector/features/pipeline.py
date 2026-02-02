@@ -22,7 +22,7 @@ def load_or_compute_features(
     library-friendly: it accepts a `TileSet` instead of ad-hoc paths.
     """
 
-    from src.io import load_or_extract_features
+    from dataselector.data.io import load_or_extract_features
 
     out_dir = Path(out_dir)
     csv_meta: Optional[str]

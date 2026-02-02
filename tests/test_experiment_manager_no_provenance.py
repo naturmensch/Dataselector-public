@@ -1,4 +1,4 @@
-from src.experiment_manager import ExperimentManager
+from dataselector.pipeline.experiment_manager import ExperimentManager
 
 
 def test_experiment_manager_no_provenance(tmp_path):

@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from src.metadata_processor import MetadataProcessor
+from dataselector.data.metadata_processor import MetadataProcessor
 
 
 def test_calculate_spatial_distance_degree_inputs_with_gdf_metric_falls_back_to_haversine():

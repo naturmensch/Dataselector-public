@@ -39,7 +39,7 @@ def _patch_modules(monkeypatch, numpy_version="1.26.4", numba_version="0.63.1", 
 @pytest.mark.unit
 def test_validate_environment_full_pass(monkeypatch):
     _patch_modules(monkeypatch)
-    import src.compat as compat
+    import dataselector.compat as compat
     res = compat.validate_environment_full(raise_on_error=True)
     # critical fields should be True
     assert res["numpy"] is True
@@ -54,7 +54,7 @@ def test_validate_environment_full_pass(monkeypatch):
 def test_validate_environment_full_numpy_mismatch(monkeypatch):
     _patch_modules(monkeypatch, numpy_version="2.4.0")
     import importlib
-    import src.compat as compat
+    import dataselector.compat as compat
     with pytest.raises(RuntimeError) as exc:
         compat.validate_environment_full(raise_on_error=True)
     assert "NumPy version mismatch" in str(exc.value) or "NumPy" in str(exc.value)
@@ -63,7 +63,7 @@ def test_validate_environment_full_numpy_mismatch(monkeypatch):
 @pytest.mark.unit
 def test_validate_environment_full_envname_mismatch(monkeypatch):
     _patch_modules(monkeypatch, prefix_contains_env=False)
-    import src.compat as compat
+    import dataselector.compat as compat
     with pytest.raises(RuntimeError) as exc:
         compat.validate_environment_full(raise_on_error=True)
     assert "Not running in required conda env" in str(exc.value)

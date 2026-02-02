@@ -45,7 +45,7 @@ def validate(
         # features path intentionally not used in this test-mode helper
         pass
 
-    from src.io import load_metadata, load_or_extract_features
+    from dataselector.data.io import load_metadata, load_or_extract_features
 
     metadata = (
         load_metadata(str(metadata_path))
@@ -66,7 +66,7 @@ def validate(
     )
 
     # Compute embeddings and cluster labels using ClusteringPipeline (consistent with main pipeline)
-    from src.clustering import ClusteringPipeline
+    from dataselector.selection.clustering import ClusteringPipeline
 
     clustering = ClusteringPipeline(n_clusters=8)
 
@@ -82,12 +82,12 @@ def validate(
         cluster_labels = np.zeros(n, dtype=int)
 
     # Optional visualizer for maps
-    from src.visualizer import Visualizer
+    from dataselector.analysis.visualizer import Visualizer
 
     viz = Visualizer(output_dir=str(outdir / "plots"))
 
-    from src.diversity_selector import DiversitySelector
-    from src.metrics import compute_metrics
+    from dataselector.selection.diversity_selector import DiversitySelector
+    from dataselector.analysis.metrics import compute_metrics
 
     for _, row in pareto.iterrows():
         alpha, beta, gamma = row["alpha"], row["beta"], row["gamma"]

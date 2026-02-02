@@ -3,7 +3,7 @@ import types
 
 import pandas as pd
 
-from src.metadata_processor import MetadataProcessor
+from dataselector.data.metadata_processor import MetadataProcessor
 
 
 def _make_csv(tmp_path):

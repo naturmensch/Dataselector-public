@@ -120,8 +120,8 @@ def main():
         sys.path.insert(0, str(ROOT))
 
     # Import project modules only at runtime to avoid module-level side-effects
-    from src.experiments import ExperimentRunner
-    from src.main import KDR100SelectionPipeline
+    from dataselector.pipeline.experiments import ExperimentRunner
+    from dataselector.pipeline.main import KDR100SelectionPipeline
 
     # Config
     CSV_META = ROOT / "data" / "new_all_tiles.csv"
@@ -169,7 +169,7 @@ def main():
 
         else:
             # Import here to avoid heavy module imports during argument parsing / tests
-            from src.experiments import ExperimentRunner
+            from dataselector.pipeline.experiments import ExperimentRunner
 
             runner = ExperimentRunner(output_dir=str(OUT_DIR))
 
@@ -190,7 +190,7 @@ def main():
 
     # After tuning (or skipping), run main pipeline (if importable).
     try:
-        from src.main import KDR100SelectionPipeline
+        from dataselector.pipeline.main import KDR100SelectionPipeline
 
         pipeline = KDR100SelectionPipeline(
             config_path=str(ROOT / "config" / "pipeline_config.yaml")

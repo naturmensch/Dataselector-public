@@ -13,7 +13,7 @@ import pandas as pd
 
 def main() -> None:
     OUT = Path("outputs")
-    from src.io import load_metadata, load_or_extract_features
+    from dataselector.data.io import load_metadata, load_or_extract_features
 
     csv_meta = OUT / "metadata.csv"
     csv_meta = str(csv_meta) if csv_meta.exists() else None
@@ -25,8 +25,8 @@ def main() -> None:
     )
 
     # Runtime imports (deferred to avoid import-time side-effects)
-    from src.clustering import ClusteringPipeline
-    from src.diversity_selector import DiversitySelector
+    from dataselector.selection.clustering import ClusteringPipeline
+    from dataselector.selection.diversity_selector import DiversitySelector
 
     print("=" * 80)
     print("TEMPORAL WEIGHT SENSITIVITY TEST (Constraint-Integrated)")
@@ -79,14 +79,14 @@ def main() -> None:
             )
 
             # Spatial: prefer projected coords if present
-            from src.io import get_metric_gdf
+            from dataselector.data.io import get_metric_gdf
 
             use_metric = get_metric_gdf(meta) is not None
             pairwise = []
             for i in range(len(selected)):
                 for j in range(i + 1, len(selected)):
                     if use_metric:
-                        from src.io import get_metric_gdf
+                        from dataselector.data.io import get_metric_gdf
 
                         gdf = get_metric_gdf(meta)
                         a = gdf.loc[selected[i], ["_proj_x", "_proj_y"]].values.astype(
@@ -97,7 +97,7 @@ def main() -> None:
                         )
                         pairwise.append(float((((a - b) ** 2).sum()) ** 0.5 / 1000.0))
                     else:
-                        from src.spatial_facility_location import haversine_distance
+                        from dataselector.selection.spatial_facility_location import haversine_distance
 
                         r1 = meta.iloc[selected[i]]
                         r2 = meta.iloc[selected[j]]

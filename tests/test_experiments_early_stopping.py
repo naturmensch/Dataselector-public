@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from src.experiments import ExperimentRunner
+from dataselector.pipeline.experiments import ExperimentRunner
 
 
 def _fake_meta():

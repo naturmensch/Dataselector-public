@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from src.feature_extractor import FeatureExtractor, preprocess_historical_image
+from dataselector.features.feature_extractor import FeatureExtractor, preprocess_historical_image
 
 pytestmark = pytest.mark.integration
 

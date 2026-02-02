@@ -27,7 +27,7 @@ def make_features_local(make_features):
 def test_end_to_end_selection_and_export(tmp_path, make_features_local, make_metadata_local):
     # Try to import the real selector; skip if native deps are incompatible in this environment
     try:
-        from src.diversity_selector import DiversitySelector
+        from dataselector.selection.diversity_selector import DiversitySelector
     except Exception as e:
         pytest.skip(f"Skipping integration test due to import error: {e}")
 
@@ -55,7 +55,7 @@ def test_end_to_end_selection_and_export(tmp_path, make_features_local, make_met
 
 def test_all_three_modes_run(make_features_local, make_metadata_local):
     try:
-        from src.diversity_selector import DiversitySelector
+        from dataselector.selection.diversity_selector import DiversitySelector
     except Exception as e:
         pytest.skip(f"Skipping integration test due to import error: {e}")
 
@@ -89,7 +89,7 @@ def test_all_three_modes_run(make_features_local, make_metadata_local):
 
 def test_coverage_statistics(make_features_local, make_metadata_local):
     try:
-        from src.diversity_selector import DiversitySelector
+        from dataselector.selection.diversity_selector import DiversitySelector
     except Exception as e:
         pytest.skip(f"Skipping integration test due to import error: {e}")
 

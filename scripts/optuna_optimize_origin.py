@@ -19,7 +19,7 @@ if ROOT not in sys.path:
 
 # STARTUP ENV VALIDATION
 try:
-    from src.compat import validate_environment_full
+    from dataselector.compat import validate_environment_full
     if "--skip-env-check" not in sys.argv:
         validate_environment_full()
 except Exception as e:
@@ -39,7 +39,7 @@ except Exception as e:
 
 # Defer heavy imports where possible; attempt to import DiversitySelector but tolerate failures for smoke/test mode
 try:
-    from src.diversity_selector import DiversitySelector
+    from dataselector.selection.diversity_selector import DiversitySelector
     DIVERSITY_IMPORT_ERROR = None
 except Exception as e:
     DiversitySelector = None
@@ -53,7 +53,7 @@ def load_or_create_data(n=500, dim=512, seed=123):
     features_path = OUT_DIR / "features.npy"
     metadata_path = OUT_DIR / "metadata.csv"
 
-    from src.io import load_or_extract_features
+    from dataselector.data.io import load_or_extract_features
 
     if features_path.exists() and metadata_path.exists():
         features = load_or_extract_features(

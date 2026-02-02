@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from src.clustering import ClusteringPipeline
+from dataselector.selection.clustering import ClusteringPipeline
 
 
 def test_errors_before_running():

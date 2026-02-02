@@ -2,7 +2,7 @@ import json
 import time
 from pathlib import Path
 
-from src.experiment_manager import ExperimentManager
+from dataselector.pipeline.experiment_manager import ExperimentManager
 
 
 def test_heartbeat_writes_manifest(tmp_path: Path):

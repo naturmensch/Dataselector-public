@@ -24,7 +24,7 @@ def load_tiles(
     `src.metadata_processor.MetadataProcessor`.
     """
 
-    from src.metadata_processor import MetadataProcessor
+    from dataselector.data.metadata_processor import MetadataProcessor
 
     csv_path = Path(csv)
     img_dir = Path(image_dir)

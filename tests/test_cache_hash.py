@@ -2,7 +2,7 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from src.cache import (
+from dataselector.pipeline.cache import (
     compute_meta_hash,
     atomic_write_features_with_meta,
     features_path_for_hash,

@@ -32,8 +32,8 @@ def main(argv: list | None = None) -> int:
     import pandas as pd
     import yaml
 
-    from src.experiments import ExperimentRunner
-    from src.pareto import (
+    from dataselector.pipeline.experiments import ExperimentRunner
+    from dataselector.selection.pareto import (
         compute_pareto_front,
         export_pareto_report,
         visualize_pareto_front,
@@ -89,7 +89,7 @@ def main(argv: list | None = None) -> int:
     exp_dir = os.environ.get("EXPERIMENT_RUN_DIR")
     if exp_dir:
         # delay import to avoid import-time side-effects when module is imported
-        from src.experiment_manager import ExperimentManager
+        from dataselector.pipeline.experiment_manager import ExperimentManager
 
         em = ExperimentManager.from_existing(exp_dir)
         OUTPUT_DIR = em.get_path("results") / "fine_sweep"
@@ -132,7 +132,7 @@ def main(argv: list | None = None) -> int:
                         n_tiles = len(_pd.read_csv(data_path))
                     except Exception:
                         n_tiles = None
-                from src.pipeline_utils import compute_adaptive_n_initial
+                from dataselector.pipeline.pipeline_utils import compute_adaptive_n_initial
 
                 n_samples_cfg = compute_adaptive_n_initial(
                     n_dimensions=3, n_tiles=n_tiles, strategy="modern"

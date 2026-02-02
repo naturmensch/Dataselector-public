@@ -1,6 +1,6 @@
 import numpy as np
 
-from src.diversity_selector import DiversitySelector
+from dataselector.selection.diversity_selector import DiversitySelector
 
 
 def test_lazy_greedy_basic():
@@ -36,7 +36,7 @@ def test_lazy_greedy_matches_standard():
     res_std = sel_std.select(features, metadata, spatial_constraint=False)
 
     # Compare diversity scores (should be equal or very close)
-    from src.diversity_selector import DiversitySelector as DS
+    from dataselector.selection.diversity_selector import DiversitySelector as DS
 
     ds = DS(n_samples=n_select)
     score_lazy = ds._calculate_diversity_score(features[res_lazy])

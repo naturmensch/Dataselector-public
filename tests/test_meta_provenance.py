@@ -29,7 +29,7 @@ def test_meta_provenance_includes_versions(tmp_path, monkeypatch):
     )
 
     # Make selection deterministic and non-empty by patching DiversitySelector.select
-    import src.diversity_selector as ds_mod
+    import dataselector.selection.diversity_selector as ds_mod
 
     def _fake_select(self, **kwargs):
         self.selected_indices = np.array([0], dtype=int)

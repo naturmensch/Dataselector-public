@@ -4,7 +4,7 @@ from pathlib import Path
 import torch
 from PIL import Image
 
-from src.feature_extractor import FeatureExtractor
+from dataselector.features.feature_extractor import FeatureExtractor
 
 
 def test_resnet50_get_dim():

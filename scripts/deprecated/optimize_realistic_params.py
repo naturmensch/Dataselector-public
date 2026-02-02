@@ -17,12 +17,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.clustering import ClusteringPipeline
-from src.diversity_selector import DiversitySelector
-from src.spatial_facility_location import haversine_distance
+from dataselector.selection.clustering import ClusteringPipeline
+from dataselector.selection.diversity_selector import DiversitySelector
+from dataselector.selection.spatial_facility_location import haversine_distance
 
 OUT = Path("outputs")
-from src.io import load_metadata, load_or_extract_features
+from dataselector.data.io import load_metadata, load_or_extract_features
 
 features = load_or_extract_features(
     OUT,

@@ -5,6 +5,6 @@ This layer is intentionally small:
 - The thesis-grade orchestration lives under workflows.
 """
 
-from src.main import KDR100SelectionPipeline
+from dataselector.pipeline.main import KDR100SelectionPipeline
 
 __all__ = ["KDR100SelectionPipeline"]

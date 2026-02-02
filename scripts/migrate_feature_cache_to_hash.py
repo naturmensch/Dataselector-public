@@ -7,7 +7,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from src.cache import compute_meta_hash, atomic_write_features_with_meta, create_meta_info
+from dataselector.pipeline.cache import compute_meta_hash, atomic_write_features_with_meta, create_meta_info
 import numpy as np
 
 

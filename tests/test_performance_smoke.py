@@ -30,7 +30,7 @@ def test_selection_completes_on_moderate_size(monkeypatch):
     """Smoke test: ensure `DiversitySelector.select` completes on moderate input size."""
     _install_apricot_stub(monkeypatch)
     import importlib
-    import src.diversity_selector as ds_mod
+    import dataselector.selection.diversity_selector as ds_mod
     importlib.reload(ds_mod)
     DiversitySelector = ds_mod.DiversitySelector
 

@@ -19,7 +19,7 @@ try:
     ROOT = Path(__file__).resolve().parents[1]
     if str(ROOT) not in sys.path:
         sys.path.insert(0, str(ROOT))
-    from src.compat import validate_environment_full
+    from dataselector.compat import validate_environment_full
     # Allow pytest/tests to bypass env check via env var
     if "--skip-env-check" not in sys.argv and os.environ.get("DATASELECTOR_IGNORE_ENV_CHECK") != "1":
         validate_environment_full()

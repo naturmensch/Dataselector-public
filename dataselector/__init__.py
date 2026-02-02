@@ -13,9 +13,9 @@ from __future__ import annotations
 __version__ = "0.1.0"
 
 # Public high-level objects (currently implemented in src/)
-from src.feature_extractor import FeatureExtractor
-from src.metadata_processor import MetadataProcessor
-from src.visualizer import Visualizer
+from dataselector.features.feature_extractor import FeatureExtractor
+from dataselector.data.metadata_processor import MetadataProcessor
+from dataselector.analysis.visualizer import Visualizer
 
 # Stable import paths for major subdomains
 from dataselector.analysis import ClusteringPipeline, compute_metrics

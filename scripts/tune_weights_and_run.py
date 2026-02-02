@@ -47,7 +47,7 @@ def generate_weights(n_points: int = 50, seed: int = 42, sampler: str = "lhs"):
         List of (alpha, beta, gamma) tuples summing to 1.0
     """
     if sampler.lower() == "sobol":
-        from src.sampling_strategies import sample_weights_on_simplex_sobol
+        from dataselector.workflows.sampling_strategies import sample_weights_on_simplex_sobol
 
         if not hasattr(sample_weights_on_simplex_sobol, "__call__"):
             raise RuntimeError("Sobol sampler not available")
@@ -55,7 +55,7 @@ def generate_weights(n_points: int = 50, seed: int = 42, sampler: str = "lhs"):
 
     # default to LHS behavior (existing behavior)
     if sampler.lower() == "lhs":
-        from src.sampling_strategies import sample_weights_on_simplex_lhs
+        from dataselector.workflows.sampling_strategies import sample_weights_on_simplex_lhs
 
         return sample_weights_on_simplex_lhs(n_points, dim=3, seed=seed)
 
@@ -112,7 +112,7 @@ def main():
     em = None
     exp_dir = os.environ.get("EXPERIMENT_RUN_DIR")
     if exp_dir:
-        from src.experiment_manager import ExperimentManager
+        from dataselector.pipeline.experiment_manager import ExperimentManager
 
         em = ExperimentManager.from_existing(exp_dir)
         em.log("Attached to pipeline run (exploration stage)")
@@ -122,8 +122,8 @@ def main():
         )
 
     try:
-        from src.experiments import ExperimentRunner
-        from src.pareto import (
+        from dataselector.pipeline.experiments import ExperimentRunner
+        from dataselector.selection.pareto import (
             compute_pareto_front,
             export_pareto_report,
             visualize_pareto_front,

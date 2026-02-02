@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.multi_criteria_facility_location import MultiCriteriaFacilityLocation
+from dataselector.selection.multi_criteria_facility_location import MultiCriteriaFacilityLocation
 
 
 def test_multi_criteria_weight_validation():

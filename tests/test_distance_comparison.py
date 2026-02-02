@@ -3,7 +3,7 @@ import math
 import geopandas as gpd
 from shapely.geometry import Point
 
-from src.spatial_facility_location import haversine_distance
+from dataselector.selection.spatial_facility_location import haversine_distance
 
 
 def utm_distance_km(lat1, lon1, lat2, lon2, crs="EPSG:25832"):

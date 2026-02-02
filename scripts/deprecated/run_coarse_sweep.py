@@ -18,8 +18,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.experiments import ExperimentRunner
-from src.pareto import (
+from dataselector.pipeline.experiments import ExperimentRunner
+from dataselector.selection.pareto import (
     compute_pareto_front,
     export_pareto_report,
     visualize_pareto_front,

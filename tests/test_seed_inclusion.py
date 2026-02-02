@@ -28,7 +28,7 @@ def _install_apricot_stub(monkeypatch):
 def test_seed_included_by_index(monkeypatch):
     _install_apricot_stub(monkeypatch)
     # Import module after stubbing so apricot is resolved during import
-    import src.diversity_selector as ds_mod
+    import dataselector.selection.diversity_selector as ds_mod
     importlib.reload(ds_mod)
     DiversitySelector = ds_mod.DiversitySelector
 
@@ -74,7 +74,7 @@ def test_seed_included_by_name(monkeypatch):
     monkeypatch.setitem(sys.modules, "src.multi_criteria_facility_location", fake_mod)
 
     # reload diversity_selector so it picks up the fake module
-    import src.diversity_selector as ds_mod
+    import dataselector.selection.diversity_selector as ds_mod
     importlib.reload(ds_mod)
     DiversitySelector = ds_mod.DiversitySelector
 
@@ -119,7 +119,7 @@ def test_seed_included_by_substring_case_insensitive(monkeypatch):
     setattr(fake_mod, "MultiCriteriaFacilityLocation", FakeMC2)
     monkeypatch.setitem(sys.modules, "src.multi_criteria_facility_location", fake_mod)
 
-    import src.diversity_selector as ds_mod
+    import dataselector.selection.diversity_selector as ds_mod
     importlib.reload(ds_mod)
     DiversitySelector = ds_mod.DiversitySelector
 

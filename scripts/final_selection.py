@@ -15,11 +15,11 @@ def main():
     import yaml
 
 
-    from src.clustering import ClusteringPipeline
-    from src.diversity_selector import DiversitySelector
-    from src.io import load_metadata, load_or_extract_features
-    from src.metrics import compute_metrics
-    from src.visualizer import Visualizer
+    from dataselector.selection.clustering import ClusteringPipeline
+    from dataselector.selection.diversity_selector import DiversitySelector
+    from dataselector.data.io import load_metadata, load_or_extract_features
+    from dataselector.analysis.metrics import compute_metrics
+    from dataselector.analysis.visualizer import Visualizer
 
     OUT = ROOT / "outputs" / "final_selection"
     OUT.mkdir(parents=True, exist_ok=True)

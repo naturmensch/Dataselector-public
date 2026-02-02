@@ -23,7 +23,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from src.diversity_selector import DiversitySelector
+from dataselector.selection.diversity_selector import DiversitySelector
 
 OUT_DIR = Path("outputs")
 OUT_DIR.mkdir(exist_ok=True)
@@ -33,7 +33,7 @@ def load_or_create_data(n=2000, dim=512):
     features_path = OUT_DIR / "features.npy"
     metadata_path = OUT_DIR / "metadata.csv"
 
-    from src.io import load_or_extract_features
+    from dataselector.data.io import load_or_extract_features
 
     if features_path.exists() and metadata_path.exists():
         print("Loading existing features/metadata from outputs/ ...")

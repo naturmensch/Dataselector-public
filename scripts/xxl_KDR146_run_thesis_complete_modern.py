@@ -716,7 +716,7 @@ def main():
     # Startup environment validation (skip for smoke/test runs or when explicitly requested)
     if not args.skip_env_check and not args.smoke:
         try:
-            from src.compat import validate_environment_full
+            from dataselector.compat import validate_environment_full
 
             validate_environment_full()
         except Exception as e:

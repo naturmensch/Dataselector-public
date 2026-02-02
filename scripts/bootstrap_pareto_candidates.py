@@ -27,9 +27,9 @@ def bootstrap_candidate(
 ):
     # Local imports to keep module import-safe
     from tqdm import trange
-    from src.clustering import ClusteringPipeline
-    from src.diversity_selector import DiversitySelector
-    from src.metrics import compute_metrics
+    from dataselector.selection.clustering import ClusteringPipeline
+    from dataselector.selection.diversity_selector import DiversitySelector
+    from dataselector.analysis.metrics import compute_metrics
 
     rng = np.random.default_rng(random_seed)
     N = features.shape[0]
@@ -40,7 +40,7 @@ def bootstrap_candidate(
         boot_features = features[sample_idx]
         boot_meta = metadata.iloc[sample_idx].reset_index(drop=True)
         # Preserve projected coords in the bootstrap sample if present
-        from src.io import attach_metric_gdf, get_metric_gdf
+        from dataselector.data.io import attach_metric_gdf, get_metric_gdf
 
         gdf_metric = get_metric_gdf(metadata)
         if gdf_metric is not None:
@@ -92,13 +92,13 @@ def main(
 ):
     # Local imports to keep module import-safe, but prefer module-level hooks if tests patched them
     if load_metadata is None or load_or_extract_features is None:
-        from src.io import load_metadata as _load_metadata_fn
-        from src.io import load_or_extract_features as _load_or_extract_features_fn
+        from dataselector.data.io import load_metadata as _load_metadata_fn
+        from dataselector.data.io import load_or_extract_features as _load_or_extract_features_fn
     else:
         _load_metadata_fn = load_metadata
         _load_or_extract_features_fn = load_or_extract_features
-    from src.clustering import ClusteringPipeline
-    from src.diversity_selector import DiversitySelector
+    from dataselector.selection.clustering import ClusteringPipeline
+    from dataselector.selection.diversity_selector import DiversitySelector
 
     pareto = pd.read_csv(pareto_csv)
 
@@ -305,7 +305,7 @@ def main(
     exp_dir = os.environ.get("EXPERIMENT_RUN_DIR")
     if exp_dir:
         try:
-            from src.experiment_manager import ExperimentManager
+            from dataselector.pipeline.experiment_manager import ExperimentManager
 
             em = ExperimentManager.from_existing(exp_dir)
             if not df_all.empty:

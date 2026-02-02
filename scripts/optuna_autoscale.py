@@ -40,14 +40,14 @@ def load_or_create_data(n=None, dim=256, seed=123):
     features_path = OUT / "features.npy"
     metadata_path = OUT / "metadata.csv"
 
-    from src.io import load_or_extract_features
+    from dataselector.data.io import load_or_extract_features
 
     if features_path.exists() and metadata_path.exists():
         features = load_or_extract_features(
             out_dir=OUT, csv_meta=str(metadata_path), batch_size=16, cache=False
         )
         # Load using loader so gdf_metric is attached if available
-        from src.io import load_metadata
+        from dataselector.data.io import load_metadata
 
         metadata = load_metadata(str(metadata_path))
     else:
@@ -92,7 +92,7 @@ def make_objective(
         )
 
         # Lazy import to avoid module-level side effects during import/pytest
-        from src.diversity_selector import DiversitySelector
+        from dataselector.selection.diversity_selector import DiversitySelector
 
         selector = DiversitySelector(n_samples=n_samples, use_multi_criteria=True)
         selected = selector.select(

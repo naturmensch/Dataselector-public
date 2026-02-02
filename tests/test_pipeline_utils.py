@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from src.pipeline_utils import (
+from dataselector.pipeline.pipeline_utils import (
     compute_adaptive_n_initial,
     compute_bootstrap_candidates,
     compute_fine_search_bounds,

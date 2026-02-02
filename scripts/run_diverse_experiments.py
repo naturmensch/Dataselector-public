@@ -25,8 +25,8 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from src.diversity_selector import DiversitySelector
-from src.spatial_facility_location import haversine_distance
+from dataselector.selection.diversity_selector import DiversitySelector
+from dataselector.selection.spatial_facility_location import haversine_distance
 
 OUT = Path("outputs")
 OUT.mkdir(exist_ok=True)
@@ -37,7 +37,7 @@ EXPDIR.mkdir(exist_ok=True)
 def run_experiments(n_runs: int = 20, n_samples: int = 100, seed: int = 42):
     rng = np.random.RandomState(seed)
 
-    from src.io import load_metadata, load_or_extract_features
+    from dataselector.data.io import load_metadata, load_or_extract_features
 
     features = load_or_extract_features(
         OUT,

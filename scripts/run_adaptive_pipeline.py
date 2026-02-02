@@ -246,7 +246,7 @@ def main():
         run_cmd_safe("python scripts/check_geo_env.py")
 
     # Initialize ExperimentManager for the entire adaptive run and export its run_dir to sub-stages
-    from src.experiment_manager import ExperimentManager
+    from dataselector.pipeline.experiment_manager import ExperimentManager
 
     em = ExperimentManager(
         name=args.exp_name, description=args.exp_desc, metadata={"seed": args.seed}
@@ -267,7 +267,7 @@ def main():
 
     # Import project utilities lazily to avoid import-time side-effects during tests
 
-    from src.pipeline_utils import (
+    from dataselector.pipeline.pipeline_utils import (
         compute_adaptive_n_initial,
         compute_fine_search_bounds,
         compute_optuna_bounds,
@@ -468,7 +468,7 @@ def main():
                         chosen_n_samples = None  # range mode
                     else:
                         # modern adaptive default (dimension-aware)
-                        from src.pipeline_utils import compute_adaptive_n_initial
+                        from dataselector.pipeline.pipeline_utils import compute_adaptive_n_initial
 
                         chosen_n_samples = compute_adaptive_n_initial(args.n_dimensions)
                 print(
