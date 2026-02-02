@@ -1,5 +1,24 @@
 # Changelog
 
+## [2026-02-02] - Phase 4: Code Migration — Hard Cutover src/ → dataselector/
+- **Major Refactoring**: Executed hard cutover migration of `src/` directory to `dataselector/` package structure.
+- **Subpackage Architecture**:
+  - `dataselector/selection/`: clustering, diversity_selector, spatial_facility_location, multi_criteria_facility_location, lazy_facility_location, pareto
+  - `dataselector/data/`: io, metadata_processor (+ existing load.py, tiles.py)
+  - `dataselector/features/`: feature_extractor (+ existing pipeline.py)
+  - `dataselector/pipeline/`: experiment_manager, experiments, cache, pipeline_utils, incremental_results, main
+  - `dataselector/analysis/`: metrics, visualizer, wandb_logger
+  - `dataselector/workflows/`: sampling_strategies (+ existing modules)
+  - `dataselector/compat.py`: root-level compatibility module
+- **Import Codemod**: 57+ files migrated with automated import replacements (`from src.x import` → `from dataselector.<pkg>.x import`)
+- **Test Fixes**: Corrected 10+ test files with module path updates and fixed malformed importlib calls
+- **Validation**:
+  - Smoke tests: **11/11 passing** ✅
+  - Pipeline integration tests: **3/3 passing** ✅
+  - Archive: `src/` backed up to `archive_local/src_backup_20260202/` (immutable)
+- **Commits**: e6930f5 (module migration), a7d0362 (test fixes)
+- **Breaking Changes**: Direct imports from `src.*` no longer work; use `dataselector.<subpackage>.*` instead
+
 ## [2026-01-19] - Configuration: persistent `n_samples`, tests & monitor robustness
 - Removed hard-coded CLI default `34` for `--n-samples`. The selection size is now **config-driven** (set `selection.n_samples` in `config/pipeline_config.yaml`) or can be overridden on the CLI with `--n-samples`.
 - Added unit test `tests/test_run_adaptive_default_n_samples.py` to ensure help text and behavior remain consistent.
