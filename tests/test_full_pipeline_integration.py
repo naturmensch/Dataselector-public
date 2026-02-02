@@ -51,7 +51,7 @@ def test_feature_cache_validation(tmp_path, monkeypatch):
     # Before loading src/io.py, inject lightweight stubs for src submodules to avoid heavy imports
     import types
 
-    fake_feat = types.ModuleType("src.feature_extractor")
+    fake_feat = types.ModuleType("dataselectorfeature_extractor")
     class _FE:
         def __init__(self, *a, **k):
             pass
@@ -60,7 +60,7 @@ def test_feature_cache_validation(tmp_path, monkeypatch):
             return np.zeros((len(image_paths), 16), dtype=np.float32)
     fake_feat.FeatureExtractor = _FE
 
-    fake_meta = types.ModuleType("src.metadata_processor")
+    fake_meta = types.ModuleType("dataselectormetadata_processor")
     class _MP:
         def __init__(self, csv_path):
             self.csv_path = csv_path
@@ -78,13 +78,13 @@ def test_feature_cache_validation(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, 'src.metadata_processor', fake_meta)
 
     # The io module imports from src.cache; ensure src.cache is loadable and registered
-    spec = importlib.util.spec_from_file_location("src.cache", REPO_ROOT / "src" / "cache.py")
+    spec = importlib.util.spec_from_file_location("dataselectorcache", REPO_ROOT / "dataselector" / "pipeline" / "cache.py")
     cache_mod = importlib.util.module_from_spec(spec)
-    monkeypatch.setitem(sys.modules, "src.cache", cache_mod)
+    monkeypatch.setitem(sys.modules, "dataselectorcache", cache_mod)
     spec.loader.exec_module(cache_mod)
 
     # load src/io.py as isolated module (avoid package-level side effects)
-    io_mod = _load_module_from_path("test_src_io", REPO_ROOT / "src" / "io.py")
+    io_mod = _load_module_from_path("test_src_io", REPO_ROOT / "dataselector" / "data" / "io.py")
 
     # monkeypatch the heavy extractor to a fast deterministic stub (extra safety)
     monkeypatch.setattr(io_mod, "extract_features", lambda metadata, batch_size=16: np.zeros((len(metadata), 16), dtype=np.float32))
@@ -100,7 +100,7 @@ def test_multicriteria_fit_guard_raises_on_mismatch(monkeypatch):
 
     # Inject lightweight stub for src.spatial_facility_location used by the module
     import types
-    fake_spatial = types.ModuleType("src.spatial_facility_location")
+    fake_spatial = types.ModuleType("dataselectorspatial_facility_location")
     def _haversine_distance(lat1, lon1, lat2, lon2):
         return float(abs(lat1 - lat2) + abs(lon1 - lon2))
     def _haversine_matrix(lats, lons):
@@ -115,7 +115,7 @@ def test_multicriteria_fit_guard_raises_on_mismatch(monkeypatch):
     monkeypatch.setitem(sys.modules, 'src.spatial_facility_location', fake_spatial)
 
     mc_mod = _load_module_from_path(
-        "test_multi", REPO_ROOT / "src" / "multi_criteria_facility_location.py"
+        "test_multi", REPO_ROOT / "dataselector" / "selection" / "multi_criteria_facility_location.py"
     )
 
     # Create metadata with 5 rows

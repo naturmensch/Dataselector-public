@@ -9,7 +9,7 @@ def ss():
     pytest.importorskip("numba", exc_type=ImportError)
     import importlib
 
-    return importlib.import_module("src.sampling_strategies")
+    return importlib.import_module("dataselector.workflows.sampling_strategies")
 
 
 def test_sobol_unit_cube_shape(ss):

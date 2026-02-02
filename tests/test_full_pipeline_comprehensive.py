@@ -53,13 +53,13 @@ def test_full_pipeline_simulation(tmp_dirs, repo_root, inject_src_stub, monkeypa
 
     # 3) Inject light-weight stubs for heavy src submodules before importing code
     # - FeatureExtractor: use shared FakeFeatureExtractor helper
-    fake_feat = types.ModuleType("src.feature_extractor")
+    fake_feat = types.ModuleType("dataselectorfeature_extractor")
     fake_feat.FeatureExtractor = FakeFeatureExtractor
     monkeypatch.setitem(sys.modules, 'src.feature_extractor', fake_feat)
 
     # - MetadataProcessor: load the real implementation but register under src namespace
-    mp_mod = load_module_from_path("mp_mod", repo_root / "src" / "metadata_processor.py")
-    fake_meta = types.ModuleType("src.metadata_processor")
+    mp_mod = load_module_from_path("mp_mod", repo_root / "dataselector" / "data" / "metadata_processor.py")
+    fake_meta = types.ModuleType("dataselectormetadata_processor")
     fake_meta.MetadataProcessor = mp_mod.MetadataProcessor
     monkeypatch.setitem(sys.modules, 'src.metadata_processor', fake_meta)
 
@@ -79,18 +79,18 @@ def test_full_pipeline_simulation(tmp_dirs, repo_root, inject_src_stub, monkeypa
     monkeypatch.setitem(sys.modules, 'apricot', fake_apricot)
 
     # Load and register spatial and multi-criteria modules under src.* names
-    spatial_mod = load_module_from_path('spatial_mod', repo_root / 'src' / 'spatial_facility_location.py')
+    spatial_mod = load_module_from_path('spatial_mod', repo_root / 'dataselector' / 'selection' / 'spatial_facility_location.py')
     monkeypatch.setitem(sys.modules, 'src.spatial_facility_location', spatial_mod)
     setattr(inject_src_stub, 'spatial_facility_location', spatial_mod)
 
-    mc_mod = load_module_from_path('mc_mod', repo_root / 'src' / 'multi_criteria_facility_location.py')
+    mc_mod = load_module_from_path('mc_mod', repo_root / 'dataselector' / 'selection' / 'multi_criteria_facility_location.py')
     monkeypatch.setitem(sys.modules, 'src.multi_criteria_facility_location', mc_mod)
     setattr(inject_src_stub, 'multi_criteria_facility_location', mc_mod)
 
     # Now load diversity_selector, io and metrics
-    divsel_mod = load_module_from_path("diversity", repo_root / "src" / "diversity_selector.py")
-    io_mod = load_module_from_path("io_mod", repo_root / "src" / "io.py")
-    metrics_mod = load_module_from_path("metrics_mod", repo_root / "src" / "metrics.py")
+    divsel_mod = load_module_from_path("diversity", repo_root / "dataselector" / "selection" / "diversity_selector.py")
+    io_mod = load_module_from_path("io_mod", repo_root / "dataselector" / "data" / "io.py")
+    metrics_mod = load_module_from_path("metrics_mod", repo_root / "dataselector" / "analysis" / "metrics.py")
 
     # Register under package-like names so 'from src.xxx import ...' works
     monkeypatch.setitem(sys.modules, 'src.diversity_selector', divsel_mod)
@@ -98,7 +98,7 @@ def test_full_pipeline_simulation(tmp_dirs, repo_root, inject_src_stub, monkeypa
     monkeypatch.setitem(sys.modules, 'src.metrics', metrics_mod)
 
     # 6) Load the ExperimentRunner module directly (now submodules are available)
-    experiments = load_module_from_path("experiments", repo_root / "src" / "experiments.py")
+    experiments = load_module_from_path("experiments", repo_root / "dataselector" / "pipeline" / "experiments.py")
     monkeypatch.setitem(sys.modules, 'src.experiments', experiments)
 
     # 6) Monkeypatch heavy KMeans inside experiments to a light fake implementation
@@ -119,7 +119,7 @@ def test_full_pipeline_simulation(tmp_dirs, repo_root, inject_src_stub, monkeypa
     monkeypatch.setattr(divsel_mod.DiversitySelector, "_calculate_diversity_score", lambda self, feats: float(np.mean(feats)) if len(feats)>0 else 0.0)
 
     # 7) Ensure cache is (re)generated via load_or_extract_features to test cache validation logic
-    cache_mod = load_module_from_path('cache_mod', repo_root / 'src' / 'cache.py')
+    cache_mod = load_module_from_path('cache_mod', repo_root / 'dataselector' / 'pipeline' / 'cache.py')
     monkeypatch.setitem(sys.modules, 'src.cache', cache_mod)
     setattr(inject_src_stub, 'cache', cache_mod)
 
@@ -178,7 +178,7 @@ def test_corrupt_metadata_fails_fast(tmp_dirs, repo_root, monkeypatch):
     csv_meta.write_text("longName,shortName,image_path,year\nA,a,,1910\nB,b,,1912\n")
 
     # Load metadata processor directly and assert it raises on missing columns
-    mp = load_module_from_path("mp_mod", repo_root / "src" / "metadata_processor.py")
+    mp = load_module_from_path("mp_mod", repo_root / "dataselector" / "data" / "metadata_processor.py")
     with pytest.raises(ValueError, match=r"Fehlende Spalten in Metadaten"):
         mp.MetadataProcessor(str(csv_meta)).load_csv()
 
@@ -194,7 +194,7 @@ def test_feature_cache_write_permission_error(tmp_dirs, repo_root, monkeypatch):
     csv_meta.write_text("longName,shortName,N,left,image_path,image_filename,year\nA,a,50,10,,imageA,1910\nB,b,51,11,,imageB,1912\n")
 
     # Load io module and monkeypatch np.save to raise PermissionError
-    io_mod = load_module_from_path("io_mod", repo_root / "src" / "io.py")
+    io_mod = load_module_from_path("io_mod", repo_root / "dataselector" / "data" / "io.py")
     monkeypatch.setattr("numpy.save", lambda *a, **k: (_ for _ in ()).throw(PermissionError("Disk full (simulated)")))
 
     with pytest.raises(PermissionError, match=r"Disk full \(simulated\)"):

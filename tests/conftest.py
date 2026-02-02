@@ -120,12 +120,12 @@ def inject_src_stub(monkeypatch):
         monkeypatch.setitem(sys.modules, "src", types.ModuleType("src"))
 
     # Track original state of src children to restore/clean after test
-    original_keys = {k for k in sys.modules if k.startswith("src.")}
+    original_keys = {k for k in sys.modules if k.startswith("dataselector")}
 
     yield sys.modules["src"]
 
     # Cleanup: remove any new src.* modules created during the test
-    current_keys = {k for k in sys.modules if k.startswith("src.")}
+    current_keys = {k for k in sys.modules if k.startswith("dataselector")}
     for k in current_keys - original_keys:
         del sys.modules[k]
 
@@ -151,7 +151,7 @@ def stub_feature_extraction(monkeypatch, fake_features):
         return fake_features(n)
 
     # Patch the function in the module
-    monkeypatch.setattr(sys.modules["src.io"], "load_or_extract_features", _fake_loader)
+    monkeypatch.setattr(sys.modules["dataselector.data.io"], "load_or_extract_features", _fake_loader)
     return _fake_loader
 
 

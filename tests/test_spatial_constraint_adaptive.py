@@ -10,7 +10,7 @@ def DiversitySelector():
     pytest.importorskip("numba", exc_type=ImportError)
     import importlib
 
-    mod = importlib.import_module("src.diversity_selector")
+    mod = importlib.import_module("dataselector.selection.diversity_selector")
     return mod.DiversitySelector
 
 

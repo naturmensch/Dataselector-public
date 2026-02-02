@@ -44,7 +44,7 @@ def test_seed_included_by_index(monkeypatch):
 
 def test_seed_included_by_name(monkeypatch):
     # Provide fake MultiCriteria implementation which respects preselected indices
-    fake_mod = types.ModuleType("src.multi_criteria_facility_location")
+    fake_mod = types.ModuleType("dataselectormulti_criteria_facility_location")
 
     class FakeMC:
         def __init__(
@@ -71,7 +71,7 @@ def test_seed_included_by_name(monkeypatch):
             self.ranking = ranking[: self.n_samples]
 
     setattr(fake_mod, "MultiCriteriaFacilityLocation", FakeMC)
-    monkeypatch.setitem(sys.modules, "src.multi_criteria_facility_location", fake_mod)
+    monkeypatch.setitem(sys.modules, "dataselectormulti_criteria_facility_location", fake_mod)
 
     # reload diversity_selector so it picks up the fake module
     import dataselector.selection.diversity_selector as ds_mod
@@ -90,7 +90,7 @@ def test_seed_included_by_name(monkeypatch):
 
 def test_seed_included_by_substring_case_insensitive(monkeypatch):
     # Ensure name matching is case-insensitive and supports substring matches in longName
-    fake_mod = types.ModuleType("src.multi_criteria_facility_location")
+    fake_mod = types.ModuleType("dataselectormulti_criteria_facility_location")
 
     class FakeMC2:
         def __init__(
@@ -117,7 +117,7 @@ def test_seed_included_by_substring_case_insensitive(monkeypatch):
             self.ranking = ranking[: self.n_samples]
 
     setattr(fake_mod, "MultiCriteriaFacilityLocation", FakeMC2)
-    monkeypatch.setitem(sys.modules, "src.multi_criteria_facility_location", fake_mod)
+    monkeypatch.setitem(sys.modules, "dataselectormulti_criteria_facility_location", fake_mod)
 
     import dataselector.selection.diversity_selector as ds_mod
     importlib.reload(ds_mod)

@@ -29,7 +29,7 @@ def _install_apricot_stub(monkeypatch):
 
 def test_spatial_constraint_preserves_count(make_features, make_dummy_metadata, monkeypatch):
     _install_apricot_stub(monkeypatch)
-    selector_mod = load_module_from_path("sel_mod", REPO_ROOT / "src" / "diversity_selector.py")
+    selector_mod = load_module_from_path("sel_mod", REPO_ROOT / "dataselector" / "selection" / "diversity_selector.py")
     DiversitySelector = selector_mod.DiversitySelector
 
     selector = DiversitySelector(n_samples=10, use_multi_criteria=False)
@@ -42,11 +42,11 @@ def test_spatial_constraint_preserves_count(make_features, make_dummy_metadata, 
 
 def test_spatial_constraint_respects_distance(make_features, make_dummy_metadata, monkeypatch):
     # Use real MetadataProcessor helper for distance computation loaded in isolation
-    mp_mod = load_module_from_path("mp_mod", REPO_ROOT / "src" / "metadata_processor.py")
+    mp_mod = load_module_from_path("mp_mod", REPO_ROOT / "dataselector" / "data" / "metadata_processor.py")
     MetadataProcessor = mp_mod.MetadataProcessor
 
     _install_apricot_stub(monkeypatch)
-    selector_mod = load_module_from_path("sel_mod2", REPO_ROOT / "src" / "diversity_selector.py")
+    selector_mod = load_module_from_path("sel_mod2", REPO_ROOT / "dataselector" / "selection" / "diversity_selector.py")
     DiversitySelector = selector_mod.DiversitySelector
 
     selector = DiversitySelector(n_samples=5, use_multi_criteria=False)
@@ -67,7 +67,7 @@ def test_spatial_constraint_respects_distance(make_features, make_dummy_metadata
 
 def test_spatial_constraint_with_insufficient_samples(make_features, monkeypatch):
     _install_apricot_stub(monkeypatch)
-    selector_mod = load_module_from_path("sel_mod3", REPO_ROOT / "src" / "diversity_selector.py")
+    selector_mod = load_module_from_path("sel_mod3", REPO_ROOT / "dataselector" / "selection" / "diversity_selector.py")
     DiversitySelector = selector_mod.DiversitySelector
 
     selector = DiversitySelector(n_samples=20, use_multi_criteria=False)
@@ -83,7 +83,7 @@ def test_spatial_constraint_with_insufficient_samples(make_features, monkeypatch
 # Adaptive tests
 def test_adaptive_min_distance_reaches_n_samples(monkeypatch):
     _install_apricot_stub(monkeypatch)
-    selector_mod = load_module_from_path("sel_mod4", REPO_ROOT / "src" / "diversity_selector.py")
+    selector_mod = load_module_from_path("sel_mod4", REPO_ROOT / "dataselector" / "selection" / "diversity_selector.py")
     DiversitySelector = selector_mod.DiversitySelector
 
     selector = DiversitySelector(n_samples=5, use_multi_criteria=False)
@@ -109,7 +109,7 @@ def test_adaptive_min_distance_reaches_n_samples(monkeypatch):
 
 def test_adaptive_fallback_allows_duplicates(monkeypatch):
     _install_apricot_stub(monkeypatch)
-    selector_mod = load_module_from_path("sel_mod5", REPO_ROOT / "src" / "diversity_selector.py")
+    selector_mod = load_module_from_path("sel_mod5", REPO_ROOT / "dataselector" / "selection" / "diversity_selector.py")
     DiversitySelector = selector_mod.DiversitySelector
 
     coords = [(52.52, 13.405), (52.52, 13.405)]
@@ -138,7 +138,7 @@ def test_spatial_penalty_increases_nearby_distances(monkeypatch):
     monkeypatch.setitem(sys.modules, "src", src_pkg)
 
     # Provide minimal src.spatial_facility_location implementation required by multi_criteria
-    fake_spatial = types.ModuleType("src.spatial_facility_location")
+    fake_spatial = types.ModuleType("dataselectorspatial_facility_location")
 
     def _haversine_distance(lat1, lon1, lat2, lon2):
         return float(abs(lat1 - lat2) + abs(lon1 - lon2))
@@ -153,9 +153,9 @@ def test_spatial_penalty_increases_nearby_distances(monkeypatch):
 
     fake_spatial.haversine_distance = _haversine_distance
     fake_spatial.haversine_matrix = _haversine_matrix
-    monkeypatch.setitem(sys.modules, "src.spatial_facility_location", fake_spatial)
+    monkeypatch.setitem(sys.modules, "dataselectorspatial_facility_location", fake_spatial)
 
-    mc_mod = load_module_from_path("mc_mod", REPO_ROOT / "src" / "multi_criteria_facility_location.py")
+    mc_mod = load_module_from_path("mc_mod", REPO_ROOT / "dataselector" / "selection" / "multi_criteria_facility_location.py")
     MultiCriteriaFacilityLocation = mc_mod.MultiCriteriaFacilityLocation
 
     latlon = [(0.0, 0.0), (0.01, 0.01), (1.0, 1.0)]
@@ -175,7 +175,7 @@ def test_spatial_penalty_increases_nearby_distances(monkeypatch):
 
 
 def test_soft_penalty_allows_selection_when_hard_would_block():
-    mc_mod = load_module_from_path("mc_mod2", REPO_ROOT / "src" / "multi_criteria_facility_location.py")
+    mc_mod = load_module_from_path("mc_mod2", REPO_ROOT / "dataselector" / "selection" / "multi_criteria_facility_location.py")
     MultiCriteriaFacilityLocation = mc_mod.MultiCriteriaFacilityLocation
 
     latlon = [(0.0, 0.0), (0.01, 0.01), (1.0, 1.0)]

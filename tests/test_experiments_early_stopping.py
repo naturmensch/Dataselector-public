@@ -19,9 +19,9 @@ def test_early_stopping(monkeypatch, tmp_path):
     runner = ExperimentRunner(output_dir=str(tmp_path))
 
     # Monkeypatch loading and feature extraction to be lightweight
-    monkeypatch.setattr("src.experiments.load_metadata", lambda p: _fake_meta())
+    monkeypatch.setattr("dataselectorexperiments.load_metadata", lambda p: _fake_meta())
     monkeypatch.setattr(
-        "src.experiments.extract_features",
+        "dataselectorexperiments.extract_features",
         lambda meta, batch_size=16: np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]]),
     )
 
@@ -37,7 +37,7 @@ def test_early_stopping(monkeypatch, tmp_path):
             df = metadata.iloc[[0, 1]]
             df.to_csv(out_csv, index=False)
 
-    monkeypatch.setattr("src.experiments.DiversitySelector", DummyDS)
+    monkeypatch.setattr("dataselectorexperiments.DiversitySelector", DummyDS)
 
     weight_combinations = [(0.7, 0.15, 0.15)] * 10
 

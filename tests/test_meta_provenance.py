@@ -3,7 +3,7 @@ import json
 import numpy as np
 import pandas as pd
 
-from src import experiments as experiments_module
+from dataselector.pipeline import experiments as experiments_module
 
 
 def test_meta_provenance_includes_versions(tmp_path, monkeypatch):

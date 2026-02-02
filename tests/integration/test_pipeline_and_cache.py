@@ -38,7 +38,7 @@ def test_cache_migration_and_load(tmp_path):
     # avoid importing heavy native deps indirectly via package-level imports.
     import types, sys
 
-    fake_cache = types.ModuleType("src.cache")
+    fake_cache = types.ModuleType("dataselectorcache")
 
     def compute_meta_hash(csv_path, params=None):
         return "deadbeef" * 8  # deterministic fake hash
@@ -56,7 +56,7 @@ def test_cache_migration_and_load(tmp_path):
     fake_cache.create_meta_info = create_meta_info
     fake_cache.atomic_write_features_with_meta = atomic_write_features_with_meta
 
-    sys.modules["src.cache"] = fake_cache
+    sys.modules["dataselectorcache"] = fake_cache
 
     # Import migrate function
     spec = importlib.util.spec_from_file_location("migrate_mod", REPO_ROOT / "scripts" / "migrate_feature_cache_to_hash.py")
@@ -91,7 +91,7 @@ def test_feature_cache_validation_reextracts(tmp_path, monkeypatch):
     from tests.utils import load_module_from_path
 
     # stub heavy feature extractor and metadata processor
-    fake_feat = types.ModuleType("src.feature_extractor")
+    fake_feat = types.ModuleType("dataselectorfeature_extractor")
 
     class _FE:
         def __init__(self, *a, **k):
@@ -102,7 +102,7 @@ def test_feature_cache_validation_reextracts(tmp_path, monkeypatch):
 
     fake_feat.FeatureExtractor = _FE
 
-    fake_meta = types.ModuleType("src.metadata_processor")
+    fake_meta = types.ModuleType("dataselectormetadata_processor")
 
     class _MP:
         def __init__(self, csv_path):
@@ -125,16 +125,16 @@ def test_feature_cache_validation_reextracts(tmp_path, monkeypatch):
 
     fake_meta.MetadataProcessor = _MP
 
-    monkeypatch.setitem(sys.modules, "src.feature_extractor", fake_feat)
-    monkeypatch.setitem(sys.modules, "src.metadata_processor", fake_meta)
+    monkeypatch.setitem(sys.modules, "dataselectorfeature_extractor", fake_feat)
+    monkeypatch.setitem(sys.modules, "dataselectormetadata_processor", fake_meta)
 
     # ensure src.cache is loadable
-    spec = importlib.util.spec_from_file_location("src.cache", REPO_ROOT / "src" / "cache.py")
+    spec = importlib.util.spec_from_file_location("dataselectorcache", REPO_ROOT / "dataselector" / "pipeline" / "cache.py")
     cache_mod = importlib.util.module_from_spec(spec)
-    sys.modules["src.cache"] = cache_mod
+    sys.modules["dataselectorcache"] = cache_mod
     spec.loader.exec_module(cache_mod)
 
-    io_mod = load_module_from_path("test_src_io", REPO_ROOT / "src" / "io.py")
+    io_mod = load_module_from_path("test_src_io", REPO_ROOT / "dataselector" / "data" / "io.py")
 
     # monkeypatch the heavy extractor to a fast deterministic stub (extra safety)
     monkeypatch.setattr(io_mod, "extract_features", lambda metadata, batch_size=16: np.zeros((len(metadata), 16), dtype=np.float32))
@@ -168,7 +168,7 @@ def test_pipeline_smoke_small(tmp_path, monkeypatch):
     # stub FeatureExtractor and apricot
     from tests.utils import FakeFeatureExtractor, load_module_from_path
 
-    fake_feat = types.ModuleType("src.feature_extractor")
+    fake_feat = types.ModuleType("dataselectorfeature_extractor")
     fake_feat.FeatureExtractor = FakeFeatureExtractor
     monkeypatch.setitem(sys.modules, 'src.feature_extractor', fake_feat)
 
@@ -190,13 +190,13 @@ def test_pipeline_smoke_small(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, 'apricot', fake_apricot)
 
     # load lightweight modules
-    spatial_mod = load_module_from_path('spatial_mod', REPO_ROOT / 'src' / 'spatial_facility_location.py')
+    spatial_mod = load_module_from_path('spatial_mod', REPO_ROOT / 'dataselector' / 'selection' / 'spatial_facility_location.py')
     monkeypatch.setitem(sys.modules, 'src.spatial_facility_location', spatial_mod)
 
-    mc_mod = load_module_from_path('mc_mod', REPO_ROOT / 'src' / 'multi_criteria_facility_location.py')
+    mc_mod = load_module_from_path('mc_mod', REPO_ROOT / 'dataselector' / 'selection' / 'multi_criteria_facility_location.py')
     monkeypatch.setitem(sys.modules, 'src.multi_criteria_facility_location', mc_mod)
 
-    io_mod = load_module_from_path("io_mod", REPO_ROOT / "src" / "io.py")
+    io_mod = load_module_from_path("io_mod", REPO_ROOT / "dataselector" / "data" / "io.py")
     monkeypatch.setitem(sys.modules, 'src.io', io_mod)
 
     # Provide a fake DiversitySelector to avoid importing heavy package-level deps (umap/numba)
@@ -240,7 +240,7 @@ def test_pipeline_smoke_small(tmp_path, monkeypatch):
     fake_metrics.compute_metrics = compute_metrics
     monkeypatch.setitem(sys.modules, 'src.metrics', fake_metrics)
 
-    experiments = load_module_from_path('experiments', REPO_ROOT / 'src' / 'experiments.py')
+    experiments = load_module_from_path('experiments', REPO_ROOT / 'dataselector' / 'pipeline' / 'experiments.py')
     monkeypatch.setitem(sys.modules, 'src.experiments', experiments)
 
     # monkeypatch KMeans to simple fake

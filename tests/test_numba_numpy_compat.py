@@ -3,7 +3,7 @@ import types
 
 import pytest
 
-from src import compat
+from dataselector import compat
 
 
 def test_no_numba_installed(monkeypatch):
