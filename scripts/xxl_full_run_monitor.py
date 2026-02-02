@@ -1,12 +1,51 @@
 #!/usr/bin/env python3
 """Start full XXL pipeline run and monitor progress.
 
+This script launches `scripts/xxl_KDR146_run_thesis_complete.py` as a subprocess,
 streams stdout/stderr to `outputs/XXL_FULL_RUN.log`, monitors progress by
 inspecting the log and `outputs/runs/` for the final XXL run directory, and
 writes a monitor report `monitor_report.md` inside the discovered run dir
 when the run finishes (success or failure).
 
 Usage:
+    PYTHONPATH=. ./scripts/exec_in_env.sh --env dataselector -- python scripts/xxl_full_run_monitor.py
+
+Be aware: this performs a full production execution and can take a long time.
+"""
+
+import argparse
+import glob
+import json
+import os
+import re
+import shutil
+import signal
+import subprocess
+import sys
+import time
+from collections import deque
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+from scripts.common import data_path
+
+ROOT = Path(__file__).resolve().parents[1]
+# Do NOT modify sys.path at module import time; imports that require project root should
+# be performed inside `main()` or by setting PYTHONPATH when running the script.
+LOG_FILE = ROOT / "outputs" / "XXL_FULL_RUN.log"
+LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+# Environment runner configuration (dataselector mamba/conda env integration)
+USE_DATASELECTOR_ENV: bool = True  # default: use the dataselector environment
+DATASELECTOR_ENV_NAME: str = os.environ.get("DATASELECTOR_ENV_NAME", "dataselector")
+ENV_RUNNER_CMD: str | None = None  # e.g. 'mamba run -n dataselector --'
+ENV_RUNNER_LIST: list[
+    str
+] | None = None  # e.g. ['mamba', 'run', '-n', 'dataselector', '--']
+ENV_RUNNER_NAME: str | None = None
+
+MAIN_SCRIPT = ROOT / "scripts" / "xxl_KDR146_run_thesis_complete.py"
+
 
 # Helper to print and append monitor messages to active log
 def _monitor_log(msg: str, active_log: Path) -> None:
@@ -36,10 +75,63 @@ def _init_env_runner(use_env: bool = True, env_name: str | None = None):
     if not USE_DATASELECTOR_ENV:
         return
 
+    # Use mamba for environment execution
+    try:
+        if shutil.which("mamba"):
+            ENV_RUNNER_CMD = f"mamba run -n {DATASELECTOR_ENV_NAME}"
+            ENV_RUNNER_LIST = ["mamba", "run", "-n", DATASELECTOR_ENV_NAME]
+            ENV_RUNNER_NAME = "mamba"
+        else:
+            _monitor_log(
+                "Warning: mamba not found on PATH; will not use dataselector env",
                 LOG_FILE,
             )
             USE_DATASELECTOR_ENV = False
     except Exception as e:
+        _monitor_log(f"Warning: error detecting mamba: {e}", LOG_FILE)
+        USE_DATASELECTOR_ENV = False
+
+
+def _detect_n_candidates(root: Path = ROOT) -> int:
+    """Detect number of candidate tiles (module-level helper).
+
+    Order of precedence:
+     1. workspace-local `root/data/new_all_tiles.csv` if present
+     2. repository `data/new_all_tiles.csv` (via `data_path`)
+     3. environment override `DATASET_N_CANDIDATES`
+     4. fallback legacy default = 673 (with a warning logged).
+    """
+    import pandas as _pd
+
+    # 1) workspace-local CSV (if provided via root) — tests expect this to be checked first
+    try:
+        local_path = Path(root) / "data" / "new_all_tiles.csv"
+        if local_path.exists():
+            tiles_df = _pd.read_csv(local_path)
+            return int(len(tiles_df))
+    except Exception:
+        pass
+
+    # 2) Try explicit environment override (if set in process env)
+    try:
+        env_val = os.environ.get("DATASET_N_CANDIDATES")
+        if env_val:
+            return int(env_val)
+    except Exception:
+        pass
+
+    # 3) repository-wide CSV
+    try:
+        tiles_df = _pd.read_csv(data_path("new_all_tiles.csv"))
+        return int(len(tiles_df))
+    except Exception:
+        _monitor_log(
+            "Warning: could not read data/new_all_tiles.csv and DATASET_N_CANDIDATES not set; falling back to legacy value 673",
+            LOG_FILE,
+        )
+        return 673
+
+
 def run_hook(
     name: str,
     cmd_str: str,
@@ -82,20 +174,43 @@ def run_hook(
         )
         cmd_str = rewritten
 
+    # If enabled and available, prefix the command with the env runner (mamba/conda)
+    if USE_DATASELECTOR_ENV and ENV_RUNNER_CMD:
+        _monitor_log(
+            f"[{name}] Prefixing hook command to run inside env '{DATASELECTOR_ENV_NAME}' using {ENV_RUNNER_NAME}",
+            active_log,
+        )
+        cmd_str = f"{ENV_RUNNER_CMD} {cmd_str}"
+
+    # Record the actual command being executed (after any rewriting/prefixing)
+    meta["command"] = cmd_str
     _monitor_log(f"[{name}] Running hook: {cmd_str}", active_log)
     _monitor_log(f"[{name}] Log: {log_file}", active_log)
 
     for i in range(retries + 1):
         attempt_info = {
+            "attempt": i + 1,
+            "start": datetime.now(timezone.utc).isoformat(),
+            "exit_code": None,
         }
 
         try:
             with open(log_file, "a") as f:
                 # Use shell=True for flexibility with complex commands passed as string
+                proc = subprocess.Popen(
+                    cmd_str,
+                    shell=True,
+                    stdout=f,
+                    stderr=subprocess.STDOUT,
+                    env=env,
+                    start_new_session=start_new_session,
+                )
+
                 try:
                     # Treat timeout <= 0 as None (infinite wait)
                     wait_arg = timeout if timeout > 0 else None
                     ret = proc.wait(timeout=wait_arg)
+                    attempt_info["exit_code"] = ret
                     if ret == 0:
                         meta["success"] = True
                 except subprocess.TimeoutExpired:
@@ -104,6 +219,7 @@ def run_hook(
                     )
                     attempt_info["error"] = "timeout"
                     # Kill process group
+                    if start_new_session and hasattr(os, "killpg"):
                         try:
                             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
                         except Exception:
@@ -111,6 +227,7 @@ def run_hook(
                     else:
                         proc.kill()
         except Exception as e:
+            attempt_info["error"] = str(e)
             _monitor_log(f"[{name}] Exception: {e}", active_log)
 
         attempt_info["end"] = datetime.now(timezone.utc).isoformat()
@@ -118,6 +235,7 @@ def run_hook(
 
         if meta["success"]:
             break
+
         if i < retries:
             _monitor_log(f"[{name}] Retrying ({i+1}/{retries})...", active_log)
             time.sleep(2)
@@ -128,6 +246,7 @@ def run_hook(
         meta_file.write_text(json.dumps(meta, indent=2))
     except Exception:
         pass
+
     return meta
 
 
@@ -849,13 +968,32 @@ def _resume_run(
         db_backup = "N/A"
 
     # Use ExperimentStateAnalyzer and RecoveryPlanner to plan recovery tasks
+    # Import ExperimentStateAnalyzer and RecoveryPlanner independently so that
+    # a missing optional module does not prevent using the other.
     try:
         from scripts.monitor_state import ExperimentStateAnalyzer
-        from scripts.recovery import RecoveryPlanner, TaskExecutor
-    except Exception:
+    except Exception as e:
         ExperimentStateAnalyzer = None
+        _monitor_log(f"Import: monitor_state not available: {e}", active_log)
+        try:
+            import traceback as _tb
+
+            _monitor_log(_tb.format_exc(), active_log)
+        except Exception:
+            pass
+
+    try:
+        from scripts.recovery import RecoveryPlanner, TaskExecutor
+    except Exception as e:
         RecoveryPlanner = None
         TaskExecutor = None
+        _monitor_log(f"Import: recovery module not available: {e}", active_log)
+        try:
+            import traceback as _tb
+
+            _monitor_log(_tb.format_exc(), active_log)
+        except Exception:
+            pass
 
     analyzer_state = {}
     if ExperimentStateAnalyzer is not None:
@@ -917,14 +1055,7 @@ def _resume_run(
         state["n_samples"] = None
 
     # Compute dataset size (used for repro CLI invocation)
-    n_candidates_calculated = 673
-    try:
-        import pandas as pd
-
-        tiles_df = pd.read_csv(ROOT / "data" / "new_all_tiles.csv")
-        n_candidates_calculated = len(tiles_df)
-    except Exception:
-        pass
+    n_candidates_calculated = _detect_n_candidates()
 
     planner = RecoveryPlanner(configured_n=configured_n, repro_seeds=[43, 44])
     tasks = planner.plan(state)
@@ -947,12 +1078,12 @@ def _resume_run(
             phases.append(
                 {
                     "name": "reproducibility",
-                    "cmd": f"{sys.executable} -m scripts.xxl_KDR146_run_thesis_complete --phase repro --seeds {seeds} --n-trials {configured_n} --n-candidates {n_candidates_calculated}",
+                    "cmd": f"{sys.executable} {str(MAIN_SCRIPT)} --phase repro --seeds {seeds} --n-trials {configured_n} --n-candidates {n_candidates_calculated}",
                 }
             )
         elif t.name == "finalize":
             n_samples = t.params.get("n_samples")
-            cmd = f"{sys.executable} -m scripts.xxl_KDR146_run_thesis_complete --phase finalize --run-dir {run_dir}"
+            cmd = f"{sys.executable} {str(MAIN_SCRIPT)} --phase finalize --run-dir {run_dir}"
             if n_samples:
                 cmd += f" --n-samples {n_samples}"
             phases.append({"name": "finalize", "cmd": cmd})
@@ -1301,8 +1432,23 @@ def main():
         default=os.environ.get("DATASELECTOR_ENV_NAME", "dataselector"),
         help="Name of the mamba/conda environment to use (default from DATASELECTOR_ENV_NAME or 'dataselector')",
     )
+    parser.add_argument(
+        "--main-script",
+        type=str,
+        default=None,
+        help="Override main orchestrator script path (if provided, uses this path).",
+    )
 
     args = parser.parse_args()
+
+    # Determine MAIN_SCRIPT selection: explicit override > modern implementation > legacy
+    global MAIN_SCRIPT
+    if args.main_script:
+        MAIN_SCRIPT = Path(args.main_script)
+    else:
+        modern = ROOT / "scripts" / "xxl_KDR146_run_thesis_complete_modern.py"
+        legacy = ROOT / "scripts" / "xxl_KDR146_run_thesis_complete.py"
+        MAIN_SCRIPT = modern if modern.exists() else legacy
 
     # Ensure PYTHONPATH in env
     env = os.environ.copy()
@@ -1316,6 +1462,12 @@ def main():
     )
 
     # Create per-run timestamped log file and make `XXL_FULL_RUN.log` point to it (symlink)
+    forced_ts = os.environ.get("MONITOR_FORCE_TS")
+    if forced_ts:
+        ts = forced_ts
+    else:
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    LOG_FILE_TS = LOG_FILE.parent / f"XXL_FULL_RUN_{ts}.log"
     # Ensure we do not overwrite an existing timestamped file
     if not LOG_FILE_TS.exists():
         LOG_FILE_TS.touch()
@@ -1348,6 +1500,7 @@ def main():
             retries=args.pre_run_retries,
             env=env,
             start_new_session=not args.no_new_session,
+            pass_dry_run=args.pre_run_dry_run,
         )
         if not pre_run_meta["success"]:
             msg = f"PRE-RUN hook failed (exit code: {pre_run_meta['attempts'][-1].get('exit_code')})"
@@ -1426,7 +1579,11 @@ def main():
             sys.exit(1)
 
     # Start the full run subprocess
-    cmd = [sys.executable, str(MAIN_SCRIPT)]
+    # If MAIN_SCRIPT is a shell script, run it with bash; otherwise use the Python interpreter
+    if str(MAIN_SCRIPT).endswith('.sh') or not str(MAIN_SCRIPT).endswith('.py'):
+        cmd = ['bash', str(MAIN_SCRIPT)]
+    else:
+        cmd = [sys.executable, str(MAIN_SCRIPT)]
 
     # If a selected_sampler artifact exists, use it to instruct the main script which sampler to use
     try:
@@ -1469,6 +1626,13 @@ def main():
         # start_new_session=True creates a new process group, allowing us to kill the whole tree.
         # We disable this for tests via --no-new-session to allow standard signal propagation.
         start_new_session = not args.no_new_session
+        process = subprocess.Popen(
+            cmd,
+            stdout=logf,
+            stderr=subprocess.STDOUT,
+            env=env,
+            start_new_session=start_new_session,
+        )
 
     start_time = time.time()
     print(f"PID: {process.pid}, writing logs to: {LOG_FILE}")
@@ -1531,6 +1695,7 @@ def main():
                         continue
 
                     # Detect export completions
+                    m = re.search(r"Auswahl exportiert nach:\s*(.+)$", line)
                     if m:
                         _monitor_log(
                             f"Prozess beendet: Auswahl exportiert nach: {m.group(1)}",
@@ -1584,6 +1749,11 @@ def main():
             try:
                 for p in glob.glob(str(runs_root / "*")):
                     ppath = Path(p)
+                    if (
+                        ppath.is_dir()
+                        and "hamburg" in ppath.name.lower()
+                        and "xxl" in ppath.name.lower()
+                    ):
                         if ppath not in xxl_dirs:
                             xxl_dirs.append(ppath)
             except Exception:
@@ -1800,15 +1970,23 @@ def main():
                 "- Could not compute convergence baseline from existing validation data (insufficient/missing runs)"
             )
     except Exception as e:
+        report_lines.append("\n## Convergence baseline analysis")
         report_lines.append(f"- Error while computing baseline: {e}")
 
     # Basic config validation for the discovered XXL run (if any)
     config_issues = []
     if latest_xxl:
+        cfg_path = latest_xxl / "config" / "config_optuna.yaml"
         if cfg_path.exists():
             try:
                 import yaml
 
+                cfg = yaml.safe_load(cfg_path.read_text()) or {}
+                sampler = cfg.get("sampler")
+                n_trials_cfg = cfg.get("n_trials")
+                n_candidates_cfg = cfg.get("n_candidates")
+
+                if sampler and str(sampler).lower() != "cmaes":
                     config_issues.append(f"unexpected sampler: {sampler}")
 
                 try:
@@ -1818,6 +1996,15 @@ def main():
                     config_issues.append(f"n_trials not parseable: {n_trials_cfg}")
 
                 try:
+                    detected_nc = _detect_n_candidates()
+                    if n_candidates_cfg is not None and int(n_candidates_cfg) != detected_nc:
+                        config_issues.append(
+                            f"n_candidates mismatch: {n_candidates_cfg} (detected: {detected_nc})"
+                        )
+                except Exception:
+                    config_issues.append(
+                        f"n_candidates not parseable: {n_candidates_cfg}"
+                    )
             except Exception as e:
                 config_issues.append(f"failed to parse config: {e}")
 
@@ -1827,9 +2014,12 @@ def main():
             report_lines.append(f"- {issue}")
 
     # Add section with log excerpts
+    report_lines.append("\n## Log excerpts (last 500 lines)")
     try:
         with open(LOG_FILE, "r") as f:
             lines = f.readlines()
+        excerpt = "".join(lines[-500:])
+        report_lines.append("```\n" + excerpt + "\n```")
     except Exception as e:
         report_lines.append(f"Could not read log file: {e}")
 
@@ -1845,6 +2035,10 @@ def main():
         reports_dir = ROOT / "outputs" / "monitor_reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
 
+    report_md = reports_dir / f"monitor_report_{report_ts}.md"
+    report_meta = reports_dir / f"monitor_meta_{report_ts}.json"
+    report_latest_md = reports_dir / "monitor_report.md"
+    report_latest_meta = reports_dir / "monitor_meta.json"
 
     # Write markdown report
     report_md.write_text(report_text)
@@ -1880,13 +2074,53 @@ def main():
         f"Wrote report to: {report_md} (latest copies: {report_latest_md}, {report_latest_meta})"
     )
 
+    # Postprocess: ensure backward compatibility for bootstrap results summary
+    try:
+        bootstrap_csv = ROOT / "outputs" / "bootstrap_results_summary.csv"
+        if bootstrap_csv.exists():
+            try:
+                import pandas as _pd
+
+                df_bs = _pd.read_csv(bootstrap_csv)
+                if "mean" not in df_bs.columns:
+                    # Case A: columns with _mean suffix → create a mean column across them
+                    mean_cols = [c for c in df_bs.columns if c.endswith("_mean")]
+                    if mean_cols:
+                        df_bs["mean"] = df_bs[mean_cols].mean(axis=1)
+                        df_bs.to_csv(bootstrap_csv, index=False)
+                        _monitor_log("Added 'mean' column to bootstrap_results_summary.csv for compatibility", ACTIVE_LOG)
+                    else:
+                        # Case B: legacy format where rows are ['count','mean','std',...] and first column is the metric name (e.g., 'Unnamed: 0')
+                        # Detect and transpose into a column-based summary if applicable
+                        idx_col = None
+                        for candidate in df_bs.columns[:2]:
+                            if df_bs[candidate].astype(str).str.lower().isin(["count", "mean", "std", "min", "25%", "50%", "75%", "max"]).any():
+                                idx_col = candidate
+                                break
+                        if idx_col is not None:
+                            try:
+                                df_transposed = df_bs.set_index(idx_col).transpose()
+                                if "mean" in df_transposed.columns:
+                                    df_transposed.to_csv(bootstrap_csv, index=False)
+                                    _monitor_log("Transposed legacy bootstrap_results_summary.csv into column-based format for compatibility", ACTIVE_LOG)
+                            except Exception as e:
+                                _monitor_log(f"Could not transpose legacy bootstrap summary: {e}", ACTIVE_LOG)
+            except Exception as e:
+                _monitor_log(f"Could not post-process bootstrap summary: {e}", ACTIVE_LOG)
+    except Exception:
+        pass
+
     # Also copy the ACTIVE log into the run folder for completeness (versioned)
     try:
         if latest_xxl and ACTIVE_LOG.exists():
+            copy_ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            dest_log = latest_xxl / f"XXL_FULL_RUN_{copy_ts}.log"
             shutil.copy(ACTIVE_LOG, dest_log)
             print(f"Copied full log into run folder: {dest_log}")
     except Exception:
         pass
+
+    print("Monitor finished")
 
 
 if __name__ == "__main__":

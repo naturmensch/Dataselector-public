@@ -25,16 +25,11 @@ def test_build_new_all_tiles_tmpdir(tmp_path: Path):
     out_csv = tmp_path / "new_all_tiles.csv"
 
     # run script
-<<<<<<< HEAD
     import sys
     env = os.environ.copy()
     env['PYTHONPATH'] = str(Path.cwd())
     cmd = [sys.executable, "scripts/build_new_all_tiles.py", "--image-dir", str(images), "--out", str(out_csv)]
     res = subprocess.run(cmd, capture_output=True, text=True, env=env)
-=======
-    cmd = ["python", "scripts/build_new_all_tiles.py", "--image-dir", str(images), "--out", str(out_csv)]
-    res = subprocess.run(cmd, capture_output=True, text=True)
->>>>>>> origin/feat/cache-by-hash
     assert res.returncode == 0, res.stdout + "\n" + res.stderr
 
     assert out_csv.exists()
@@ -43,21 +38,15 @@ def test_build_new_all_tiles_tmpdir(tmp_path: Path):
     assert len(df) == 2
     assert "longName" in df.columns
     assert df.loc[0, "longName"] == "KDR_001_Someplace_1901.png"
-<<<<<<< HEAD
     # check parsed coordinates (now converted to EPSG:3857)
     # lat 52.1, lon 13.4 -> approx N: 6818227, left: 1491681
     assert abs(df.loc[0, "N"] - 6818227) < 1
     assert abs(df.loc[0, "left"] - 1491681) < 1
-=======
-    # check parsed coordinates
-    assert df.loc[0, "N"] == 52.1
->>>>>>> origin/feat/cache-by-hash
 
     prov = out_csv.parent / "new_all_tiles_provenance.json"
     assert prov.exists()
     prov_json = json.loads(prov.read_text())
     assert prov_json["rows"] == 2
-<<<<<<< HEAD
 
 
 def test_build_new_all_tiles_with_base_merge(tmp_path: Path):
@@ -136,5 +125,3 @@ def test_build_new_all_tiles_with_base_merge(tmp_path: Path):
         # Clean up
         if data_base.exists():
             data_base.unlink()
-=======
->>>>>>> origin/feat/cache-by-hash
