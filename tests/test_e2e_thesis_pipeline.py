@@ -108,7 +108,10 @@ def test_e2e_thesis_pipeline(data_symlink):
     # 2) Sampler Suite (compare script minimal run)
     _run([
         "python",
-        "scripts/compare_samplers_multi_seed.py",
+        "-m",
+        "dataselector",
+        "compare-samplers",
+        "multi-seed",
         "--samplers",
         "qmc",
         "tpe",

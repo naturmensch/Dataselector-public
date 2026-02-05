@@ -1,10 +1,17 @@
-# Algorithm Overview
+# ⚠️ DEPRECATED: Siehe `concepts.md`
 
-Short overview of the Multi-Criteria Facility Location algorithm used:
+Diese Datei ist **veraltet**. Der Inhalt wurde in [concepts.md](concepts.md) mit vollständiger mathematischer Dokumentation integriert.
 
-- Objective: Maximize coverage over visual, spatial and temporal distances
-- Use submodular greedy facility location (apricot-select)
-- Combine distances: d = α·d_visual + β·d_spatial + γ·d_temporal
-- Enforce spatial hard-constraint via `min_distance_km` with fallback logic
+**Übersicht der Multi-Criteria Facility Location:**
+- Objekt: Maximiere Abdeckung über visuelle, räumliche & zeitliche Distanzen
+- Algorithmus: Submodular Greedy Facility Location (apricot-select)
+- Gewichtung: $d = \alpha \cdot d_{visual} + \beta \cdot d_{spatial} + \gamma \cdot d_{temporal}$
+- Hard-Constraint: Räumlicher Mindestabstand $d_{min}$ mit Fallback-Logik
 
-(Expand with pseudocode and links to `src/lazy_facility_location.py`.)
+Siehe [concepts.md](concepts.md) für:
+- Vollständige mathematische Formulierung
+- Greedy Algorithmus Pseudocode
+- Detaillierte Constraint-Behandlung
+- Links zu Implementierung in [src/lazy_facility_location.py](../../src/lazy_facility_location.py)
+
+**Status:** Archived (Konsolidiert in 02_THEORY/concepts.md am 2. Februar 2026)

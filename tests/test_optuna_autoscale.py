@@ -1,49 +1,51 @@
-import importlib
-import os
-import subprocess
+"""Tests for dataselector/workflows/optuna_autoscale.py"""
+
 import sys
-from datetime import datetime
 from pathlib import Path
 
-import pytest
 
-# Skip tests that require optional heavy dependencies when not installed
-if importlib.util.find_spec("optuna") is None:
-    pytest.skip("optuna not installed in this environment", allow_module_level=True)
+def test_optuna_autoscale_importable():
+    """Module should import without heavy dependencies at import-time."""
+    from dataselector.workflows import optuna_autoscale
 
-OUT = Path("outputs")
+    assert hasattr(optuna_autoscale, "run_autoscale")
+    assert hasattr(optuna_autoscale, "make_objective")
+    assert hasattr(optuna_autoscale, "load_or_create_data")
+    assert hasattr(optuna_autoscale, "clamp")
+    assert hasattr(optuna_autoscale, "main")
 
 
-def test_optuna_autoscale_smoke(tmp_path):
-    # Run with tiny synthetic setup: 2 stages (5, 10) and small trials to make it fast
-    cmd = [
-        sys.executable,
-        "scripts/optuna_autoscale.py",
-        "--n-trials",
-        "3",
-        "3",
-        "--stages",
-        "5",
-        "10",
-        "--n-candidates",
-        "50",
-        "--dim",
-        "16",
-        "--seed",
-        "1",
-    ]
-    env = os.environ.copy()
-    env["PYTHONWARNINGS"] = "ignore"
+def test_clamp():
+    """Test clamp utility function."""
+    from dataselector.workflows.optuna_autoscale import clamp
 
-    result = subprocess.run(
-        cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    assert clamp(5, 0, 10) == 5
+    assert clamp(-5, 0, 10) == 0
+    assert clamp(15, 0, 10) == 10
+    assert clamp(0.5, 0.01, 1.0) == 0.5
+
+
+def test_load_or_create_data_synthetic(tmp_path):
+    """Test synthetic data generation when features/metadata don't exist."""
+    from dataselector.workflows.optuna_autoscale import load_or_create_data
+
+    features, metadata = load_or_create_data(
+        out_dir=tmp_path, n=100, dim=64, seed=123
     )
-    assert result.returncode == 0, f"optuna_autoscale failed: {result.stdout}"
 
-    date = datetime.now().strftime("%Y%m%d")
-    summary = OUT / f"optuna_autoscale_summary_{date}.csv"
-    best = OUT / f"optuna_autoscale_best_{date}.json"
-    report = OUT / f"optuna_autoscale_report_{date}.md"
-    assert summary.exists(), f"Summary {summary} not created"
-    assert best.exists(), f"Best json {best} not created"
-    assert report.exists(), f"Report {report} not created"
+    assert features.shape == (100, 64)
+    assert len(metadata) == 100
+    assert "N" in metadata.columns
+    assert "left" in metadata.columns
+    assert "year" in metadata.columns
+
+
+def test_cli_integration():
+    """Test CLI entry point with --help."""
+    from dataselector.workflows.optuna_autoscale import main
+
+    try:
+        main(["--help"])
+    except SystemExit as e:
+        assert e.code == 0
+

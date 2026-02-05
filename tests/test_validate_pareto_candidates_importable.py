@@ -4,9 +4,9 @@ from tests._helpers.load_script import load_script
 
 
 def test_validate_pareto_candidates_importable():
-    ROOT = Path(__file__).resolve().parents[1]
-    mod = load_script(
-        ROOT / "scripts" / "validate_pareto_candidates.py",
-        module_name="scripts.validate_pareto_candidates_test",
-    )
-    assert hasattr(mod, "validate")
+    """Test that validate_pareto_candidates module is importable."""
+    # Updated to new workflow module location
+    from dataselector.workflows import validation
+    assert hasattr(validation, "validate_pareto_candidates")
+    # Check that function exists and is callable
+    assert callable(validation.validate_pareto_candidates)

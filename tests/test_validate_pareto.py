@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from scripts.validate_pareto_candidates import validate
+from dataselector.workflows.validation import validate_pareto_candidates
 
 
 @pytest.mark.slow
@@ -37,7 +37,7 @@ def _make_pareto_csv(tmp_path):
 def test_validate_small(tmp_path, monkeypatch):
     pareto, outdir = _make_pareto_csv(tmp_path)
     # Run validation with small params to be quick and point to temp outdir
-    df = validate(
+    df = validate_pareto_candidates(
         pareto, min_distances=[10], seeds=[1, 2], n_samples=2, output_dir=outdir
     )
     assert "n_selected" in df.columns

@@ -113,7 +113,7 @@ step_1_sampler_suite() {
     
     # Run sampler suite WITHOUT timeout constraints
     timeout_val="" # No timeout
-    ${RUNNER} python scripts/run_thesis_sampler_suite.py \
+    ${RUNNER} python -m dataselector thesis-sampler-suite \
         --seeds 42 43 44 45 46 47 48 49 50 51 \
         --n-trials 1000 \
         --datasets hamburg kdr100 \
@@ -255,8 +255,8 @@ PY
         fi
     fi
 
-    if [ ! -f "${ROOT}/scripts/optuna_autoscale.py" ] || [ ! -f "${ROOT}/scripts/compare_samplers_multi_seed.py" ] || [ ! -f "${ROOT}/scripts/xxl_KDR146_run_thesis_complete_modern.py" ]; then
-        log_error "One or more pipeline scripts are missing (optuna_autoscale.py, compare_samplers_multi_seed.py, xxl_KDR146_run_thesis_complete_modern.py)"
+    if [ ! -f "${ROOT}/scripts/optuna_autoscale.py" ] || [ ! -f "${ROOT}/scripts/xxl_KDR146_run_thesis_complete_modern.py" ]; then
+        log_error "One or more pipeline scripts are missing (optuna_autoscale.py, xxl_KDR146_run_thesis_complete_modern.py)"
         return 1
     fi
 
@@ -276,7 +276,7 @@ dry_run() {
 
     # Minimal sampler suite (no autoscale, short trials)
     log_info "Running minimal Sampler Suite (1 seed × 5 trials)"
-    ${ROOT}/scripts/exec_in_env.sh --env ${DATASELECTOR_ENV} -- python scripts/run_thesis_sampler_suite.py --seeds 42 --n-trials 5 --n-trials-full 5 --datasets hamburg --samplers qmc tpe cmaes --no-autoscale --n-candidates 50 2>&1 | tee "${LOGS_DIR}/dry_sampler_suite.log"
+    ${ROOT}/scripts/exec_in_env.sh --env ${DATASELECTOR_ENV} -- python -m dataselector thesis-sampler-suite --seeds 42 --n-trials 5 --n-trials-full 5 --datasets hamburg --samplers qmc tpe cmaes --no-autoscale --n-candidates 50 2>&1 | tee "${LOGS_DIR}/dry_sampler_suite.log"
 
     # XXL stub (reads selected_sampler.json if present)
     BEST="tpe"

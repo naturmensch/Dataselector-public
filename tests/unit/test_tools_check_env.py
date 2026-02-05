@@ -1,4 +1,4 @@
-"""Unit tests for check-env tool CLI decorator."""
+"""Unit tests for check-env and check-protected tool CLI decorators."""
 
 from __future__ import annotations
 
@@ -42,3 +42,47 @@ def test_check_env_with_paths():
     # Non-existent paths should not crash
     result = check.check_env_usage(paths=["nonexistent/path"])
     assert isinstance(result, int)
+
+
+# ============================================================================
+# check-protected tests
+# ============================================================================
+
+def test_check_protected_registered():
+    """Test that check-protected command is registered via @cli_command."""
+    assert "check-protected" in _CLI_COMMANDS, "check-protected should be registered"
+    cmd_def = _CLI_COMMANDS["check-protected"]
+    assert cmd_def.func == check.check_protected
+    assert cmd_def.help == "Check for modifications inside protected paths"
+    assert "list" in cmd_def.args
+    assert "all" in cmd_def.args
+    assert "protect" in cmd_def.args
+
+
+def test_check_protected_args():
+    """Test that check-protected has correct argument definitions."""
+    cmd_def = _CLI_COMMANDS["check-protected"]
+    
+    list_arg = cmd_def.args["list"]
+    assert list_arg.type == bool
+    assert list_arg.action == "store_true"
+    
+    all_arg = cmd_def.args["all"]
+    assert all_arg.type == bool
+    assert all_arg.action == "store_true"
+    
+    protect_arg = cmd_def.args["protect"]
+    assert protect_arg.type == str
+    assert protect_arg.nargs == "*"
+
+
+def test_check_protected_list_only():
+    """Test check_protected with list=True."""
+    result = check.check_protected(list=True)
+    assert result == 0  # Just lists, always returns 0
+
+
+def test_check_protected_empty_staged():
+    """Test check_protected with empty staged files."""
+    result = check.check_protected(staged_override=[])
+    assert result == 0  # No files = OK

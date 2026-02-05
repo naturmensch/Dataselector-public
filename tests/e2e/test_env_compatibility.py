@@ -1,4 +1,3 @@
-import subprocess
 import sys
 from pathlib import Path
 import pytest
@@ -13,7 +12,7 @@ def test_env_compatibility_exits_zero():
     In PR/normal dev runs, it's OK to skip if the check fails (we provide actionable output).
     """
     cmd = [sys.executable, str(REPO_ROOT / "scripts" / "check_env.py")]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    proc = run_dataselector_cli(cmd, capture_output=True, text=True)
     out = (proc.stdout or "") + "\n" + (proc.stderr or "")
 
     if proc.returncode != 0:

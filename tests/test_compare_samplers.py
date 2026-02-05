@@ -1,115 +1,97 @@
-"""Tests for the sampler comparison script."""
+"""Tests for dataselector.workflows.compare_samplers module."""
 
-import pickle
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
+import pandas as pd
 import pytest
 
-from tests._helpers.load_script import load_script
 
+def test_run_single_optuna_missing_run_dir(tmp_path, monkeypatch):
+    from dataselector.workflows import compare_samplers
 
-@pytest.fixture(scope="module")
-def compare_samplers():
-    ROOT = Path(__file__).resolve().parents[1]
-    return load_script(
-        ROOT / "scripts" / "compare_samplers.py",
-        module_name="scripts.compare_samplers_test",
-    )
+    # Patch repo root to tmp_path
+    monkeypatch.setattr(compare_samplers, "_get_repo_root", lambda: tmp_path)
 
+    monkeypatch.setattr(compare_samplers, "_get_run_optuna", lambda: (lambda **kwargs: None))
 
-def test_run_single_sampler_picklable(compare_samplers):
-    """Ensure the worker function can be pickled for multiprocessing."""
-    try:
-        pickle.dumps(compare_samplers.run_single_sampler)
-    except (pickle.PicklingError, AttributeError) as e:
-        pytest.fail(f"run_single_sampler is not picklable: {e}")
-
-
-def test_compare_samplers_importable(compare_samplers):
-    """Ensure the module can be imported without side effects."""
-    assert hasattr(compare_samplers, "run_sampler_comparison")
-
-
-def test_run_single_sampler_validates_output(tmp_path, monkeypatch, compare_samplers):
-    """Test that run_single_sampler returns None if trials.csv is missing/empty."""
-    # Mock ROOT to point to tmp_path
-    monkeypatch.setattr(compare_samplers, "ROOT", tmp_path)
-
-    # Mock subprocess.run to succeed
-    with (
-        patch("subprocess.run") as mock_run,
-        patch("scripts.compare_samplers.time.sleep"),
-    ):
-        mock_run.return_value.returncode = 0
-
-        # Case 1: No run dir found
-        assert compare_samplers.run_single_sampler("qmc", 1, 1, 1, None, "desc") is None
-
-        # Setup fake run dir
-        run_dir = tmp_path / "outputs" / "runs" / "qmc_1trials"
-        run_dir.mkdir(parents=True)
-        results_dir = run_dir / "results"
-        results_dir.mkdir()
-
-        # Case 2: Run dir exists, but no trials.csv
-        assert compare_samplers.run_single_sampler("qmc", 1, 1, 1, None, "desc") is None
-
-        # Case 3: trials.csv exists but empty
-        (results_dir / "trials.csv").touch()
-        assert compare_samplers.run_single_sampler("qmc", 1, 1, 1, None, "desc") is None
-
-        # Case 4: Valid
-        (results_dir / "trials.csv").write_text("header\n1,0.5")
-        assert compare_samplers.run_single_sampler("qmc", 1, 1, 1, None, "desc") == str(
-            run_dir
+    with pytest.raises(FileNotFoundError, match="No run dir found"):
+        compare_samplers.run_single_optuna(
+            sampler="cmaes",
+            seed=42,
+            n_trials=10,
+            n_candidates=100,
+            preselection_flag=None,
+            exp_desc="desc",
+            dataset="hamburg",
         )
 
 
-def test_parallel_execution_smoke(monkeypatch, tmp_path, compare_samplers):
-    """Smoke test verifying that multiprocessing Pool is utilized."""
-    mock_pool = MagicMock()
-    mock_context = MagicMock()
-    mock_context.Pool.return_value = mock_pool
-    mock_pool.__enter__.return_value = mock_pool
-    # Return empty list to skip analysis part, just testing the call structure
-    mock_pool.starmap.return_value = []
+def test_run_single_optuna_success(tmp_path, monkeypatch):
+    from dataselector.workflows import compare_samplers
 
-    monkeypatch.setattr(
-        compare_samplers.multiprocessing, "get_context", lambda x: mock_context
+    monkeypatch.setattr(compare_samplers, "_get_repo_root", lambda: tmp_path)
+
+    monkeypatch.setattr(compare_samplers, "_get_run_optuna", lambda: (lambda **kwargs: None))
+
+    exp_name = "hamburg_cmaes_10trials_s42"
+    run_dir = tmp_path / "outputs" / "runs" / exp_name
+    (run_dir / "results").mkdir(parents=True)
+
+    df = pd.DataFrame({"trial_number": range(10), "value": range(10)})
+    df.to_csv(run_dir / "results" / "trials.csv", index=False)
+
+    res = compare_samplers.run_single_optuna(
+        sampler="cmaes",
+        seed=42,
+        n_trials=10,
+        n_candidates=100,
+        preselection_flag=None,
+        exp_desc="desc",
+        dataset="hamburg",
     )
-    monkeypatch.setattr(
-        compare_samplers.multiprocessing, "get_all_start_methods", lambda: ["fork"]
+
+    assert res["n_trials"] == 10
+    assert res["best_value"] == 9.0
+    assert res["run_dir"] == str(run_dir)
+
+
+def test_compare_multi_seed_creates_summary(tmp_path, monkeypatch):
+    from dataselector.workflows import compare_samplers
+
+    monkeypatch.setattr(compare_samplers, "_get_repo_root", lambda: tmp_path)
+
+    # Prepare a fake run_dir with trials.csv
+    run_dir = tmp_path / "outputs" / "runs" / "full_qmc_1trials_s1"
+    (run_dir / "results").mkdir(parents=True)
+    df = pd.DataFrame({"trial_number": [0, 1], "value": [0.1, 0.2]})
+    df.to_csv(run_dir / "results" / "trials.csv", index=False)
+
+    def fake_run_single_optuna(*args, **kwargs):
+        return {
+            "sampler": "qmc",
+            "seed": 1,
+            "n_trials": 2,
+            "best_value": 0.2,
+            "best_trial": 1,
+            "mean_value": 0.15,
+            "std_value": 0.05,
+            "convergence_trial": 1,
+            "convergence_ratio": 0.5,
+            "run_dir": str(run_dir),
+            "exp_desc": "desc",
+            "preselection_flag": None,
+        }
+
+    monkeypatch.setattr(compare_samplers, "run_single_optuna", fake_run_single_optuna)
+
+    out_dir = tmp_path / "outputs" / "runs" / "sampler_test"
+    result = compare_samplers.compare_multi_seed(
+        samplers=["qmc"],
+        seeds=[1],
+        n_trials=1,
+        n_candidates=10,
+        datasets=["full"],
+        output=str(out_dir),
     )
-    monkeypatch.setattr(compare_samplers, "ROOT", tmp_path)
 
-    compare_samplers.run_sampler_comparison(samplers=["s1"], n_trials=1)
-
-    assert mock_context.Pool.called
-    assert mock_pool.starmap.called
-
-
-def test_parallel_execution_cpu_count_fallback(monkeypatch, tmp_path, compare_samplers):
-    """Test that run_sampler_comparison handles cpu_count failure gracefully."""
-    mock_pool = MagicMock()
-    mock_context = MagicMock()
-    mock_context.Pool.return_value = mock_pool
-    mock_pool.__enter__.return_value = mock_pool
-    mock_pool.starmap.return_value = []
-
-    # Simulate cpu_count failure
-    mock_context.cpu_count.side_effect = NotImplementedError
-
-    monkeypatch.setattr(
-        compare_samplers.multiprocessing, "get_context", lambda x: mock_context
-    )
-    monkeypatch.setattr(
-        compare_samplers.multiprocessing, "get_all_start_methods", lambda: ["fork"]
-    )
-    monkeypatch.setattr(compare_samplers, "ROOT", tmp_path)
-
-    # Should not raise and default to 1 process (or min(len, 1))
-    compare_samplers.run_sampler_comparison(samplers=["s1", "s2"], n_trials=1)
-
-    # Verify Pool was created with processes=1
-    assert mock_context.Pool.call_args[1]["processes"] == 1
+    summary = out_dir / "summary.csv"
+    assert summary.exists()
+    assert isinstance(result, dict)

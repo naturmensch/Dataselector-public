@@ -85,26 +85,48 @@ def git_tracked_files() -> List[str]:
         return []
 
 
+@cli_command(
+    "check-protected",
+    help="Check for modifications inside protected paths",
+    args={
+        "list": {
+            "type": bool,
+            "action": "store_true",
+            "help": "List protected paths and exit",
+        },
+        "all": {
+            "type": bool,
+            "action": "store_true",
+            "help": "Check all tracked files (git ls-files)",
+        },
+        "protect": {
+            "type": str,
+            "nargs": "*",
+            "default": None,
+            "help": "Add protected path (repeatable)",
+        },
+    },
+)
 def check_protected(
-    list_only: bool = False,
-    all_files: bool = False,
-    extra_protected: List[str] | None = None,
+    list: bool = False,
+    all: bool = False,
+    protect: List[str] | None = None,
     staged_override: List[str] | None = None,
 ) -> int:
     """Check staged files for modifications inside protected paths.
 
     Args:
-        list_only: If True, just list protected paths and return 0
-        all_files: If True, check all tracked files (git ls-files)
-        extra_protected: Additional paths to protect
+        list: If True, just list protected paths and return 0
+        all: If True, check all tracked files (git ls-files)
+        protect: Additional paths to protect
         staged_override: Explicit list of files to check (for testing)
 
     Returns:
         0 if OK, 2 if offending files found
     """
-    protected = get_protected_paths(extra_protected)
+    protected = get_protected_paths(protect)
 
-    if list_only:
+    if list:
         for x in sorted(protected):
             print(x)
         return 0
@@ -112,7 +134,7 @@ def check_protected(
     staged = None
     if staged_override is not None:
         staged = staged_override
-    elif all_files:
+    elif all:
         staged = git_tracked_files()
     else:
         staged = git_staged_files()

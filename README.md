@@ -127,11 +127,41 @@ Schneller Smoke-Run (lokal / CI):
 ```bash
 # Schneller Test: kleiner Optuna Run (2 Trials) und Unit-Tests
 pytest -q
-python scripts/optuna_optimize.py --n-trials 2 --n-candidates 50 --dim 32 --n-samples 5 --min-distance-km 10
+dataselector optuna-optimize --n-trials 2 --n-candidates 50 --dim 32 --n-samples 5 --min-distance-km 10
 ```
 
 Diese Commands sind absichtlich klein gehalten, damit sie schnell laufen und als Smoke-Test in CI nutzbar sind.
 
+## Administrative Tools
+
+For workspace management and validation, use the dedicated tools command:
+
+```bash
+# Validate GIS dependencies
+dataselector tools check-geo
+
+# Verify protected file paths (prevent accidental commits)
+dataselector tools protect-paths
+
+# Audit workspace integrity
+dataselector tools audit-files
+
+# Check and fix documentation links
+dataselector tools docs-check
+dataselector tools docs-fix
+
+# Clean up temporary artifacts and caches
+dataselector tools cleanup --dry-run
+dataselector tools cleanup --aggressive
+
+# Validate CSV vs Raster alignment
+dataselector tools align-audit --csv data/new_all_tiles.csv --image-dir data/images
+
+# List archived experiment outputs
+dataselector tools archive-list --detailed
+```
+
+For detailed documentation on all tools, see [Administrative Tools Reference](docs/06_REFERENCE/TOOLS_REFERENCE.md).
 
 ### Pipeline ausführen (modern)
 

@@ -21,14 +21,14 @@ repos:
     hooks:
       - id: check-protected
         name: Check protected paths
-        entry: python scripts/check_protected.py
+        entry: python -m dataselector tools check-protected
         language: system
         pass_filenames: false
         stages: [commit]
         files: ''
       - id: check-env-usage
         name: Check environment usage
-        entry: python scripts/check_env_usage.py
+        entry: python -m dataselector tools check-env
         language: system
         pass_filenames: false
         stages: [pre-commit, commit, push]

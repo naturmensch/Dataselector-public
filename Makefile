@@ -3,11 +3,11 @@
 
 clean:
 	@echo "Dry-run: show candidates to be cleaned"
-	@./scripts/exec_in_env.sh --env $(ENV_NAME) -- python scripts/clean_workspace.py --dry-run
+	@./scripts/exec_in_env.sh --env $(ENV_NAME) -- python -m dataselector tools clean-workspace --dry-run
 
 clean-force:
 	@echo "Deleting outputs and venvs (will skip protected paths)."
-	@./scripts/exec_in_env.sh --env $(ENV_NAME) -- python scripts/clean_workspace.py --delete-outputs --delete-venvs
+	@./scripts/exec_in_env.sh --env $(ENV_NAME) -- python -m dataselector tools clean-workspace --delete-outputs --delete-venvs
 
 format:
 	@echo "Formatting code with isort, black and ruff"
@@ -49,7 +49,7 @@ ensure-env:
 
 check-env:
 	@echo "Checking environment compatibility"
-	@./scripts/exec_in_env.sh --env $(ENV_NAME) -- python scripts/check_env.py
+	@./scripts/exec_in_env.sh --env $(ENV_NAME) -- python -m dataselector tools check-env scripts
 
 test-integration:
 	@echo "Running a curated set of integration tests inside $(ENV_NAME)" \
@@ -75,12 +75,12 @@ test-e2e:
 
 archive-outputs:
 	@echo "Archive outputs to data/archive/"
-	@./scripts/exec_in_env.sh --env $(ENV_NAME) -- python scripts/manage_archives.py archive --outputs outputs --dest data/archive $(foreach p,$(EXCLUDE),--exclude $(p))
+	@./scripts/exec_in_env.sh --env $(ENV_NAME) -- python -m dataselector tools archive-outputs --path outputs --output data/archive
 
 restore-outputs:
 	@echo "Restore latest archive from data/archive/"
 	@./scripts/exec_in_env.sh --env $(ENV_NAME) -- python -c "import pathlib,sys; import glob; a=list(pathlib.Path('data/archive').glob('outputs_archive_*.tar.gz')); a.sort(); print('No archive found' if not a else a[-1]); sys.exit(0 if a else 1)" \
-	&& @./scripts/exec_in_env.sh --env $(ENV_NAME) -- python scripts/manage_archives.py restore --archive $(shell ./scripts/exec_in_env.sh --env $(ENV_NAME) -- python -c "import pathlib; a=list(pathlib.Path('data/archive').glob('outputs_archive_*.tar.gz')); a.sort(); print(a[-1])") --dest .
+	&& @./scripts/exec_in_env.sh --env $(ENV_NAME) -- python -m dataselector tools restore-archive --pattern data/archive/outputs_archive_*.tar.gz --dest .
 
 # Phase 2 merge gate helpers
 .PHONY: gate-quick gate-batch-a gate-batch-b gate-comprehensive

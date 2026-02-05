@@ -10,6 +10,8 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
+from dataselector.cli_decorators import cli_command
+
 
 @dataclass(frozen=True)
 class ExplorationPlan:
@@ -126,106 +128,118 @@ def _choose_best_method(
     return best, best_score
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Benchmark sampling methods and write an exploration plan artifact.
+@cli_command(
+    "benchmark-sampling",
+    help="Benchmark initial sampling methods and persist an exploration plan",
+    args={
+        "n_initial_raw": {
+            "type": int,
+            "default": 20,
+            "help": "Raw heuristic sample count before adjustment",
+        },
+        "n_dims": {
+            "type": int,
+            "default": 4,
+            "help": "Dimensionality for the benchmark (default: 4)",
+        },
+        "n_samples": {
+            "nargs": "+",
+            "type": int,
+            "default": [32, 64, 128],
+            "help": "Sample sizes to benchmark",
+        },
+        "n_repeats": {
+            "type": int,
+            "default": 5,
+            "help": "Repeats per method/sample size",
+        },
+        "prefer_method": {
+            "type": str,
+            "default": None,
+            "help": "Force a specific method (sobol/lhs/random)",
+        },
+        "require_methods": {
+            "nargs": "+",
+            "default": None,
+            "help": "Fail if any of these methods are missing",
+        },
+        "out_dir": {
+            "type": str,
+            "default": "outputs",
+            "help": "Output directory for benchmarks",
+        },
+        "min_sobol": {
+            "type": int,
+            "default": 32,
+            "help": "Minimum Sobol sample size when adjusting n_initial",
+        },
+        "lhs_multiple": {
+            "type": int,
+            "default": 8,
+            "help": "Round LHS sample count to multiple of this",
+        },
+    },
+)
+def main(
+    n_initial_raw: int = 20,
+    n_dims: int = 4,
+    n_samples: list[int] = None,
+    n_repeats: int = 5,
+    prefer_method: str | None = None,
+    require_methods: list[str] | None = None,
+    out_dir: str = "outputs",
+    min_sobol: int = 32,
+    lhs_multiple: int = 8,
+) -> int:
+    """CLI entry point for benchmark-sampling workflow."""
+    # Default for n_samples
+    if n_samples is None:
+        n_samples = [32, 64, 128]
+    
+    # Call the core implementation logic
+    return _benchmark_implementation(
+        n_initial_raw=n_initial_raw,
+        n_dims=n_dims,
+        n_samples=n_samples,
+        n_repeats=n_repeats,
+        prefer_method=prefer_method,
+        require_methods=require_methods,
+        out_dir=out_dir,
+        min_sobol=min_sobol,
+        lhs_multiple=lhs_multiple,
+    )
 
-    Canonical usage:
-        python -m dataselector benchmark-sampling -- <args>
-    """
 
-    parser = argparse.ArgumentParser(
-        prog="dataselector benchmark-sampling",
-        description=(
-            "Benchmark initial sampling methods and persist an exploration plan artifact"
-        ),
-    )
-    parser.add_argument(
-        "--n-initial-raw",
-        type=int,
-        default=20,
-        help="Raw heuristic sample count before method-specific adjustment (default: 20)",
-    )
-    parser.add_argument(
-        "--n-dims",
-        type=int,
-        default=4,
-        help=(
-            "Dimensionality for the benchmark (default: 4; matches "
-            "alpha/beta/gamma/min_distance)"
-        ),
-    )
-    parser.add_argument(
-        "--n-samples",
-        nargs="+",
-        type=int,
-        default=[32, 64, 128],
-        help="Sample sizes to benchmark (default: 32 64 128)",
-    )
-    parser.add_argument(
-        "--n-repeats",
-        type=int,
-        default=5,
-        help="Repeats per method/sample size (default: 5)",
-    )
-    parser.add_argument(
-        "--prefer-method",
-        type=str,
-        default=None,
-        help=(
-            "If set and available in results, force the chosen method "
-            "(e.g. sobol, lhs, random)"
-        ),
-    )
-    parser.add_argument(
-        "--require-methods",
-        nargs="+",
-        default=None,
-        help=(
-            "If set, fail if any of these methods are missing from results "
-            "(e.g. sobol lhs)"
-        ),
-    )
-    parser.add_argument(
-        "--out-dir",
-        type=str,
-        default="outputs",
-        help=(
-            "Output directory for benchmark artifacts and exploration plan "
-            "(default: outputs)"
-        ),
-    )
-    parser.add_argument(
-        "--min-sobol",
-        type=int,
-        default=32,
-        help="Minimum Sobol sample size when adjusting n_initial (default: 32)",
-    )
-    parser.add_argument(
-        "--lhs-multiple",
-        type=int,
-        default=8,
-        help="Round LHS sample count up to a multiple of this value (default: 8)",
-    )
-    args = parser.parse_args(list(argv or []))
-
+def _benchmark_implementation(
+    n_initial_raw: int,
+    n_dims: int,
+    n_samples: list[int],
+    n_repeats: int,
+    prefer_method: str | None,
+    require_methods: list[str] | None,
+    out_dir: str,
+    min_sobol: int,
+    lhs_multiple: int,
+) -> int:
+    """Core implementation logic (extracted from old main())."""
     repo_root = _repo_root()
-    out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir_path = Path(out_dir)
+    out_dir_path.mkdir(parents=True, exist_ok=True)
 
     # Run the legacy benchmark script in a subprocess (same interpreter)
-    bench_csv = out_dir / "sampling_benchmark_results.csv"
-    bench_plot = out_dir / "sampling_benchmark_plots.png"
+    bench_csv = out_dir_path / "sampling_benchmark_results.csv"
+    bench_plot = out_dir_path / "sampling_benchmark_plots.png"
     cmd = [
         sys.executable,
         str(repo_root / "scripts" / "benchmark_sampling_methods.py"),
         "--n-samples",
-        *[str(x) for x in args.n_samples],
+        *[str(x) for x in n_samples],
         "--n-dims",
-        str(args.n_dims),
+        str(n_dims),
         "--n-repeats",
-        str(args.n_repeats),
+        str(n_repeats),
         "--output-dir",
-        str(out_dir),
+        str(out_dir_path),
     ]
 
     p = subprocess.run(cmd, cwd=str(repo_root))
@@ -238,17 +252,17 @@ def main(argv: list[str] | None = None) -> int:
         # Plot may be missing if matplotlib failed; treat as error for thesis-grade usage.
         raise RuntimeError(f"Benchmark did not write expected plot: {bench_plot}")
 
-    chosen_method, score = _choose_best_method(bench_csv, prefer=args.prefer_method)
+    chosen_method, score = _choose_best_method(bench_csv, prefer=prefer_method)
 
     # Ensure required methods are present if requested
-    if args.require_methods:
+    if require_methods:
         import pandas as pd
 
         df = pd.read_csv(bench_csv)
         present = set(df["method"].astype(str).str.strip().str.lower().unique())
         missing = [
             m
-            for m in [x.strip().lower() for x in args.require_methods]
+            for m in [x.strip().lower() for x in require_methods]
             if m not in present
         ]
         if missing:
@@ -258,30 +272,30 @@ def main(argv: list[str] | None = None) -> int:
 
     n_final, rule = _adjust_n_initial(
         chosen_method,
-        int(args.n_initial_raw),
-        min_sobol=int(args.min_sobol),
-        lhs_multiple=int(args.lhs_multiple),
+        int(n_initial_raw),
+        min_sobol=int(min_sobol),
+        lhs_multiple=int(lhs_multiple),
     )
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     plan = ExplorationPlan(
         method=chosen_method,
-        n_initial_raw=int(args.n_initial_raw),
+        n_initial_raw=int(n_initial_raw),
         n_initial_final=int(n_final),
         adjustment_rule=rule,
         benchmark_csv=str(bench_csv),
         benchmark_plot=str(bench_plot),
-        n_dims=int(args.n_dims),
-        n_samples_list=[int(x) for x in args.n_samples],
+        n_dims=int(n_dims),
+        n_samples_list=[int(x) for x in n_samples],
         selected_score=score,
         timestamp_utc=ts,
         git_commit=_git_commit(repo_root),
         python_executable=sys.executable,
     )
 
-    plans_dir = out_dir / "exploration_plans"
+    plans_dir = out_dir_path / "exploration_plans"
     plans_dir.mkdir(parents=True, exist_ok=True)
-    latest = out_dir / "exploration_plan_latest.json"
+    latest = out_dir_path / "exploration_plan_latest.json"
     stamped = plans_dir / f"exploration_plan_{ts}.json"
 
     payload = asdict(plan)
@@ -294,7 +308,36 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Wrote exploration plan: {latest}")
     print(f"Wrote exploration plan (timestamped): {stamped}")
     print(
-        f"Chosen method: {chosen_method} | n_initial: {args.n_initial_raw} -> "
+        f"Chosen method: {chosen_method} | n_initial: {n_initial_raw} -> "
         f"{n_final} ({rule})"
     )
     return 0
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        prog="dataselector benchmark-sampling",
+        description="Benchmark initial sampling methods and persist an exploration plan",
+    )
+    parser.add_argument("--n-initial-raw", type=int, default=20, help="Raw heuristic sample count")
+    parser.add_argument("--n-dims", type=int, default=4, help="Dimensionality for benchmark")
+    parser.add_argument("--n-samples", nargs="+", type=int, default=[32, 64, 128], help="Sample sizes")
+    parser.add_argument("--n-repeats", type=int, default=5, help="Repeats per method/sample size")
+    parser.add_argument("--prefer-method", type=str, default=None, help="Force chosen method")
+    parser.add_argument("--require-methods", nargs="+", default=None, help="Required methods")
+    parser.add_argument("--out-dir", type=str, default="outputs", help="Output directory")
+    parser.add_argument("--min-sobol", type=int, default=32, help="Minimum Sobol sample size")
+    parser.add_argument("--lhs-multiple", type=int, default=8, help="Round LHS to multiple of")
+    
+    args = parser.parse_args()
+    sys.exit(main(
+        n_initial_raw=args.n_initial_raw,
+        n_dims=args.n_dims,
+        n_samples=args.n_samples,
+        n_repeats=args.n_repeats,
+        prefer_method=args.prefer_method,
+        require_methods=args.require_methods,
+        out_dir=args.out_dir,
+        min_sobol=args.min_sobol,
+        lhs_multiple=args.lhs_multiple,
+    ))

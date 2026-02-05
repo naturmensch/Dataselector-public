@@ -4,13 +4,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from tests._helpers.load_script import load_script
-
-ROOT = Path(__file__).resolve().parents[1]
-gen = load_script(
-    ROOT / "scripts" / "generate_experiment_report.py",
-    module_name="scripts.generate_experiment_report_test",
-)
+from dataselector.workflows.generate_reports import generate_experiment_report
 
 
 def make_fake_run_dir(tmpdir: Path):
@@ -31,7 +25,7 @@ def make_fake_run_dir(tmpdir: Path):
 
 def test_report_generation(tmp_path):
     run_dir = make_fake_run_dir(tmp_path)
-    gen.main(["--outdir", str(run_dir)])
+    generate_experiment_report(run_dir)
     report = run_dir / "experiment_report.md"
     assert report.exists()
     text = report.read_text()
@@ -56,7 +50,7 @@ def test_report_finds_local_pareto(tmp_path):
     run_dir = outputs_root / "experiments" / "run_local_pareto"
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    gen.main(["--outdir", str(run_dir)])
+    generate_experiment_report(run_dir)
     report = run_dir / "experiment_report.md"
     assert report.exists()
     text = report.read_text()
