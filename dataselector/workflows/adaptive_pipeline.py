@@ -257,6 +257,25 @@ def run_adaptive_pipeline(
     )
 
     # ========================================================================
+    # COMPUTE INITIAL SPATIAL CONSTRAINT (min_distance_km)
+    # ========================================================================
+    from dataselector.pipeline.pipeline_utils import compute_min_distance_km
+
+    print("=== Computing Initial Spatial Constraint ===")
+    try:
+        initial_min_distance = compute_min_distance_km(
+            str(csv_path or DATA_CSV),
+            strategy="median_nn",
+            safety_margin=1.0,
+        )
+    except Exception as e:
+        print(
+            f"⚠️  Could not compute min_distance from data ({e}). "
+            f"Using conservative default: 28.0 km"
+        )
+        initial_min_distance = 28.0
+
+    # ========================================================================
     # PHASE 1: EXPLORATION (LHS/Sobol)
     # ========================================================================
     if skip_exploration:
@@ -273,7 +292,7 @@ def run_adaptive_pipeline(
             n_samples=n_lhs,
             sampler=sampler,
             seed=seed,
-            # min_distance uses default from tune_weights (MIN_DISTANCE_KM=28.0)
+            min_distance=initial_min_distance,
             output_dir=OUT / "tuning_weights",
         )
 
