@@ -676,6 +676,7 @@ def benchmark_seed(
             "help": "Datasets to run on",
         },
         "sequential": {
+            "type": bool,
             "action": "store_true",
             "help": "Run sequentially (default)",
         },

@@ -1,0 +1,76 @@
+"""
+Tests for dataselector/workflows/optuna_optimize.py
+
+Validates:
+- Module imports cleanly
+- get_optuna_sampler factory
+- load_or_create_data with synthetic fallback
+- CLI integration
+"""
+
+import sys
+from pathlib import Path
+
+
+def test_optuna_optimize_importable():
+    """Module should import without heavy dependencies at import-time."""
+    from dataselector.workflows import optuna_optimize
+
+    assert hasattr(optuna_optimize, "run_optuna")
+    assert hasattr(optuna_optimize, "get_optuna_sampler")
+    assert hasattr(optuna_optimize, "objective_factory")
+    assert hasattr(optuna_optimize, "load_or_create_data")
+    assert hasattr(optuna_optimize, "main")
+
+
+def test_get_optuna_sampler():
+    """Test sampler factory for all supported types."""
+    pytest = sys.modules.get("pytest")
+    if pytest:
+        optuna = pytest.importorskip("optuna")
+    else:
+        try:
+            import optuna
+        except ModuleNotFoundError:
+            return  # Skip test if optuna not available
+
+    from dataselector.workflows.optuna_optimize import get_optuna_sampler
+
+    # TPE (default)
+    sampler_tpe = get_optuna_sampler("tpe", seed=42)
+    assert sampler_tpe is not None
+    assert "TPE" in str(type(sampler_tpe))
+
+    # CMA-ES
+    sampler_cmaes = get_optuna_sampler("cmaes", seed=42)
+    assert sampler_cmaes is not None
+    assert "CmaEs" in str(type(sampler_cmaes))
+
+    # QMC (fallback to TPE if QMC not available, graceful handling)
+    sampler_qmc = get_optuna_sampler("qmc-sobol", seed=42)
+    assert sampler_qmc is not None
+
+
+def test_load_or_create_data_synthetic(tmp_path):
+    """Test synthetic data generation when features/metadata don't exist."""
+    from dataselector.workflows.optuna_optimize import load_or_create_data
+
+    features, metadata = load_or_create_data(
+        out_dir=tmp_path, n=100, dim=64, seed=123
+    )
+
+    assert features.shape == (100, 64)
+    assert len(metadata) == 100
+    assert "N" in metadata.columns
+    assert "left" in metadata.columns
+    assert "year" in metadata.columns
+
+
+def test_cli_integration():
+    """Test CLI entry point with --help (should not crash)."""
+    from dataselector.workflows.optuna_optimize import main
+
+    try:
+        main(["--help"])
+    except SystemExit as e:
+        assert e.code == 0

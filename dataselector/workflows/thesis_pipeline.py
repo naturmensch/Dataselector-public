@@ -214,18 +214,22 @@ def run_thesis_pipeline(
             "help": "Number of Optuna trials",
         },
         "skip_exploration": {
+            "type": bool,
             "action": "store_true",
             "help": "Skip Phase 1 (Exploration)",
         },
         "skip_optimization": {
+            "type": bool,
             "action": "store_true",
             "help": "Skip Phase 2 (Optimization)",
         },
         "skip_validation": {
+            "type": bool,
             "action": "store_true",
             "help": "Skip Phase 3 (Validation/Bootstrap)",
         },
         "dry_run": {
+            "type": bool,
             "action": "store_true",
             "help": "Show commands without executing",
         },

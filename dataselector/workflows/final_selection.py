@@ -288,6 +288,7 @@ def run_final_selection(
             "help": "Minimum distance constraint in km (default: from config)",
         },
         "use_bootstrap_best": {
+            "type": bool,
             "action": "store_true",
             "help": "Load parameters from bootstrap-best config",
         },
