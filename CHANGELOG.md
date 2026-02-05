@@ -1,5 +1,67 @@
 # Changelog
 
+## [v1.1.0] - 2026-02-05 - Pattern C CLI Migration (Phase 1 Complete)
+
+### Added
+- **Decorator-Based CLI System**: Introduced `@cli_command` decorator for centralized command definitions
+  - Single source of truth for all CLI commands (workflows + tools)
+  - Automatic argparse parser generation via `build_parser_from_decorators()`
+  - Automatic command dispatch via `dispatch_from_decorators()`
+  - 27 commands registered in `_CLI_COMMANDS` global registry (17 workflows + 10 tools)
+
+### Changed
+- **cli.py Refactoring**: Replaced 804 LOC manual argparse dispatcher with 64 LOC decorator-based version (**92% reduction**)
+  - Old: Manual argparse setup (476 LOC) + if/elif dispatcher (327 LOC)
+  - New: Module imports + 2 decorator function calls
+  - All commands now accessible via `dataselector <command>` (not just `dataselector tools <command>`)
+  - Backup preserved as `cli_old_backup.py`
+
+- **Tool Commands Migration**: Migrated 10 tool commands to `@cli_command` decorators
+  - `check-env`, `check-protected`, `check-geo` (check.py)
+  - `verify-archive`, `archive-outputs`, `list-archives` (archive.py)
+  - `align-audit` (audit.py)
+  - `clean-workspace` (clean.py)
+  - `docs-link-check`, `docs-link-autofix` (docs_link.py)
+  - All with comprehensive unit tests (20 tests)
+
+### Fixed
+- **Boolean Argument Handling**: Fixed 5 workflow commands with incorrect boolean argument definitions
+  - `compare-samplers`: Added `type=bool` to `sequential` arg
+  - `final-selection`: Added `type=bool` to `use_bootstrap_best` arg
+  - `thesis-pipeline`: Added `type=bool` to `skip_*` and `dry_run` args
+  - Fixed `cli_decorators.py` to not add `type` kwarg for boolean flags with `store_true`/`store_false` actions
+
+- **Test Infrastructure**: Fixed test registry population in `conftest.py`
+  - Import all CLI modules to ensure `_CLI_COMMANDS` is populated before test collection
+  - All 46 Pattern C unit tests passing
+
+### Documentation
+- **ADRs (Architecture Decision Records)**:
+  - ADR-001: Pattern C Migration rationale and implementation (Status: Implemented)
+  - ADR-002: Workflow Decision Matrix (4 main workflows)
+  - MADR format adopted for future decisions
+- **WHICH_WORKFLOW.md**: Comprehensive workflow selection guide with decision tree
+- **Test Baseline**: Created `test_baseline_20260205.txt` (246 tests) for regression detection
+- **Git Tag**: `v1.0.0-pre-migration` (rollback point before Phase 1)
+
+### Commits
+- 757b1e5: Phase 0 Foundation (ADRs, WHICH_WORKFLOW.md, test baseline)
+- d31a31b: Fix boolean argument handling in cli_decorators
+- 8149257: Phase 1a.1 - Migrate check-env
+- e2a5baa: Phase 1a.2 - Migrate check-protected (+ legacy cleanup)
+- 69f1650: Phase 1a.3 - Migrate check-geo
+- fd09148: Phase 1a.4-6 - Migrate archive.py (3 commands)
+- 8ad7afd: Phase 1a.7-10 - Migrate remaining tools (4 commands)
+- 785eae5: Phase 1b - Replace cli.py with decorator dispatcher
+- 2827c21: Update ADR-001 status to Implemented
+- 81b6d1f: Fix CLI module imports in conftest
+
+### Known Issues
+- `xxl.py` calls non-existent `bootstrap` command (should be `bootstrap-final` or `bootstrap-pareto`) - will be addressed in future update
+- 20 `test_scripts_safety.py` failures are pre-existing from Phase 4 migration (scripts/ removal)
+
+---
+
 ## [2026-02-02] - Phase 4: Code Migration — Hard Cutover src/ → dataselector/
 - **Major Refactoring**: Executed hard cutover migration of `src/` directory to `dataselector/` package structure.
 - **Subpackage Architecture**:
