@@ -45,10 +45,29 @@ def _build_constrain_bounds(
 
 
 def _get_run_optuna():
-    """Late import hook for run_optuna to keep tests lightweight."""
-    from scripts.optuna_optimize import run_optuna
+    """Late import hook for run_optuna to keep tests lightweight.
+    
+    ⚠️ TODO Phase 5: This function depends on scripts/optuna_optimize.run_optuna()
+    which was removed in Phase 4 migration. compare-samplers CLI command will fail
+    if run_single_optuna() is actually called.
+    
+    PROPER FIX NEEDED:
+    1. Either: Re-implement run_optuna() as proper workflow function
+    2. Or: Refactor run_single_optuna() to use subprocess call to optuna-optimize
+    3. Or: Mark compare-samplers as DEPRECATED if it's not in active use
+    
+    Current Status: Module imports OK (lazy import), but fails at runtime if called.
+    """
+    try:
+        from scripts.optuna_optimize import run_optuna
+        return run_optuna
+    except (ImportError, ModuleNotFoundError) as e:
+        raise RuntimeError(
+            "compare_samplers.run_single_optuna() is not available - "
+            "scripts.optuna_optimize was removed in Phase 4. "
+            "See _get_run_optuna() docstring for TODO items to fix this."
+        ) from e
 
-    return run_optuna
 
 
 def run_single_optuna(

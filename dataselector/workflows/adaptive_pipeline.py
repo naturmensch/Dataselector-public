@@ -273,7 +273,7 @@ def run_adaptive_pipeline(
             n_samples=n_lhs,
             sampler=sampler,
             seed=seed,
-            min_distance=min_distance_km,
+            # min_distance uses default from tune_weights (MIN_DISTANCE_KM=28.0)
             output_dir=OUT / "tuning_weights",
         )
 
