@@ -27,6 +27,42 @@ import types
 REPO_ROOT_PATH = Path(root_dir)
 
 
+# --- CLI decorator registration ---
+# Import all CLI modules to trigger @cli_command decorators
+# This ensures _CLI_COMMANDS is populated before tests run
+def _register_all_cli_commands():
+    """Import all CLI modules to populate _CLI_COMMANDS registry."""
+    try:
+        # Import all workflow modules
+        import dataselector.workflows.autoscale
+        import dataselector.workflows.optuna_optimize
+        import dataselector.workflows.adaptive_pipeline
+        import dataselector.workflows.xxl
+        import dataselector.workflows.thesis_sampler_suite
+        import dataselector.workflows.sampler_suite
+        import dataselector.workflows.final_selection
+        import dataselector.workflows.thesis_pipeline
+        import dataselector.workflows.benchmark_sampling
+        import dataselector.workflows.compare_samplers
+        import dataselector.workflows.bootstrap
+        import dataselector.workflows.generate_reports
+        # Import data module
+        import dataselector.data.build_tiles
+        # Import all tools modules
+        import dataselector.tools.check
+        import dataselector.tools.archive
+        import dataselector.tools.audit
+        import dataselector.tools.clean
+        import dataselector.tools.docs_link
+    except ImportError:
+        pass  # Let pytest show the actual error
+
+
+# Register commands once at module import time
+_register_all_cli_commands()
+# -----------------------------------------
+
+
 @pytest.fixture(scope="session")
 def repo_root():
     """Returns the Path object to the repository root."""
