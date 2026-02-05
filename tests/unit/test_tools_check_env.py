@@ -86,3 +86,23 @@ def test_check_protected_empty_staged():
     """Test check_protected with empty staged files."""
     result = check.check_protected(staged_override=[])
     assert result == 0  # No files = OK
+
+
+# ============================================================================
+# check-geo tests
+# ============================================================================
+
+def test_check_geo_registered():
+    """Test that check-geo command is registered via @cli_command."""
+    assert "check-geo" in _CLI_COMMANDS, "check-geo should be registered"
+    cmd_def = _CLI_COMMANDS["check-geo"]
+    assert cmd_def.func == check.check_geo
+    assert cmd_def.help == "Check geo dependencies (geopandas, pyproj, shapely, fiona, rtree)"
+    assert len(cmd_def.args) == 0  # No arguments
+
+
+def test_check_geo_callable():
+    """Test that check_geo is directly callable."""
+    result = check.check_geo()
+    assert isinstance(result, int)
+    assert result in (0, 2)  # 0=ok, 2=missing deps

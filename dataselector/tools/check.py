@@ -153,6 +153,11 @@ def check_protected(
     return 0
 
 
+@cli_command(
+    "check-geo",
+    help="Check geo dependencies (geopandas, pyproj, shapely, fiona, rtree)",
+    args={},
+)
 def check_geo() -> int:
     """Quick Geo dependency checker.
     
