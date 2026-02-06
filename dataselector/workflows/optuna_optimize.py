@@ -122,7 +122,7 @@ def objective_factory(
     features,
     metadata,
     n_samples: int,
-    min_distance_km: int,
+    min_distance_bounds: tuple[int, int] | None = None,
     n_samples_range: tuple[int, int] | None = None,
     constrain_bounds: dict[str, float] | None = None,
 ):
@@ -137,8 +137,8 @@ def objective_factory(
         Tile metadata
     n_samples : int
         Fixed number of samples (if n_samples_range is None)
-    min_distance_km : int
-        Fixed minimum distance (if not optimized)
+    min_distance_bounds : tuple[int, int] | None
+        (min, max) bounds for min_distance_km optimization
     n_samples_range : tuple[int, int] | None
         Optional range for n_samples optimization
     constrain_bounds : dict | None
@@ -177,7 +177,7 @@ def objective_factory(
                     constrain_bounds.get("c_min", 0.01),
                     constrain_bounds.get("c_max", 1.0),
                 )
-                min_dist_bounds = (
+                min_dist_bnds = (
                     constrain_bounds.get("min_dist_min", 0),
                     constrain_bounds.get("min_dist_max", 60),
                 )
@@ -185,7 +185,7 @@ def objective_factory(
                 a_bounds = (0.01, 1.0)
                 b_bounds = (0.01, 1.0)
                 c_bounds = (0.01, 1.0)
-                min_dist_bounds = (0, 60)
+                min_dist_bnds = min_distance_bounds if min_distance_bounds else (0, 60)
 
             # Sample raw weights and normalize (ensures sum=1 and non-negative)
             a = trial.suggest_float("a", *a_bounds)
@@ -196,8 +196,8 @@ def objective_factory(
             beta = b / total
             gamma = c / total
 
-            # Use conservative bounds for min_distance based on dataset grid (median ≈ 28km)
-            min_dist = trial.suggest_int("min_distance_km", *min_dist_bounds)
+            # Use bounds from computed min_distance_km
+            min_dist = trial.suggest_int("min_distance_km", *min_dist_bnds)
 
             selector = DiversitySelector(n_samples=n_samp, use_multi_criteria=True)
             selected = selector.select(
@@ -249,7 +249,7 @@ def run_optuna(
     dim: int = 512,
     n_samples: int = 34,
     n_samples_range: tuple[int, int] | None = None,
-    min_distance_km: int = 28,
+    metadata_path: Path | str | None = None,
     seed: int = 42,
     study_name: str = "kdr100_opt",
     sampler_name: str = "tpe",
@@ -274,8 +274,8 @@ def run_optuna(
         Fixed number of samples (if n_samples_range is None)
     n_samples_range : tuple[int, int] | None
         Optional range for n_samples optimization
-    min_distance_km : int
-        Default minimum distance constraint
+    metadata_path : Path | str | None
+        Path to metadata CSV for computing min_distance_km bounds (required, no fallback)
     seed : int
         Random seed
     study_name : str
@@ -299,10 +299,26 @@ def run_optuna(
         Completed Optuna study object
     """
     import optuna
+    from dataselector.pipeline.pipeline_utils import compute_min_distance_km
 
     if out_dir is None:
         out_dir = Path("outputs")
     out_dir.mkdir(exist_ok=True)
+    
+    # Compute min_distance_km bounds (no fallback)
+    if metadata_path is None:
+        raise ValueError(
+            "metadata_path is required for computing min_distance_km bounds. "
+            "No hardcoded fallback is provided (long-term solution)."
+        )
+    
+    metadata_path = Path(metadata_path)
+    if not metadata_path.exists():
+        raise FileNotFoundError(f"Metadata file not found: {metadata_path}")
+    
+    min_dist_computed = compute_min_distance_km(str(metadata_path))
+    # Bounds: ±20 km around computed value
+    min_distance_bounds = (max(10, int(min_dist_computed - 20)), min(100, int(min_dist_computed + 20)))
 
     features, metadata = load_or_create_data(out_dir, n=n_candidates, dim=dim, seed=seed)
 
@@ -331,7 +347,7 @@ def run_optuna(
         features,
         metadata,
         n_samples=n_samples,
-        min_distance_km=min_distance_km,
+        min_distance_bounds=min_distance_bounds,
         n_samples_range=n_samples_range,
         constrain_bounds=constrain_bounds,
     )

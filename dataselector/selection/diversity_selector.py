@@ -72,7 +72,7 @@ class DiversitySelector:
         metadata: Optional[pd.DataFrame] = None,
         temporal_weight: float = 0.2,
         spatial_constraint: bool = True,
-        min_distance_km: float = 50.0,
+        min_distance_km: float = None,
         adaptive_min_distance: bool = False,
         adaptive_step_km: float = 5.0,
         adaptive_min_allowed_km: float = 0.0,

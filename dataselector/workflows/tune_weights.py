@@ -19,10 +19,6 @@ ROOT = Path(__file__).resolve().parents[2]
 DATA_META = ROOT / "data" / "new_all_tiles.csv"
 OUTPUT_DIR = ROOT / "outputs" / "tuning_weights"
 
-# DEPRECATED: min_distance_km is now computed dynamically via compute_min_distance_km()
-# This constant remains only as fallback default (see adaptive_pipeline.py)
-MIN_DISTANCE_KM = 28.0  # Legacy fallback: use pipeline_utils.compute_min_distance_km() instead
-
 
 def generate_weights(n_points: int = 50, seed: int = 42, sampler: str = "lhs"):
     """
@@ -59,7 +55,7 @@ def run_exploration(
     n_samples: int = 50,
     sampler: str = "lhs",
     seed: int = 42,
-    min_distance: float = MIN_DISTANCE_KM,
+    metadata_path: Path | str | None = None,
     pre_names: list | None = None,
     pre_indices: list | None = None,
     output_dir: Path | None = None,
@@ -75,11 +71,8 @@ def run_exploration(
         'lhs' or 'sobol'
     seed : int
         Random seed
-    min_distance : float
-        Minimum distance constraint (km).
-        When called from adaptive_pipeline, this is computed dynamically via
-        compute_min_distance_km() (data-driven, median NN-distance).
-        Default fallback is MIN_DISTANCE_KM = 28.0 km (legacy).
+    metadata_path : Path | str | None
+        Path to metadata CSV for computing min_distance_km (required, no hardcoded fallback)
     pre_names : list | None
         Pre-selected tile names
     pre_indices : list | None
@@ -115,6 +108,20 @@ def run_exploration(
         export_pareto_report,
         visualize_pareto_front,
     )
+    from dataselector.pipeline.pipeline_utils import compute_min_distance_km
+
+    # Compute min_distance_km from data (no fallback)
+    if metadata_path is None:
+        raise ValueError(
+            "metadata_path is required for computing min_distance_km. "
+            "No hardcoded fallback is provided (long-term solution)."
+        )
+    
+    metadata_path = Path(metadata_path)
+    if not metadata_path.exists():
+        raise FileNotFoundError(f"Metadata file not found: {metadata_path}")
+    
+    min_distance = compute_min_distance_km(str(metadata_path))
 
     runner = ExperimentRunner(output_dir=str(output_dir))
 
@@ -193,20 +200,23 @@ def main(argv: list[str] | None = None) -> int:
         description="Phase 1: Exploration with LHS/Sobol sweep"
     )
     parser.add_argument("--n-samples", type=int, default=50)
-    parser.add_argument("--sampler", choices=["lhs", "sobol"], default="lhs")
+    parser.add_argument("--sampler", choices=["lhs", "sobol"], required=False, default=None)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--min-distance", type=float, default=MIN_DISTANCE_KM)
+    parser.add_argument("--metadata-path", type=str, required=False, help="Path to metadata CSV (required)")
     parser.add_argument("--pre-names", type=str, nargs="*", default=None)
     parser.add_argument("--pre-indices", type=int, nargs="*", default=None)
 
     args = parser.parse_args(argv)
+    
+    # metadata_path defaults to DATA_META if not provided
+    metadata_path = args.metadata_path or DATA_META
 
     try:
         run_exploration(
             n_samples=args.n_samples,
             sampler=args.sampler,
             seed=args.seed,
-            min_distance=args.min_distance,
+            metadata_path=metadata_path,
             pre_names=args.pre_names,
             pre_indices=args.pre_indices,
         )

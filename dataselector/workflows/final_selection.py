@@ -83,16 +83,28 @@ def run_final_selection(
         print(f"Warning: Config not found at {config_path}, using defaults")
         cfg = {}
 
+    from dataselector.pipeline.pipeline_utils import compute_min_distance_km
+    
     # Extract parameters (CLI overrides config)
     n_samples = n_samples or cfg.get("selection", {}).get("n_samples", 34)
     alpha = alpha if alpha is not None else cfg.get("selection", {}).get("alpha_visual", 0.7)
     beta = beta if beta is not None else cfg.get("selection", {}).get("beta_spatial", 0.05)
     gamma = gamma if gamma is not None else cfg.get("selection", {}).get("gamma_temporal", 0.25)
-    min_distance_km = (
-        min_distance_km
-        if min_distance_km is not None
-        else cfg.get("selection", {}).get("min_distance_km", 50.0)
-    )
+    
+    # Compute min_distance_km (no fallback)
+    if metadata_path is None:
+        # Try common locations
+        if Path("outputs/metadata.csv").exists():
+            metadata_path = Path("outputs/metadata.csv")
+        elif Path("data/new_all_tiles.csv").exists():
+            metadata_path = Path("data/new_all_tiles.csv")
+        else:
+            raise FileNotFoundError(
+                "Metadata not found at outputs/metadata.csv or data/new_all_tiles.csv. "
+                "Cannot compute min_distance_km (no hardcoded fallback)."
+            )
+    
+    min_distance_km = compute_min_distance_km(str(metadata_path)) if min_distance_km is None else min_distance_km
 
     print(f"\nFinal selection parameters:")
     print(f"  n_samples: {n_samples}")
