@@ -190,6 +190,44 @@ def run_adaptive_pipeline(
         compute_optuna_bounds,
     )
 
+    # INTEGRATION: Check for ExplorationPlan from benchmark-sampling
+    # If benchmark was run, use its recommended sampler and n_initial settings
+    exploration_plan = None
+    plan_env = os.environ.get("DATASELECTOR_EXPLORATION_PLAN")
+    if plan_env:
+        try:
+            import json
+            plan_path = Path(plan_env)
+            if plan_path.exists():
+                with open(plan_path) as f:
+                    plan_data = json.load(f)
+                exploration_plan = plan_data
+                print(f"\n🎯 BENCHMARK INTEGRATION: Loaded exploration plan from {plan_env}")
+                print(f"   Recommended sampler: {plan_data.get('method', 'unknown')}")
+                print(f"   Recommended n_initial: {plan_data.get('n_initial_final', 'unknown')}")
+                
+                # Override sampler with benchmark result (if not explicitly provided)
+                if sampler is None:
+                    sampler = plan_data.get('method')
+                    print(f"   ✅ Using benchmark sampler: {sampler}")
+                
+                # Override n_lhs with benchmark result (if not explicitly provided)
+                if n_lhs is None:
+                    n_lhs = plan_data.get('n_initial_final')
+                    print(f"   ✅ Using benchmark n_initial: {n_lhs}")
+        except Exception as e:
+            print(f"⚠️  Could not load exploration plan: {e}")
+            exploration_plan = None
+
+    # Enforce: sampler must be from benchmark OR CLI - NO FALLBACK
+    if sampler is None:
+        raise ValueError(
+            "Sampler not specified. Either:\n"
+            "1. Run 'dataselector benchmark-sampling' first and set DATASELECTOR_EXPLORATION_PLAN\n"
+            "2. Provide --sampler {lhs,sobol} via CLI\n"
+            "No hardcoded fallback (long-term solution)."
+        )
+
     # Resolve n_candidates dynamically if not set
     if n_candidates is None:
         if n_tiles is not None:
@@ -207,6 +245,15 @@ def run_adaptive_pipeline(
         print(f"📊 Adaptive n_lhs: {n_lhs} (strategy={n_initial_strategy})")
     else:
         print(f"📊 Using user-specified n_lhs: {n_lhs}")
+
+    # LONG-TERM SOLUTION: No fallback - sampler must be provided explicitly
+    if sampler is None:
+        raise ValueError(
+            "Sampler not specified. Either:\n"
+            "1. Run 'dataselector benchmark-sampling' first (sets DATASELECTOR_EXPLORATION_PLAN)\n"
+            "2. Provide --sampler {lhs,sobol} explicitly via CLI\n"
+            "No hardcoded fallback is provided (long-term solution)."
+        )
 
     # Adjust for Sobol sampler (prefer power of two)
     if sampler == "sobol":
@@ -292,7 +339,7 @@ def run_adaptive_pipeline(
             n_samples=n_lhs,
             sampler=sampler,
             seed=seed,
-            min_distance=initial_min_distance,
+            metadata_path=str(csv_path),
             output_dir=OUT / "tuning_weights",
         )
 
@@ -417,7 +464,7 @@ def run_adaptive_pipeline(
                         n_candidates=n_candidates,
                         n_samples=int(chosen_n_samples) if chosen_n_samples else 34,
                         n_samples_range=n_samples_range,
-                        min_distance_km=int(center),
+                        metadata_path=str(csv_path),
                         seed=seed,
                         sampler_name=optuna_sampler,
                         constrain_bounds=constrain_bounds,
@@ -572,9 +619,9 @@ def run_adaptive_pipeline(
         },
         "sampler": {
             "type": str,
-            "default": "lhs",
+            "default": None,
             "choices": ["lhs", "sobol"],
-            "help": "Exploration sampler type",
+            "help": "Exploration sampler type (auto-selected from benchmark if available)",
         },
         "optuna_sampler": {
             "type": str,
@@ -674,7 +721,7 @@ def main(
     n_boot: int = 500,
     n_candidates: int | None = None,
     n_dimensions: int = 9,
-    sampler: str = "lhs",
+    sampler: str | None = None,
     optuna_sampler: str = "TPESampler",
     seed: int = 42,
     n_initial_strategy: str = "conservative",
