@@ -1,5 +1,5 @@
 # Geo/Spatial pinned dependencies (for pip fallback / documentation)
-geopandas==0.15.1
+geopandas==1.1.2
 pyproj==3.7.1
 shapely==2.0.1
 fiona==1.9.4
