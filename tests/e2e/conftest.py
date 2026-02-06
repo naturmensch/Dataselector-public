@@ -400,7 +400,8 @@ def test_timing(request, slow_test_threshold, capsys):
     elapsed = time.time() - start
 
     if elapsed > slow_test_threshold:
-        capsys.write(
+        print(
             f"⚠️  SLOW TEST: {request.node.name} took {elapsed:.1f}s "
-            f"(threshold: {slow_test_threshold}s)\n"
+            f"(threshold: {slow_test_threshold}s)",
+            file=sys.stderr,
         )

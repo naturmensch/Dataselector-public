@@ -1,36 +1,19 @@
-"""Integration test for bootstrap with multiple seeds.
-
-Tests bootstrap-uq command reproducibility and variance.
-"""
-
-import sys
-from pathlib import Path
+"""Integration test for bootstrap CLI contracts after hard-cut migration."""
 
 import pytest
 
 
 @pytest.mark.integration
 @pytest.mark.bootstrap
-def test_bootstrap_multi_seed_smoke(
-    tmp_workspace: Path, sample_csv: Path, run_dataselector_cli
-):
-    """Quick smoke test: bootstrap-uq with multiple seeds."""
-    output_dir = tmp_workspace / "outputs"
-    output_dir.mkdir(parents=True, exist_ok=True)
+def test_bootstrap_contract_migrated(run_dataselector_cli):
+    """Legacy bootstrap-uq must be rejected; new bootstrap commands must exist."""
+    legacy = run_dataselector_cli(["bootstrap-uq", "--help"], capture_output=True)
+    assert legacy.returncode != 0
+    legacy_err = (legacy.stderr or b"").decode().lower()
+    assert "invalid choice" in legacy_err or "unrecognized" in legacy_err
 
-    cmd = [
-        "bootstrap-uq",
-        "--csv",
-        str(sample_csv),
-        "--output-dir",
-        str(output_dir),
-        "--n-bootstrap",
-        "3",
-        "--n-seeds",
-        "2",
-    ]
+    result_final = run_dataselector_cli(["bootstrap-final", "--help"], capture_output=True)
+    assert result_final.returncode == 0
 
-    result = run_dataselector_cli(
-        cmd, cwd=str(tmp_workspace), capture_output=True, timeout=300
-    )
-    assert result.returncode == 0, f"bootstrap-uq failed:\n{result.stderr.decode()}"
+    result_pareto = run_dataselector_cli(["bootstrap-pareto", "--help"], capture_output=True)
+    assert result_pareto.returncode == 0

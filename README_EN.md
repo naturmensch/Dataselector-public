@@ -10,20 +10,20 @@ Scientifically rigorous method to objectively select training examples from 676 
 
 **For the full production pipeline (Sampler Suite + XXL Run + Bootstrap):**
 
-**Option A: One-shot automation (RECOMMENDED):**
+**Option A: CLI orchestration (RECOMMENDED):**
 
 ```bash
 # Activate environment (see Installation below)
 conda activate dataselector
 
-# One-shot: orchestrates EVERYTHING automatically (Sampler Suite + XXL Phases 0-5)
-bash scripts/run_complete_thesis_pipeline.sh
+# STEP 1: Run sampler suite and autoscale
+python -m dataselector thesis-sampler-suite --autoscale
 
-# Or with a custom environment:
-bash scripts/run_complete_thesis_pipeline.sh --env my-env
+# STEP 2: Run XXL orchestration (Phases 0-5)
+python -m dataselector xxl
 
-# Or with an explicit sampler override (optional):
-bash scripts/run_complete_thesis_pipeline.sh --sampler cmaes  # cmaes, qmc, or tpe
+# Optional sampler override for XXL:
+python -m dataselector xxl --best-sampler cmaes  # cmaes, qmc, or tpe
 ```
 
 **Option B: Manual steps (if you want to inspect intermediate results):**
@@ -32,20 +32,20 @@ bash scripts/run_complete_thesis_pipeline.sh --sampler cmaes  # cmaes, qmc, or t
 conda activate dataselector
 
 # STEP 1: Thesis Sampler Suite (auto: 10 seeds, 1000 trials, Hamburg + KDR100)
-python scripts/run_thesis_sampler_suite.py
+python -m dataselector thesis-sampler-suite
 
 # STEP 2: XXL Pipeline with integrated Bootstrap (Phases 0-5)
 # Phase 0: Convergence analysis (auto-detects best sampler from Suite)
 # Phase 1-4: Optimization (Hamburg + Reproducibility + Statistics + Summary)
 # Phase 5: Bootstrap UQ (500 resamples)
-python scripts/xxl_KDR146_run_thesis_complete.py
+python -m dataselector xxl
 # Or override sampler explicitly:
-python scripts/xxl_KDR146_run_thesis_complete.py --optuna-sampler cmaes  # qmc, tpe, or cmaes
+python -m dataselector xxl --best-sampler cmaes  # qmc, tpe, or cmaes
 ```
 
 ### ✨ Current status (2026-01-23)
 
-- ✅ **Sampler argument fix:** `--optuna-sampler` now propagates correctly through all phase functions
+- ✅ **Sampler argument fix:** `--best-sampler` now propagates correctly through orchestration
 - ✅ **Environment:** NumPy pinned to 2.3.x (Numba-compatible); PyTorch CPU available
 - ✅ **XXL Pipeline:** Phases 0–5 fully orchestrated
 - ✅ **Dry-run:** Phase 1–2 validated successfully with QMC sampler
@@ -102,8 +102,8 @@ cd Dataselector
 mamba env create -f environment.yml -n dataselector
 conda activate dataselector
 
-# Or use helper script
-./scripts/create_env.sh dataselector 3.11
+# Equivalent with conda:
+conda env create -f environment.yml -n dataselector
 ```
 
 ### 3. Install dependencies
@@ -138,7 +138,7 @@ Full scientific workflow with automatic sampler selection.
 
 ```bash
 # 10 seeds, 1000 trials per sampler, datasets: hamburg + kdr100
-python scripts/run_thesis_sampler_suite.py \
+python -m dataselector thesis-sampler-suite \
   --seeds 42 43 44 45 46 47 48 49 50 51 \
   --n-trials 1000 \
   --datasets hamburg kdr100 \
@@ -152,7 +152,7 @@ python scripts/run_thesis_sampler_suite.py \
 #### Step 2: XXL Pipeline with auto parameters (recommended)
 
 ```bash
-python scripts/xxl_KDR146_run_thesis_complete.py
+python -m dataselector xxl
 ```
 
 **Phases (0–5) summary:**
@@ -164,18 +164,21 @@ python scripts/xxl_KDR146_run_thesis_complete.py
 - Phase 4: Thesis-ready summary/report generation
 - Phase 5: Bootstrap UQ (e.g., 500 resamples)
 
-**Automatic parameter computation:** Phase 0 determines `n_trials = 5 × convergence_baseline` and auto-detects the best sampler via `outputs/selected_sampler.json` unless overridden by `--optuna-sampler`.
+**Automatic parameter computation:** Phase 0 determines `n_trials = 5 × convergence_baseline` and auto-detects the best sampler via `outputs/selected_sampler.json` unless overridden by `--best-sampler`.
 
 ---
 
 ### B. XXL Run with Monitor (recommended)
 
 ```bash
-# Run pre-hook sampler suite and the full XXL orchestrator with logging and monitoring
-python scripts/xxl_full_run_monitor.py
+# Run full XXL orchestration
+python -m dataselector xxl
 
-# Dry-run mode (plan only):
-python scripts/xxl_full_run_monitor.py --child-dry-run
+# Smoke mode (reduced settings):
+python -m dataselector xxl --smoke
+
+# Generate monitor report from latest run artifacts
+python -m dataselector generate-monitor
 ```
 
 Monitor features:
@@ -190,7 +193,7 @@ Monitor features:
 
 ```bash
 # Quick smoke test with adaptive pipeline
-python scripts/run_adaptive_pipeline.py --yes \
+python -m dataselector adaptive-pipeline \
   --n-lhs 5 \
   --n-trials 10 \
   --n-boot 5 \
@@ -201,15 +204,15 @@ python scripts/run_adaptive_pipeline.py --yes \
 
 ---
 
-### D. Useful single scripts
+### D. Useful CLI workflows
 
-- `scripts/compare_samplers_multi_seed.py` — fast multi-seed sampler comparison
-- `scripts/tune_weights_and_run.py` — Phase 1: LHS / Sobol weight sweep + Pareto front computation
-- `scripts/run_fine_sweep.py` — Phase 2: fine sweep around Pareto region
-- `scripts/optuna_optimize.py` — low-level Optuna runner called by higher-level scripts
-- `scripts/bootstrap_pareto_candidates.py` — Phase 5: bootstrap UQ on Pareto selections
-- `scripts/generate_experiment_report.py` — per-run report generation (Markdown + plots)
-- `scripts/exec_in_env.sh` — helper to run commands inside conda/mamba environment
+- `python -m dataselector compare-samplers` — fast multi-seed sampler comparison
+- `python -m dataselector thesis-pipeline` — complete 4-phase thesis optimization
+- `python -m dataselector autoscale` — staged Optuna autoscaling
+- `python -m dataselector optuna-optimize` — low-level Optuna experiment runner
+- `python -m dataselector bootstrap-pareto --pareto-csv <path>` — bootstrap UQ on Pareto selections
+- `python -m dataselector generate-experiment --run-dir <path>` — per-run report generation
+- `python -m dataselector check-env` — environment and legacy-reference validation
 
 ---
 
@@ -225,14 +228,13 @@ Dataselector/
 │   ├── diversity_selector.py            # facility-location selection logic
 │   ├── experiment_manager.py            # run/version management
 │   └── visualizer.py                    # plotting helpers
-├── scripts/
-│   ├── run_thesis_sampler_suite.py     # Sampler suite orchestrator (thesis-grade)
-│   ├── xxl_KDR146_run_thesis_complete.py # XXL orchestrator (Phase 0-5)
-│   ├── xxl_full_run_monitor.py         # Monitor + pre/post hooks + logging
-│   ├── run_adaptive_pipeline.py        # Adaptive pipeline (LHS-based)
-│   ├── compare_samplers_multi_seed.py  # Multi-seed sampler comparer
-│   ├── optuna_optimize.py              # low-level Optuna experiment runner
-│   └── [other helper scripts...]
+├── dataselector/workflows/              # Canonical workflow implementations
+│   ├── thesis_sampler_suite.py         # Sampler suite orchestrator (thesis-grade)
+│   ├── xxl.py                          # XXL orchestrator (Phase 0-5)
+│   ├── adaptive_pipeline.py            # Adaptive pipeline (LHS-based)
+│   ├── compare_samplers.py             # Multi-seed sampler comparer
+│   ├── optuna_optimize.py              # Low-level Optuna experiment runner
+│   └── [other workflow modules...]
 ├── tests/                                # pytest suite
 ├── notebooks/
 │   └── 01_data_exploration.ipynb

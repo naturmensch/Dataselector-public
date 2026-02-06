@@ -19,10 +19,12 @@ from dataselector.cli_decorators import (
 
 @pytest.fixture(autouse=True)
 def clear_commands():
-    """Clear registered commands before each test."""
+    """Isolate command registry for decorator tests and restore global state."""
+    original_commands = _CLI_COMMANDS.copy()
     _CLI_COMMANDS.clear()
     yield
     _CLI_COMMANDS.clear()
+    _CLI_COMMANDS.update(original_commands)
 
 
 class TestArgDef:

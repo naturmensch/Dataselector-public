@@ -1,18 +1,5 @@
-"""E2E tests for fully-implemented Python CLI commands (no subprocess wrappers).
+"""E2E tests for current canonical CLI contracts."""
 
-This test file focuses on CLI commands that have actual Python implementations,
-not legacy script wrappers. Tests for wrapper commands (autoscale, xxl, etc.)
-are deferred until Phase 3R subprocess wrapper → native Python migration.
-
-Tested commands (fully implemented):
-- bootstrap: dataselector bootstrap ...
-- optuna-optimize: dataselector optuna-optimize ...
-- final-selection: dataselector final-selection ...
-- build-tiles: dataselector build-tiles ...
-- tools: dataselector tools [check-geo|archive-outputs|list-archives|clean-workspace|...]
-"""
-
-import json
 from pathlib import Path
 
 import pytest
@@ -39,19 +26,19 @@ def test_build_tiles_help(run_dataselector_cli):
 
 @pytest.mark.integration
 def test_tools_check_geo(run_dataselector_cli):
-    """Test tools check-geo works (fully implemented)."""
-    result = run_dataselector_cli(["tools", "check-geo"])
+    """Test check-geo works with top-level CLI command."""
+    result = run_dataselector_cli(["check-geo"])
 
     # May fail if GIS deps missing, but shouldn't crash
-    assert result.returncode in [0, 1]
+    assert result.returncode in [0, 2]
     output = (result.stdout.decode() + result.stderr.decode()).lower()
     assert "geopandas" in output or result.returncode == 0
 
 
 @pytest.mark.integration
 def test_tools_clean_workspace_dryrun(tmp_workspace: Path, run_dataselector_cli):
-    """Test tools clean-workspace --dry-run (fully implemented)."""
-    result = run_dataselector_cli(["tools", "clean-workspace"], cwd=str(tmp_workspace))
+    """Test clean-workspace dry-run default behavior."""
+    result = run_dataselector_cli(["clean-workspace"], cwd=str(tmp_workspace))
     # Dry-run is default, should succeed
     assert result.returncode == 0
 
@@ -87,12 +74,14 @@ def test_build_tiles_empty_directory(tmp_workspace: Path, run_dataselector_cli):
 
 @pytest.mark.integration
 def test_bootstrap_help(run_dataselector_cli):
-    """Test bootstrap --help works (fully implemented)."""
-    result = run_dataselector_cli(["bootstrap", "--help"])
-    assert result.returncode == 0
+    """Test current bootstrap commands expose --help."""
+    result_final = run_dataselector_cli(["bootstrap-final", "--help"])
+    assert result_final.returncode == 0
+    assert "bootstrap" in result_final.stdout.decode().lower()
 
-    output = result.stdout.decode().lower()
-    assert "bootstrap" in output or "resampling" in output
+    result_pareto = run_dataselector_cli(["bootstrap-pareto", "--help"])
+    assert result_pareto.returncode == 0
+    assert "pareto" in result_pareto.stdout.decode().lower()
 
 
 @pytest.mark.integration

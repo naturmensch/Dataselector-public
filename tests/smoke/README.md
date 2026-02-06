@@ -1,6 +1,6 @@
 # Smoke Tests — Quick README ✅
 
-Kurz: Diese Anleitung erklärt, wie man schnelle Smoke‑Runs startet und sie mit dem Watch‑Script überwacht.
+Kurz: Diese Anleitung erklärt, wie man schnelle Smoke‑Runs startet und Logs direkt überwacht.
 
 ## Ziel
 - Kurzlauf (smoke) ausführen, Logs live ansehen und auf offensichtliche Fehler prüfen.
@@ -8,18 +8,18 @@ Kurz: Diese Anleitung erklärt, wie man schnelle Smoke‑Runs startet und sie mi
 ## 1) Kurzer Smoke‑Run starten
 ```bash
 # moderate limits for quick smoke
-./scripts/exec_in_env.sh --env dataselector -- bash -lc "export OMP_NUM_THREADS=2 MKL_NUM_THREADS=2; nohup ./scripts/run_full_experiment.sh --adaptive --n-trials 5 --n-boot 5 --n-candidates 50 --yes > outputs/experiments/run_smoke.log 2>&1 & echo \$!"
+OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 nohup python -m dataselector xxl --smoke > outputs/experiments/run_smoke.log 2>&1 & echo $!
 ```
-Merke dir die ausgegebene PID (oder suche sie mit `pgrep -f run_full_experiment.sh`).
+Merke dir die ausgegebene PID (oder suche sie mit `pgrep -f "python -m dataselector xxl"`).
 
 ## 2) Schnell überwachen (empfohlen)
-- Folgen des Logs (latest run automatisch wählen):
+- Folgen des Logs:
 ```bash
-./scripts/watch_experiment.sh --filter 'FAILED|Traceback|ERROR|Exception' --lines 100
+tail -n 100 -f outputs/experiments/run_smoke.log
 ```
-- Spezifischen Run beobachten und Prozesse anzeigen:
+- Monitor-Zusammenfassung erzeugen:
 ```bash
-./scripts/watch_experiment.sh outputs/experiments/run_20260116T021615Z --show-proc
+python -m dataselector generate-monitor
 ```
 
 ## 3) Was prüfen (Quick‑Checks)

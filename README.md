@@ -79,42 +79,43 @@ Dataselector/
 
 1. Platzieren Sie die Metadaten-Datei (`KDR100_foliage_with_files_epsg3857.csv` oder `all_png_tiles.dbf`) im `data/` Verzeichnis
 
-   Hinweis: Falls die Rohbilder und Sidecar-XMLs in `data/images/` vorhanden sind, kann `scripts/build_new_all_tiles.py` automatisch `data/new_all_tiles.csv` erzeugen (z.B. `./scripts/exec_in_env.sh --env dataselector -- python scripts/build_new_all_tiles.py --image-dir data/images --out data/new_all_tiles.csv`).
+   Hinweis: Falls die Rohbilder und Sidecar-XMLs in `data/images/` vorhanden sind, kann `python -m dataselector build-tiles` automatisch `data/new_all_tiles.csv` erzeugen (z.B. `python -m dataselector build-tiles --image-dir data/images --out data/new_all_tiles.csv`).
 2. Erstellen Sie einen Ordner `data/images/` und legen Sie die Kartenbilder dort ab
 
 ### Vollständiger Experiment-Workflow (Modern: Autoscale → Sampler Suite → XXL)
 
 Der vollständige, wissenschaftlich fundierte Ablauf besteht aus drei klaren Phasen:
 
-1. **Autoscale** (`scripts/optuna_autoscale.py`) — gestufte Suche nach sinnvoller `n_samples` und globalen Hyperparametern (Stages z.B. 50 → 100 → 300 → full). Ergebnis: `outputs/optuna_autoscale_selected_n_samples.txt` und `outputs/optuna_autoscale_best_latest.json`.
+1. **Autoscale** (`python -m dataselector autoscale`) — gestufte Suche nach sinnvoller `n_samples` und globalen Hyperparametern (Stages z.B. 50 → 100 → 300 → full). Ergebnis: `outputs/optuna_autoscale_selected_n_samples.txt` und `outputs/optuna_autoscale_best_latest.json`.
 
-2. **Sampler Suite** (`scripts/run_thesis_sampler_suite.py`) — Vergleicht Sampler (QMC, TPE, CMA‑ES) über mehrere Seeds und verwendet die Autoscale‑Ergebnisse zur Einschränkung der Suchräume (Constrained Bounds). Ergebnis: `outputs/selected_sampler.json` und per‑run `results/`-Ordner.
+2. **Sampler Suite** (`python -m dataselector thesis-sampler-suite`) — Vergleicht Sampler (QMC, TPE, CMA‑ES) über mehrere Seeds und verwendet die Autoscale‑Ergebnisse zur Einschränkung der Suchräume (Constrained Bounds). Ergebnis: `outputs/selected_sampler.json` und per‑run `results/`-Ordner.
 
-3. **XXL Pipeline (Phases 0–5)** (`scripts/xxl_KDR146_run_thesis_complete_modern.py`) — Validierung (Phase 0), große Optimierungsläufe (Phase 1–4), Bootstrap UQ (Phase 5) und Erstellung der Thesis‑Artefakte.
+3. **XXL Pipeline (Phases 0–5)** (`python -m dataselector xxl`) — Validierung (Phase 0), große Optimierungsläufe (Phase 1–4), Bootstrap UQ (Phase 5) und Erstellung der Thesis‑Artefakte.
 
-Für die komplette Ausführung nutze das zentrale Orchestrator‑Skript (modernisiert):
+Für die komplette Ausführung nutze die CLI‑Abfolge (Autoscale in der Suite aktiviert):
 
 ```bash
 # Vollständige Orchestrierung (Autoscale → Sampler Suite → XXL)
-bash scripts/run_complete_thesis_pipeline.sh
+python -m dataselector thesis-sampler-suite --autoscale
+python -m dataselector xxl
 ```
 
 Wenn Sie nur die Sampler-Suite mit Autoscale ausführen möchten:
 
 ```bash
-python scripts/run_thesis_sampler_suite.py --autoscale
+python -m dataselector thesis-sampler-suite --autoscale
 ```
 
-Und falls Sie die Suite ohne Autoscale durchführen wollen (z.B. mit festem n_samples):
+Und falls Sie die Suite ohne Autoscale durchführen wollen:
 
 ```bash
-python scripts/run_thesis_sampler_suite.py --no-autoscale --n-samples 38
+python -m dataselector thesis-sampler-suite
 ```
 
 Nur die moderne XXL‑Orchestration (z.B. nach erfolgreicher Suite) läuft so:
 
 ```bash
-python scripts/xxl_KDR146_run_thesis_complete_modern.py --best-sampler tpe
+python -m dataselector xxl --best-sampler tpe
 ```
 
 Hinweis: Die Orchestrator‑Skripte prüfen die Existenz von Artefakten im `outputs/`-Verzeichnis (`optuna_autoscale_*`, `selected_sampler.json`) und verwenden diese automatisiert. Die Skripte brauchen eine Umgebung mit `optuna` installiert, wenn Optuna‑Phasen ausgeführt werden.
@@ -127,38 +128,38 @@ Schneller Smoke-Run (lokal / CI):
 ```bash
 # Schneller Test: kleiner Optuna Run (2 Trials) und Unit-Tests
 pytest -q
-dataselector optuna-optimize --n-trials 2 --n-candidates 50 --dim 32 --n-samples 5 --min-distance-km 10
+python -m dataselector optuna-optimize --n-trials 2 --n-candidates 50 --dim 32 --n-samples 5 --min-distance-km 10
 ```
 
 Diese Commands sind absichtlich klein gehalten, damit sie schnell laufen und als Smoke-Test in CI nutzbar sind.
 
 ## Administrative Tools
 
-For workspace management and validation, use the dedicated tools command:
+For workspace management and validation, use the canonical CLI commands:
 
 ```bash
 # Validate GIS dependencies
-dataselector tools check-geo
+python -m dataselector check-geo
 
 # Verify protected file paths (prevent accidental commits)
-dataselector tools protect-paths
+python -m dataselector check-protected --list
 
 # Audit workspace integrity
-dataselector tools audit-files
+python -m dataselector check-env
 
 # Check and fix documentation links
-dataselector tools docs-check
-dataselector tools docs-fix
+python -m dataselector docs-link-check
+python -m dataselector docs-link-autofix --yes
 
 # Clean up temporary artifacts and caches
-dataselector tools cleanup --dry-run
-dataselector tools cleanup --aggressive
+python -m dataselector clean-workspace
+python -m dataselector clean-workspace --delete-outputs --delete-cache --delete-venvs --yes
 
 # Validate CSV vs Raster alignment
-dataselector tools align-audit --csv data/new_all_tiles.csv --image-dir data/images
+python -m dataselector align-audit --csv data/new_all_tiles.csv --base-dir data/images
 
 # List archived experiment outputs
-dataselector tools archive-list --detailed
+python -m dataselector list-archives
 ```
 
 For detailed documentation on all tools, see [Administrative Tools Reference](docs/06_REFERENCE/TOOLS_REFERENCE.md).
@@ -168,28 +169,29 @@ For detailed documentation on all tools, see [Administrative Tools Reference](do
 Die empfohlene Methode ist die 3‑Phasen Orchestrierung (Autoscale → Sampler Suite → XXL). Für den kompletten Durchlauf benutze:
 
 ```bash
-bash scripts/run_complete_thesis_pipeline.sh
+python -m dataselector thesis-sampler-suite --autoscale
+python -m dataselector xxl
 ```
 
 Alternativen für gezielte Ausführung einzelner Schritte:
 
 - Nur Autoscale (Schneller Test / Debugging):
 ```bash
-python scripts/optuna_autoscale.py --n-trials 20 --stages 50 100 --n-candidates 100
+python -m dataselector autoscale --n-trials 20 --stages 50 100 --n-candidates 100
 ```
 
 - Sampler Suite (mit oder ohne Autoscale):
 ```bash
 # Mit automatischem Autoscale
-python scripts/run_thesis_sampler_suite.py --autoscale
+python -m dataselector thesis-sampler-suite --autoscale
 
-# Ohne Autoscale, mit festem n_samples
-python scripts/run_thesis_sampler_suite.py --no-autoscale --n-samples 38
+# Ohne Autoscale
+python -m dataselector thesis-sampler-suite
 ```
 
 - Nur XXL Pipeline (nach Suite):
 ```bash
-python scripts/xxl_KDR146_run_thesis_complete_modern.py --best-sampler tpe
+python -m dataselector xxl --best-sampler tpe
 ```
 
 Die allgemeinen Pipeline-Schritte (Metadaten → Feature Extraction → Clustering → Selection → Visualisierung) bleiben als konzeptionelles Gerüst erhalten; die Orchestrations-Skripte fügen die wissenschaftlichen Optimierungs- und Validierungsphasen hinzu (Autoscale / Sampler‑Suite / XXL).
@@ -315,17 +317,17 @@ feature_extraction:
 Große, generierte Artefakte wie `data/images/`, lokale virtuelle Umgebungen (`.venv`, `venv/`) oder `outputs/validation/` sollten nicht im Git-Repository versioniert werden.
 
 - `.gitignore` wurde erweitert, um typische Artefakte auszuschließen.
-- Ein sicheres Script steht zur Verfügung, um Kandidaten zu listen, zu archivieren oder optional zu löschen:
+- Ein sicherer CLI‑Befehl steht zur Verfügung, um Kandidaten zu listen, zu archivieren oder optional zu löschen:
 
 ```bash
-# nur prüfen
-python scripts/clean_workspace.py --dry-run
+# nur prüfen (Dry-Run ist Standard)
+python -m dataselector clean-workspace
 
 # Ausgewählte Ordner löschen (vorsichtig!)
-python scripts/clean_workspace.py --delete-outputs --delete-venvs
+python -m dataselector clean-workspace --delete-outputs --delete-venvs --yes
 
-# Archivieren
-python scripts/clean_workspace.py --archive data/images /path/to/archive.tar.gz
+# Archivieren statt löschen
+python -m dataselector clean-workspace --delete-outputs --archive /path/to/archive.tar.gz --yes
 ```
 
 Bitte prüfen Sie die Ausgabe des Dry-Runs, bevor Sie etwas löschen. Wenn Dateien bereits in Git committed sind, entfernen Sie diese erst aus dem Repo (z. B. `git rm -r --cached <path>`) und committen Sie die `.gitignore`-Änderung.

@@ -64,11 +64,9 @@ def validate_pareto_candidates(
     if not pareto_csv.exists():
         raise FileNotFoundError(f"Pareto CSV not found: {pareto_csv}")
 
+    root = Path.cwd()
     if output_dir is None:
-        from dataselector.config import get_config_value
-
-        root = get_config_value("paths.root", default=Path.cwd())
-        output_dir = Path(root) / "outputs" / "validation"
+        output_dir = root / "outputs" / "validation"
     else:
         output_dir = Path(output_dir)
 
@@ -83,9 +81,7 @@ def validate_pareto_candidates(
 
     # Load data once (reuse across all validation runs)
     metadata_path_default = (
-        Path(get_config_value("paths.root", default=Path.cwd()))
-        / "outputs"
-        / "metadata.csv"
+        root / "outputs" / "metadata.csv"
     )
     metadata_path = (
         output_dir / "metadata.csv"

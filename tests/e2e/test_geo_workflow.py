@@ -1,4 +1,4 @@
-"""E2E test for geo workflow (build-tiles + geo-audit + align-audit).
+"""E2E test for geo workflow (build-tiles + align-audit).
 
 Tests complete geospatial workflow:
 - Build CSV from image directory
@@ -6,7 +6,6 @@ Tests complete geospatial workflow:
 - Check CSV-Raster alignment
 """
 
-import sys
 from pathlib import Path
 
 import pytest
@@ -18,9 +17,9 @@ import pytest
 def test_geo_workflow_check_dependencies(tmp_workspace: Path, run_dataselector_cli):
     """Verify geo dependencies are available.
 
-    Uses tools check-geo command.
+    Uses canonical check-geo command.
     """
-    cmd = ["tools", "check-geo"]
+    cmd = ["check-geo"]
 
     result = run_dataselector_cli(cmd, cwd=str(tmp_workspace), capture_output=True)
 
@@ -73,7 +72,6 @@ def test_align_audit_missing_csv(tmp_workspace: Path, run_dataselector_cli):
     Should fail gracefully.
     """
     cmd = [
-        "tools",
         "align-audit",
         "--csv",
         str(tmp_workspace / "nonexistent.csv"),
