@@ -498,6 +498,11 @@ def run_optuna(
             "default": None,
             "help": "Path to SQLite DB file for Optuna storage",
         },
+        "metadata_path": {
+            "type": str,
+            "default": "data/new_all_tiles.csv",
+            "help": "Path to metadata CSV used for min_distance_km computation",
+        },
         "constrain_a_min": {
             "type": float,
             "default": None,
@@ -556,6 +561,7 @@ def main(
     exp_name: str | None = None,
     use_study_db: bool = False,
     study_db: str | None = None,
+    metadata_path: str = "data/new_all_tiles.csv",
     constrain_a_min: float | None = None,
     constrain_a_max: float | None = None,
     constrain_b_min: float | None = None,
@@ -626,7 +632,6 @@ def main(
         n_candidates=n_candidates,
         dim=dim,
         n_samples=n_samples,
-        min_distance_km=min_distance_km,
         seed=seed,
         n_samples_range=n_samples_range,
         sampler_name=sampler,
@@ -635,6 +640,7 @@ def main(
         checkpoint_every=checkpoint_every,
         out_dir=out_dir,
         study_db=study_db_path,
+        metadata_path=metadata_path,
     )
 
     return 0

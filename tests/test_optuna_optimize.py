@@ -9,6 +9,7 @@ Validates:
 """
 
 import sys
+import subprocess
 from pathlib import Path
 
 
@@ -66,9 +67,11 @@ def test_load_or_create_data_synthetic(tmp_path):
 
 def test_cli_integration():
     """Test CLI entry point with --help (should not crash)."""
-    from dataselector.workflows.optuna_optimize import main
-
-    try:
-        main(["--help"])
-    except SystemExit as e:
-        assert e.code == 0
+    root = Path(__file__).resolve().parents[1]
+    res = subprocess.run(
+        [sys.executable, "-m", "dataselector", "optuna-optimize", "--help"],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    assert res.returncode == 0

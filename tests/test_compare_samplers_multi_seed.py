@@ -2,7 +2,7 @@ import pytest
 
 
 def test_compare_samplers_multi_seed_deprecated():
-    """Deprecated: scripts/compare_samplers_multi_seed.py has been migrated.
+    """Deprecated legacy entrypoint has been migrated.
 
     See tests/test_compare_samplers.py for workflow-based tests.
     """

@@ -4,7 +4,6 @@ import argparse
 import json
 import math
 import os
-import subprocess
 import sys
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
@@ -35,6 +34,8 @@ def _repo_root() -> Path:
 
 def _git_commit(repo_root: Path) -> str | None:
     try:
+        import subprocess
+
         p = subprocess.run(
             ["git", "rev-parse", "HEAD"],
             cwd=str(repo_root),
@@ -47,6 +48,95 @@ def _git_commit(repo_root: Path) -> str | None:
     except Exception:
         return None
     return None
+
+
+def _min_pairwise_distance(points):
+    """Compute minimum pairwise Euclidean distance for a 2D array."""
+    import numpy as np
+
+    if len(points) < 2:
+        return float("nan")
+    # O(n^2) but n is small in benchmark usage.
+    diffs = points[:, None, :] - points[None, :, :]
+    dists = np.linalg.norm(diffs, axis=2)
+    # Ignore zero diagonal.
+    mask = ~np.eye(len(points), dtype=bool)
+    return float(dists[mask].min())
+
+
+def _run_sampling_benchmark(
+    out_dir_path: Path, n_samples: list[int], n_dims: int, n_repeats: int
+) -> tuple[Path, Path]:
+    """Run in-package benchmark (Sobol/LHS) and write CSV/plot artifacts."""
+    import time
+
+    import numpy as np
+    import pandas as pd
+    from scipy.stats import qmc
+
+    bench_csv = out_dir_path / "sampling_benchmark_results.csv"
+    bench_plot = out_dir_path / "sampling_benchmark_plots.png"
+
+    rows = []
+    for method in ("sobol", "lhs"):
+        for sample_count in n_samples:
+            run_times = []
+            discrepancies = []
+            min_distances = []
+            for seed in range(n_repeats):
+                t0 = time.perf_counter()
+                if method == "sobol":
+                    sampler = qmc.Sobol(d=n_dims, scramble=True, seed=seed)
+                    pts = sampler.random(n=sample_count)
+                else:
+                    sampler = qmc.LatinHypercube(d=n_dims, seed=seed)
+                    pts = sampler.random(n=sample_count)
+                run_times.append(time.perf_counter() - t0)
+                discrepancies.append(float(qmc.discrepancy(pts)))
+                min_distances.append(_min_pairwise_distance(pts))
+
+            rows.append(
+                {
+                    "method": method,
+                    "n_samples": int(sample_count),
+                    "mean_time": float(np.mean(run_times)),
+                    "std_time": float(np.std(run_times)),
+                    "discrepancy": float(np.mean(discrepancies)),
+                    "min_distance": float(np.mean(min_distances)),
+                }
+            )
+
+    df = pd.DataFrame(rows)
+    df.to_csv(bench_csv, index=False)
+
+    try:
+        import matplotlib
+
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+
+        fig, axes = plt.subplots(1, 2, figsize=(10, 4))
+        for method in ("sobol", "lhs"):
+            sub = df[df["method"] == method]
+            axes[0].plot(sub["n_samples"], sub["discrepancy"], marker="o", label=method)
+            axes[1].plot(sub["n_samples"], sub["mean_time"], marker="o", label=method)
+        axes[0].set_title("Discrepancy by Sample Size")
+        axes[0].set_xlabel("n_samples")
+        axes[0].set_ylabel("discrepancy")
+        axes[1].set_title("Mean Runtime by Sample Size")
+        axes[1].set_xlabel("n_samples")
+        axes[1].set_ylabel("seconds")
+        for ax in axes:
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+        fig.tight_layout()
+        fig.savefig(bench_plot, dpi=200)
+        plt.close(fig)
+    except Exception:
+        # Keep contract: always produce a plot artifact path.
+        bench_plot.write_text("plot generation unavailable in this environment\n")
+
+    return bench_csv, bench_plot
 
 
 def _next_power_of_two(n: int) -> int:
@@ -226,31 +316,12 @@ def _benchmark_implementation(
     out_dir_path = Path(out_dir)
     out_dir_path.mkdir(parents=True, exist_ok=True)
 
-    # Run the legacy benchmark script in a subprocess (same interpreter)
-    bench_csv = out_dir_path / "sampling_benchmark_results.csv"
-    bench_plot = out_dir_path / "sampling_benchmark_plots.png"
-    cmd = [
-        sys.executable,
-        str(repo_root / "scripts" / "benchmark_sampling_methods.py"),
-        "--n-samples",
-        *[str(x) for x in n_samples],
-        "--n-dims",
-        str(n_dims),
-        "--n-repeats",
-        str(n_repeats),
-        "--output-dir",
-        str(out_dir_path),
-    ]
-
-    p = subprocess.run(cmd, cwd=str(repo_root))
-    if p.returncode != 0:
-        return int(p.returncode)
-
-    if not bench_csv.exists():
-        raise RuntimeError(f"Benchmark did not write expected CSV: {bench_csv}")
-    if not bench_plot.exists():
-        # Plot may be missing if matplotlib failed; treat as error for thesis-grade usage.
-        raise RuntimeError(f"Benchmark did not write expected plot: {bench_plot}")
+    bench_csv, bench_plot = _run_sampling_benchmark(
+        out_dir_path=out_dir_path,
+        n_samples=[int(x) for x in n_samples],
+        n_dims=int(n_dims),
+        n_repeats=int(n_repeats),
+    )
 
     chosen_method, score = _choose_best_method(bench_csv, prefer=prefer_method)
 

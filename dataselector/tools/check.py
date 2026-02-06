@@ -216,10 +216,19 @@ def _get_repo_root() -> Path:
 
 
 ROOT = _get_repo_root()
-DEFAULT_SCAN_PATHS = [ROOT / "scripts", ROOT / "Makefile", ROOT / ".github/workflows"]
+DEFAULT_SCAN_PATHS = [
+    ROOT / "dataselector",
+    ROOT / "tests",
+    ROOT / "Makefile",
+    ROOT / ".github/workflows",
+]
 
 ENV_PATTERNS = [
-    (re.compile(r"\.\/scripts\/exec_in_env\.sh"), "uses exec_in_env wrapper", "good"),
+    (
+        re.compile(r"\.\/scripts\/exec_in_env\.sh"),
+        "uses deprecated exec_in_env wrapper",
+        "bad",
+    ),
     (
         re.compile(r"(conda|mamba)\s+run\s+-n\s+['\"]?(?P<env>\w+)"),
         "uses conda/mamba run -n <env>",
@@ -271,14 +280,17 @@ def scan_file_env(path: Path):
             if ln.strip().startswith("#") or not ln.strip():
                 continue
             if re.search(r"\b(py)?test\b", ln) or re.search(r"\bpython\b", ln):
-                uses_wrapper = (
-                    "exec_in_env.sh" in ln or "conda run" in ln or "mamba run" in ln
-                )
+                uses_wrapper = "exec_in_env.sh" in ln
+                uses_explicit_env = "conda run" in ln or "mamba run" in ln
                 findings.append(
                     (
                         "Makefile-line",
                         "Makefile command",
-                        "good" if uses_wrapper else "suspicious",
+                        (
+                            "bad"
+                            if uses_wrapper
+                            else ("good" if uses_explicit_env else "suspicious")
+                        ),
                         ln.strip(),
                         ln.strip(),
                     )
@@ -318,7 +330,7 @@ def scan_paths_env(paths):
 
 @cli_command(
     "check-env",
-    help="Check environment usage in scripts/CI",
+    help="Check environment usage in package, tests, Makefile, and CI workflows",
     args={
         "paths": {
             "type": str,
@@ -329,7 +341,7 @@ def scan_paths_env(paths):
     },
 )
 def check_env_usage(paths=None) -> int:
-    """Check how scripts and CI targets handle environment activation/usage.
+    """Check how code and CI targets handle environment activation/usage.
 
     Scans the repository (scripts/, Makefile, .github/workflows/, top-level shell scripts)
     and reports:
@@ -367,13 +379,13 @@ def check_env_usage(paths=None) -> int:
         print(f"  suspicious/bad occurrences: {bad}")
         print("\nRecommendations:")
         print(
-            "- Prefer using './scripts/exec_in_env.sh --env dataselector -- <cmd>' or 'conda/mamba run -n dataselector -- <cmd>' for CI/Makefile targets."
+            "- Prefer 'python -m dataselector ...' plus explicit 'conda run -n dataselector -- <cmd>' or 'mamba run -n dataselector -- <cmd>' in CI."
         )
         print(
             "- Avoid 'conda activate' or 'source activate' inside scripts; prefer explicit runner invocation."
         )
         print(
-            "- Replace direct 'python' or 'pytest' calls in Makefile with the wrapper or annotate them in the Makefile."
+            "- Replace direct Makefile shell wrappers with canonical package entrypoints."
         )
 
     return 2 if bad else 0

@@ -6,6 +6,8 @@ from typing import Optional
 
 import pandas as pd
 
+from dataselector.cli_decorators import cli_command
+
 logger = logging.getLogger(__name__)
 
 
@@ -123,3 +125,40 @@ def import_trials_from_csv(
 
     print(f"Successfully imported {imported_count}/{len(df)} trials")
     return imported_count
+
+
+@cli_command(
+    "optuna-import",
+    help="Import Optuna trials from CSV into storage",
+    args={
+        "csv": {"type": str, "required": True, "help": "Path to trials CSV"},
+        "storage": {
+            "type": str,
+            "required": True,
+            "help": "Optuna storage URL (e.g. sqlite:///study.db)",
+        },
+        "study_name": {
+            "type": str,
+            "default": "kdr100_opt",
+            "help": "Study name",
+        },
+        "direction": {
+            "type": str,
+            "default": "maximize",
+            "help": "Optimization direction",
+        },
+    },
+)
+def main(
+    csv: str,
+    storage: str,
+    study_name: str = "kdr100_opt",
+    direction: str = "maximize",
+) -> int:
+    import_trials_from_csv(
+        csv_path=Path(csv),
+        storage=storage,
+        study_name=study_name,
+        direction=direction,
+    )
+    return 0

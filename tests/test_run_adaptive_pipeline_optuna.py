@@ -2,15 +2,15 @@ import sys
 
 import pytest
 
-pytest.mark.integration
+pytestmark = pytest.mark.integration
 
 
 @pytest.fixture(scope="module")
 def run_pipe():
     pytest.importorskip("numba", exc_type=ImportError)
-    import importlib
+    from dataselector.workflows import adaptive_pipeline
 
-    return importlib.import_module("scripts.run_adaptive_pipeline")
+    return adaptive_pipeline
 
 
 @pytest.fixture(autouse=True)
@@ -27,7 +27,7 @@ def test_optuna_failure_aborts(monkeypatch, run_pipe):
         raise Exception("subprocess fail")
 
     monkeypatch.setattr(run_pipe, "run_cmd", raise_error)
-    monkeypatch.setattr(sys, "argv", ["run_adaptive_pipeline.py", "--yes"])
+    monkeypatch.setattr(sys, "argv", ["adaptive-pipeline", "--yes"])
     # Ensure we do not continue on failure
     with pytest.raises(SystemExit):
         run_pipe.main()
@@ -42,7 +42,7 @@ def test_optuna_continue_on_failure(monkeypatch, run_pipe):
     # Simulate args by patching sys.argv
     monkeypatch.setattr(
         "sys.argv",
-        ["run_adaptive_pipeline.py", "--yes", "--continue-on-analysis-failure"],
+        ["adaptive-pipeline", "--yes", "--continue-on-analysis-failure"],
     )
     # Should complete without raising SystemExit
     run_pipe.main()

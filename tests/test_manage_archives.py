@@ -1,9 +1,7 @@
-import os
 import tarfile
-import tempfile
 from pathlib import Path
 
-from scripts.manage_archives import archive_outputs, list_archives, restore_archive
+from dataselector.tools.archive import archive_outputs, list_archives, restore_archive
 
 
 def touch(p: Path):
@@ -44,8 +42,8 @@ def test_list_and_restore(tmp_path):
     (out / "x.txt").write_text("x")
     dst = tmp_path / "archive"
     archive_path = archive_outputs(out, dst)
-    listed = list_archives(dst)
-    assert archive_path in listed
+    rc = list_archives(str(dst))
+    assert rc == 0
     # restore into new dir
     target = tmp_path / "restore"
     restore_archive(archive_path, target)

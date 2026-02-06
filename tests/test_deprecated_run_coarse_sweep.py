@@ -2,10 +2,12 @@ import subprocess
 import sys
 
 
-def test_run_coarse_sweep_deprecated_message():
+def test_coarse_sweep_command_is_removed():
     res = subprocess.run(
-        [sys.executable, "scripts/run_coarse_sweep.py"], capture_output=True, text=True
+        [sys.executable, "-m", "dataselector", "coarse-sweep"],
+        capture_output=True,
+        text=True,
     )
     out = (res.stdout or "") + (res.stderr or "")
-    assert "DEPRECATED" in out or "deprecated" in out.lower()
-    assert res.returncode == 0
+    assert res.returncode != 0
+    assert "invalid choice" in out.lower() or "unrecognized arguments" in out.lower()

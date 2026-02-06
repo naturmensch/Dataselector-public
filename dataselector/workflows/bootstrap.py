@@ -436,6 +436,14 @@ def run_bootstrap_pareto(
     Returns:
         Exit code (0 on success)
     """
+    method = str(uq_method).strip().lower()
+    if method != "bootstrap":
+        print(
+            "Error: bootstrap-pareto supports only --uq-method bootstrap; "
+            f"got '{uq_method}'. Ensemble mode is not implemented yet."
+        )
+        return 2
+
     from dataselector.data.io import load_metadata, load_or_extract_features
     from dataselector.selection.clustering import ClusteringPipeline
     from dataselector.selection.diversity_selector import DiversitySelector
@@ -519,7 +527,7 @@ def run_bootstrap_pareto(
             "wwi_percent_std": df_boot["wwi_percent"].std(),
             "jaccard_mean": df_boot["jaccard_with_original"].mean(),
             "jaccard_std": df_boot["jaccard_with_original"].std(),
-            "method": "bootstrap",
+            "method": method,
         }
         summary_rows.append(summary)
 

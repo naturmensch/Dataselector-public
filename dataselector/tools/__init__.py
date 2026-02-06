@@ -8,9 +8,9 @@ This module provides CLI tools for:
 - Documentation link maintenance
 
 Usage:
-    python -m dataselector tools check-protected
-    python -m dataselector tools verify-archive
-    python -m dataselector tools align-audit
+    python -m dataselector check-protected
+    python -m dataselector verify-archive
+    python -m dataselector align-audit
 
 Note: Tools are lazy-loaded on demand to avoid heavy dependencies for CLI usage.
 """

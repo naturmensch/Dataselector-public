@@ -1,11 +1,9 @@
-import os
-import tempfile
 from pathlib import Path
 
 import pandas as pd
 import yaml
 
-from scripts.apply_optuna_best import (
+from dataselector.workflows.apply_optuna_best import (
     extract_params_from_trial,
     find_best_trial,
     inject_into_config,

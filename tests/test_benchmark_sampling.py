@@ -1,31 +1,24 @@
-import importlib.util
 from pathlib import Path
 
+import pandas as pd
 import pytest
+
+from dataselector.workflows import benchmark_sampling as bm
 
 pytestmark = pytest.mark.integration
 
 
-@pytest.fixture(autouse=True)
-def skip_if_no_numba():
-    pytest.importorskip("numba", exc_type=ImportError)
-
-
-def test_benchmark_small(tmp_path):
-    # Dynamically load the script module to avoid module-level imports after pytest.skip
-    ROOT = Path(__file__).resolve().parents[1]
-    spec = importlib.util.spec_from_file_location(
-        "benchmark_sampling_methods", ROOT / "scripts" / "benchmark_sampling_methods.py"
+def test_benchmark_small(tmp_path: Path):
+    csv_path, plot_path = bm._run_sampling_benchmark(
+        out_dir_path=tmp_path,
+        n_samples=[10, 20],
+        n_dims=3,
+        n_repeats=3,
     )
-    bm = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(bm)
 
-    sample_sizes = [10, 20]
-    df = bm.benchmark_space_filling(sample_sizes, n_trials=3, dim=3, seed=123)
-    assert "min_pairwise_dist" in df.columns
+    assert csv_path.exists()
+    assert plot_path.exists()
+
+    df = pd.read_csv(csv_path)
+    assert {"method", "n_samples", "discrepancy", "min_distance"}.issubset(df.columns)
     assert set(df["method"].unique()) == {"lhs", "sobol"}
-
-    # write outputs to tmp and check files
-    out_prefix = tmp_path / "test_bench"
-    df.to_csv(out_prefix.with_suffix(".csv"), index=False)
-    assert out_prefix.with_suffix(".csv").exists()

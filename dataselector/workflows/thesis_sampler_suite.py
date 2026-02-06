@@ -28,7 +28,7 @@ sys.path.insert(0, str(ROOT))
 
 def run_cmd(cmd: str, cwd: Path | None = None) -> None:
     """
-    Run a command inside the canonical environment wrapper if available.
+    Run a shell command and fail fast on non-zero exit.
 
     Parameters
     ----------
@@ -37,14 +37,8 @@ def run_cmd(cmd: str, cwd: Path | None = None) -> None:
     cwd : Path | None
         Working directory for command execution
     """
-    wrapper = ROOT / "scripts" / "exec_in_env.sh"
-    if wrapper.exists():
-        wrapped_cmd = f"{wrapper} --env dataselector -- {cmd}"
-        print(f"RUN (via wrapper): {wrapped_cmd}")
-        proc = subprocess.run(wrapped_cmd, shell=True, cwd=cwd)
-    else:
-        print(f"RUN: {cmd}")
-        proc = subprocess.run(cmd, shell=True, cwd=cwd)
+    print(f"RUN: {cmd}")
+    proc = subprocess.run(cmd, shell=True, cwd=cwd)
 
     if proc.returncode != 0:
         raise RuntimeError(f"Command failed: {cmd}")
@@ -150,9 +144,6 @@ def run_thesis_sampler_suite(
     """
     import pandas as pd
 
-    # Lazy imports to avoid heavy dependencies
-    from scripts.common import data_path
-
     # Set defaults
     if seeds is None:
         seeds = [42, 43, 44, 45, 46, 47, 48, 49, 50, 51]
@@ -165,7 +156,7 @@ def run_thesis_sampler_suite(
 
     # Dynamically read n_candidates from CSV if not set
     if n_candidates is None:
-        csv_path = data_path("new_all_tiles.csv")
+        csv_path = ROOT / "data" / "new_all_tiles.csv"
         if csv_path.exists():
             n_candidates = len(pd.read_csv(csv_path))
             print(f"Dynamically determined n_candidates={n_candidates} from {csv_path}")
@@ -180,8 +171,6 @@ def run_thesis_sampler_suite(
     # 1) Optionally run autoscale to determine n_samples and hyperparams
     best_n_samples = None
     constrain_bounds = {}
-    wrapper = ROOT / "scripts" / "exec_in_env.sh"
-
     if autoscale:
         print(
             "Running autoscale to determine best n_samples and hyperparams (this may take some time)..."
@@ -263,13 +252,13 @@ def run_thesis_sampler_suite(
             print(f"Error running autoscale: {e}")
             print("Proceeding without autoscale results.")
 
-    # 1b) Run compare_samplers_multi_seed.py
+    # 1b) Run compare-samplers workflow
     seeds_arg = " ".join(str(s) for s in seeds)
     samplers_arg = " ".join(samplers)
     datasets_arg = " ".join(datasets)
 
     compare_cmd = (
-        f"python scripts/compare_samplers_multi_seed.py --samplers {samplers_arg} "
+        f"python -m dataselector compare-samplers --samplers {samplers_arg} "
         f"--seeds {seeds_arg} --n-trials {n_trials} --datasets {datasets_arg} "
         f"--sequential --output {suite_dir} --n-candidates {n_candidates}"
     )

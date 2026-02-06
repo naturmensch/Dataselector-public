@@ -147,6 +147,23 @@ def test_full_pipeline_simulation(tmp_dirs, repo_root, inject_src_stub, monkeypa
             return labels
 
     monkeypatch.setattr(experiments, "KMeans", FakeKMeans)
+    monkeypatch.setattr(
+        experiments,
+        "extract_features",
+        lambda metadata, batch_size=16: np.zeros((len(metadata), 64), dtype=np.float32),
+    )
+    monkeypatch.setattr(
+        experiments,
+        "compute_metrics",
+        lambda selected_idx, metadata, cluster_labels, features: {
+            "n_selected": len(selected_idx),
+            "temporal_std": 0.0,
+            "spatial_mean_km": 0.0,
+            "clusters_covered": (
+                int(len(set(cluster_labels[selected_idx]))) if len(selected_idx) else 0
+            ),
+        },
+    )
 
     # 7) Monkeypatch diversity score calculation (avoid scipy dependency)
     monkeypatch.setattr(
@@ -161,6 +178,11 @@ def test_full_pipeline_simulation(tmp_dirs, repo_root, inject_src_stub, monkeypa
     )
     monkeypatch.setitem(sys.modules, "src.cache", cache_mod)
     setattr(inject_src_stub, "cache", cache_mod)
+    monkeypatch.setattr(
+        io_mod,
+        "extract_features",
+        lambda metadata, batch_size=16: np.zeros((len(metadata), 64), dtype=np.float32),
+    )
 
     io_mod.load_or_extract_features(
         out_dir=str(outputs), csv_meta=str(csv_meta), batch_size=4, cache=True
@@ -196,9 +218,7 @@ def test_full_pipeline_simulation(tmp_dirs, repo_root, inject_src_stub, monkeypa
     assert len(sel_files) >= 1
 
     # 8) Now test Optuna checkpointing quickly by running a small Optuna run
-    opt_mod = load_module_from_path(
-        "optuna_opt", repo_root / "scripts" / "optuna_optimize.py"
-    )
+    from dataselector.workflows import optuna_optimize as opt_mod
 
     # run small optimization (n_trials=4) with checkpoint_every=2
     opt_mod.run_optuna(
@@ -206,6 +226,7 @@ def test_full_pipeline_simulation(tmp_dirs, repo_root, inject_src_stub, monkeypa
         n_candidates=6,
         dim=8,
         n_samples=3,
+        metadata_path=str(csv_meta),
         seed=123,
         sampler_name="tpe",
         exp_name="smoke_opt",

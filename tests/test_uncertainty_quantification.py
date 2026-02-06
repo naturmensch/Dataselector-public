@@ -1,9 +1,7 @@
-from pathlib import Path
-
 import numpy as np
 import pytest
 
-from tests._helpers.load_script import load_script
+import dataselector.workflows.uncertainty_quantification as uq_module
 
 
 @pytest.fixture(autouse=True)
@@ -13,11 +11,7 @@ def skip_if_no_torch():
 
 @pytest.fixture(scope="module")
 def uq_mod():
-    ROOT = Path(__file__).resolve().parents[1]
-    return load_script(
-        ROOT / "scripts" / "uncertainty_quantification.py",
-        module_name="scripts.uncertainty_quantification_test",
-    )
+    return uq_module
 
 
 @pytest.fixture

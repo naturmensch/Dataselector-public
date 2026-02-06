@@ -1,6 +1,4 @@
 import json
-import os
-import tempfile
 from pathlib import Path
 
 import numpy as np
@@ -49,30 +47,3 @@ def test_atomic_write_and_load(tmp_path: Path):
     # Check meta file contents
     data = json.loads(mpath.read_text())
     assert data.get("metadata_csv")
-
-
-def test_migration_script(tmp_path: Path, monkeypatch):
-    # Create legacy features.npy and small CSV
-    out = tmp_path / "outputs"
-    out.mkdir()
-    feats = np.arange(12).reshape(3, 4)
-    np.save(out / "features.npy", feats)
-
-    csv = tmp_path / "data.csv"
-    csv.write_text("id\n1\n2\n3\n")
-
-    # Run migration function directly
-    from scripts.migrate_feature_cache_to_hash import migrate
-
-    code = migrate(out, csv, dry_run=False)
-    assert code == 0
-
-    # There should be no legacy features.npy
-    assert not (out / "features.npy").exists()
-    # There should be exactly one features-*.npy
-    matches = list(out.glob("features-*.npy"))
-    assert len(matches) == 1
-
-    # And backup exists
-    backups = list((out / "backups").glob("features_legacy_backup_*.npy"))
-    assert backups

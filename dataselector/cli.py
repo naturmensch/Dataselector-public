@@ -20,6 +20,7 @@ import dataselector.workflows.adaptive_pipeline
 
 # Import ALL workflow modules to trigger @cli_command decorator execution
 import dataselector.workflows.autoscale
+import dataselector.workflows.apply_optuna_best
 import dataselector.workflows.benchmark_sampling
 import dataselector.workflows.bootstrap
 import dataselector.workflows.compare_samplers
@@ -27,6 +28,7 @@ import dataselector.workflows.final_selection
 import dataselector.workflows.fine_sweep
 import dataselector.workflows.generate_reports
 import dataselector.workflows.optuna_autoscale
+import dataselector.workflows.optuna_import
 import dataselector.workflows.optuna_optimize
 import dataselector.workflows.sampler_suite
 import dataselector.workflows.thesis_pipeline

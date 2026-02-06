@@ -1,14 +1,15 @@
 import subprocess
+import sys
 
 
-def test_run_full_experiment_shows_adaptive_default():
+def test_adaptive_pipeline_help_available():
     result = subprocess.run(
-        ["bash", "scripts/run_full_experiment.sh", "--help"],
+        [sys.executable, "-m", "dataselector", "adaptive-pipeline", "--help"],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
     )
     assert result.returncode == 0
     out = result.stdout
-    assert "--adaptive" in out
-    assert "RECOMMENDED (DEFAULT)" in out or "DEFAULT" in out
+    assert "--n-trials" in out
+    assert "--sampler" in out

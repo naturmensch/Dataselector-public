@@ -23,7 +23,6 @@ def skip_if_no_optuna():
 
 def run_cmd(cmd, cwd, env):
     res = subprocess.run(cmd, cwd=cwd, env=env, capture_output=True, text=True)
-    # Provide log context if failure
     if res.returncode != 0:
         print("--- STDOUT ---")
         print(res.stdout)
@@ -32,17 +31,16 @@ def run_cmd(cmd, cwd, env):
     assert res.returncode == 0
 
 
-def test_run_adaptive_pipeline_both_invocations(tmp_path):
+def test_adaptive_pipeline_package_invocation(tmp_path):
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT)
 
-    # Module invocation (dry-run, non-interactive)
-    cmd_mod = [
+    cmd = [
         sys.executable,
         "-m",
-        "scripts.run_adaptive_pipeline",
+        "dataselector",
+        "adaptive-pipeline",
         "--dry-run",
-        "--yes",
         "--n-lhs",
         "1",
         "--n-trials",
@@ -51,74 +49,15 @@ def test_run_adaptive_pipeline_both_invocations(tmp_path):
         "1",
         "--seed",
         "1",
+        "--skip-optuna",
     ]
-    run_cmd(cmd_mod, cwd=tmp_path, env=env)
-
-    # Direct script invocation
-    cmd_file = [
-        sys.executable,
-        str(ROOT / "scripts" / "run_adaptive_pipeline.py"),
-        "--dry-run",
-        "--yes",
-        "--n-lhs",
-        "1",
-        "--n-trials",
-        "1",
-        "--n-boot",
-        "1",
-        "--seed",
-        "1",
-    ]
-    run_cmd(cmd_file, cwd=tmp_path, env=env)
+    run_cmd(cmd, cwd=tmp_path, env=env)
 
 
-def test_optuna_optimize_both_invocations(tmp_path):
+def test_optuna_import_package_invocation(tmp_path):
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT)
 
-    # Module invocation: small run
-    cmd_mod = [
-        sys.executable,
-        "-m",
-        "scripts.optuna_optimize",
-        "--n-trials",
-        "2",
-        "--n-candidates",
-        "4",
-        "--dim",
-        "4",
-        "--n-samples",
-        "1",
-        "--exp-name",
-        "invocation_test",
-        "--seed",
-        "1",
-    ]
-    run_cmd(cmd_mod, cwd=tmp_path, env=env)
-
-    # Direct script invocation
-    cmd_file = [
-        sys.executable,
-        str(ROOT / "scripts" / "optuna_optimize.py"),
-        "--n-trials",
-        "1",
-        "--n-candidates",
-        "4",
-        "--dim",
-        "4",
-        "--n-samples",
-        "1",
-        "--exp-name",
-        "invocation_test2",
-    ]
-    run_cmd(cmd_file, cwd=tmp_path, env=env)
-
-
-def test_import_trials_csv_to_optuna_both_invocations(tmp_path):
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(ROOT)
-
-    # Create CSV
     csv_path = tmp_path / "trials.csv"
     df = pd.DataFrame(
         {
@@ -137,11 +76,11 @@ def test_import_trials_csv_to_optuna_both_invocations(tmp_path):
     db_path = tmp_path / "study.db"
     storage = f"sqlite:///{db_path}"
 
-    # Module invocation
-    cmd_mod = [
+    cmd = [
         sys.executable,
         "-m",
-        "scripts.import_trials_csv_to_optuna",
+        "dataselector",
+        "optuna-import",
         "--csv",
         str(csv_path),
         "--storage",
@@ -149,20 +88,5 @@ def test_import_trials_csv_to_optuna_both_invocations(tmp_path):
         "--study-name",
         "inv_test",
     ]
-    run_cmd(cmd_mod, cwd=tmp_path, env=env)
-
-    # Direct script invocation
-    cmd_file = [
-        sys.executable,
-        str(ROOT / "scripts" / "import_trials_csv_to_optuna.py"),
-        "--csv",
-        str(csv_path),
-        "--storage",
-        storage,
-        "--study-name",
-        "inv_test2",
-    ]
-    run_cmd(cmd_file, cwd=tmp_path, env=env)
-
-    # Verify DBs exist
+    run_cmd(cmd, cwd=tmp_path, env=env)
     assert db_path.exists()

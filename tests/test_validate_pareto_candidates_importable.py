@@ -1,8 +1,3 @@
-from pathlib import Path
-
-from tests._helpers.load_script import load_script
-
-
 def test_validate_pareto_candidates_importable():
     """Test that validate_pareto_candidates module is importable."""
     # Updated to new workflow module location

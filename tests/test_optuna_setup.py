@@ -3,25 +3,21 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 OUT = Path("outputs")
 
 
-def test_optuna_script_runs(tmp_path):
-    try:
-        pass  # type: ignore
-    except Exception:
-        pytest.skip("optuna not installed in test environment")
-
-    # Run optuna script with minimal trials to smoke-test
+def test_optuna_command_runs(tmp_path):
+    # Run package command with smoke settings
     cmd = [
         sys.executable,
-        "scripts/optuna_optimize.py",
+        "-m",
+        "dataselector",
+        "optuna-optimize",
+        "--smoke",
         "--n-trials",
-        "2",
+        "1",
         "--n-candidates",
-        "100",
+        "20",
         "--dim",
         "32",
         "--n-samples",
@@ -36,5 +32,5 @@ def test_optuna_script_runs(tmp_path):
     )
 
     # Check return code and output file
-    assert result.returncode == 0, f"optuna script failed: {result.stdout}"
+    assert result.returncode == 0, f"optuna command failed: {result.stdout}"
     assert (OUT / "optuna_results.csv").exists()

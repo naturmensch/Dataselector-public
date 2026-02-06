@@ -1,8 +1,6 @@
-from pathlib import Path
-
 import pytest
 
-from tests._helpers.load_script import load_script
+import dataselector.workflows.optuna_optimize as optuna_optimize_module
 
 pytestmark = pytest.mark.integration
 
@@ -14,10 +12,7 @@ def skip_if_no_optuna():
 
 @pytest.fixture(scope="module")
 def optuna_optimize_mod():
-    ROOT = Path(__file__).resolve().parents[1]
-    return load_script(
-        ROOT / "scripts" / "optuna_optimize.py", module_name="scripts.optuna_optimize"
-    )
+    return optuna_optimize_module
 
 
 @pytest.fixture

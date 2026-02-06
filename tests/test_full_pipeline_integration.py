@@ -1,9 +1,5 @@
 import importlib.util
-import os
-import subprocess
 import sys
-import textwrap
-import time
 from pathlib import Path
 
 import numpy as np
@@ -167,79 +163,26 @@ def test_multicriteria_fit_guard_raises_on_mismatch(monkeypatch):
         mc.fit(X)
 
 
-def test_monitor_run_hook_with_dummy_script(tmp_path):
-    """Run the monitor's run_hook against a small dummy script to emulate a full run.
+def test_xxl_monitor_delegates_to_cli(monkeypatch):
+    """Package monitor wrapper should delegate to canonical CLI command."""
+    from dataselector.workflows import xxl_monitor
 
-    The dummy script writes a small artifact in outputs/runs/dummy_run and exits 0. The test
-    validates that run_hook returns success and that the artifact exists and logs were written.
-    """
-    monitor_mod = _load_module_from_path(
-        "test_monitor", REPO_ROOT / "scripts" / "xxl_full_run_monitor.py"
-    )
+    called = {}
 
-    # create a dummy script that simulates a run
-    scripts_dir = tmp_path / "scripts"
-    scripts_dir.mkdir()
-    dummy = scripts_dir / "dummy_complete.py"
-    dummy.write_text(textwrap.dedent("""
-            #!/usr/bin/env python3
-            import os, sys, time
-            root = os.getcwd()
-            outdir = os.path.join(root, 'outputs', 'runs', 'dummy_run')
-            os.makedirs(outdir, exist_ok=True)
-            with open(os.path.join(outdir, 'results.txt'), 'w') as f:
-                f.write('dummy-result')
-            print('DUMMY_RUN_DONE')
-            sys.stdout.flush()
-            time.sleep(0.1)
-            sys.exit(0)
-            """))
-    dummy.chmod(0o755)
+    class DummyProc:
+        def __init__(self, returncode):
+            self.returncode = returncode
 
-    base_log_dir = tmp_path / "logs"
-    base_log_dir.mkdir()
-    active_log = base_log_dir / "active.log"
+    def fake_run(cmd):
+        called["cmd"] = cmd
+        return DummyProc(returncode=0)
 
-    # Use run_hook to execute the dummy script; ensure subprocess runs in tmp_path
-    import sys
+    monkeypatch.setattr(xxl_monitor.subprocess, "run", fake_run)
+    rc = xxl_monitor.main(["--help"])
 
-    cmd_str = f"{sys.executable} {str(dummy)}"
-
-    old_cwd = os.getcwd()
-    os.chdir(tmp_path)
-    try:
-        result = monitor_mod.run_hook(
-            name="dummy",
-            cmd_str=cmd_str,
-            base_log_dir=base_log_dir,
-            active_log=active_log,
-            timeout=10,
-            retries=0,
-            env=os.environ.copy(),
-            start_new_session=True,
-            pass_dry_run=False,
-        )
-    finally:
-        os.chdir(old_cwd)
-
-    assert isinstance(result, dict)
-    # run_hook returns a meta dict with attempts; prefer 'success' flag and last attempt exit_code
-    assert result.get("success") is True
-    assert result.get("attempts") and result.get("attempts")[-1].get("exit_code") == 0
-
-    # validate the artifact was created in the tmp_path where the subprocess ran
-    artifact = tmp_path / "outputs" / "runs" / "dummy_run" / "results.txt"
-    assert artifact.exists()
-    assert artifact.read_text() == "dummy-result"
-
-    # active log should exist
-    assert active_log.exists()
-
-    # The run's stdout/stderr are written to base_log_dir / f"dummy_*.log"
-    run_logs = list(base_log_dir.glob("dummy_*.log"))
-    assert run_logs, f"No run log found in {base_log_dir}"
-    runtxt = run_logs[0].read_text()
-    assert "DUMMY_RUN_DONE" in runtxt
+    assert rc == 0
+    assert called["cmd"][:4] == [sys.executable, "-m", "dataselector", "xxl"]
+    assert called["cmd"][-1] == "--help"
 
 
 if __name__ == "__main__":

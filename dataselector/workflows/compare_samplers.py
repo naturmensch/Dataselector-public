@@ -45,29 +45,10 @@ def _build_constrain_bounds(
 
 
 def _get_run_optuna():
-    """Late import hook for run_optuna to keep tests lightweight.
+    """Late import hook for run_optuna to keep tests lightweight."""
+    from dataselector.workflows.optuna_optimize import run_optuna
 
-    ⚠️ TODO Phase 5: This function depends on scripts/optuna_optimize.run_optuna()
-    which was removed in Phase 4 migration. compare-samplers CLI command will fail
-    if run_single_optuna() is actually called.
-
-    PROPER FIX NEEDED:
-    1. Either: Re-implement run_optuna() as proper workflow function
-    2. Or: Refactor run_single_optuna() to use subprocess call to optuna-optimize
-    3. Or: Mark compare-samplers as DEPRECATED if it's not in active use
-
-    Current Status: Module imports OK (lazy import), but fails at runtime if called.
-    """
-    try:
-        from scripts.optuna_optimize import run_optuna
-
-        return run_optuna
-    except (ImportError, ModuleNotFoundError) as e:
-        raise RuntimeError(
-            "compare_samplers.run_single_optuna() is not available - "
-            "scripts.optuna_optimize was removed in Phase 4. "
-            "See _get_run_optuna() docstring for TODO items to fix this."
-        ) from e
+    return run_optuna
 
 
 def run_single_optuna(
@@ -86,7 +67,7 @@ def run_single_optuna(
 ) -> Dict:
     """Run Optuna optimization for one sampler/seed and return run metadata.
 
-    Direct call (no subprocess) to scripts.optuna_optimize.run_optuna().
+    Direct in-process call to workflow-level run_optuna().
     """
     run_optuna = _get_run_optuna()
 
@@ -106,12 +87,17 @@ def run_single_optuna(
         n_samples = 34
         n_samples_range = (30, 50)
 
+    metadata_path = ROOT / "data" / "new_all_tiles.csv"
+    if not metadata_path.exists():
+        raise FileNotFoundError(f"Required metadata CSV not found: {metadata_path}")
+
     # Run optimization directly
     run_optuna(
         n_trials=n_trials,
         n_candidates=n_candidates,
         n_samples=n_samples,
         n_samples_range=n_samples_range,
+        metadata_path=metadata_path,
         seed=seed,
         sampler_name=sampler,
         exp_name=exp_name,
@@ -802,5 +788,4 @@ def main(
 
 
 if __name__ == "__main__":
-    # Use CLI: dataselector compare-samplers --samplers X --seeds Y --n-trials Z
-    raise SystemExit(1)
+    raise SystemExit(main())

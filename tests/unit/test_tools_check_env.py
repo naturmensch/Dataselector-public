@@ -16,7 +16,10 @@ def test_check_env_registered():
     assert "check-env" in _CLI_COMMANDS, "check-env should be registered"
     cmd_def = _CLI_COMMANDS["check-env"]
     assert cmd_def.func == check_module.check_env_usage
-    assert cmd_def.help == "Check environment usage in scripts/CI"
+    assert (
+        cmd_def.help
+        == "Check environment usage in package, tests, Makefile, and CI workflows"
+    )
     assert "paths" in cmd_def.args
 
 

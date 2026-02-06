@@ -15,7 +15,6 @@ Author: Phase 3R Migration
 from __future__ import annotations
 
 import os
-import shlex
 import subprocess
 import sys
 from datetime import datetime
@@ -169,7 +168,6 @@ def run_adaptive_pipeline(
     em = ExperimentManager(
         experiment_name,
         base_dir=OUT,
-        tags=["adaptive", "multi-stage"],
         metadata={
             "sampler": sampler,
             "optuna_sampler": optuna_sampler,
@@ -294,14 +292,6 @@ def run_adaptive_pipeline(
     if KDR146:
         pre_names_list.append("KDR_146")
     pre_indices_list = list(pre_indices) if pre_indices is not None else []
-
-    pre_arg = ""
-    if pre_names_list:
-        names_quoted = " ".join(shlex.quote(n) for n in pre_names_list)
-        pre_arg += f" --pre-names {names_quoted}"
-    if pre_indices_list:
-        idxs = " ".join(str(int(x)) for x in pre_indices_list)
-        pre_arg += f" --pre-indices {idxs}"
 
     print(
         f"Using pre-selected names: {pre_names_list if pre_names_list else None}, "
@@ -504,9 +494,9 @@ def run_adaptive_pipeline(
                             print("ERROR:", msg)
                             raise SystemExit(1)
 
-                    run_cmd(
-                        f'python -m scripts.analyze_optuna_convergence "{trials_path}" '
-                        f'--output-dir "{em.run_dir}/reports"'
+                    print(
+                        "Optuna convergence analysis script has been removed in CLI hard-cut; "
+                        "skipping optional convergence report generation."
                     )
 
         except Exception as e:
@@ -524,21 +514,43 @@ def run_adaptive_pipeline(
     bootstrap_out.parent.mkdir(parents=True, exist_ok=True)
     bootstrap_summary = bootstrap_out.with_name(bootstrap_out.stem + "_summary.csv")
 
-    run_cmd_safe(
-        f"PYTHONPATH=. python -m scripts.bootstrap_pareto_candidates "
-        f"--pareto {pareto_fine} --n-boot {n_boot} --out {bootstrap_out} "
-        f"--seed {seed}{pre_arg}"
+    from dataselector.workflows.bootstrap import run_bootstrap_pareto
+
+    run_bootstrap_pareto(
+        pareto_csv=str(pareto_fine),
+        n_boot=int(n_boot),
+        output_csv=str(bootstrap_out),
+        random_seed=int(seed),
+        uq_method="bootstrap",
     )
 
     # Apply Bootstrap Best (optional)
     if not skip_bootstrap_injection and bootstrap_summary.exists():
         print("=== Applying Bootstrap Best ===")
         try:
-            run_cmd(
-                f"PYTHONPATH=. python -m scripts.apply_bootstrap_best "
-                f"--bootstrap-summary {bootstrap_summary} "
-                f"--write-config outputs/pipeline_config.bootstrap.yaml"
-            )
+            import pandas as pd
+            import yaml
+
+            summary_df = pd.read_csv(bootstrap_summary)
+            if summary_df.empty:
+                raise RuntimeError(f"Empty bootstrap summary: {bootstrap_summary}")
+
+            best_row = summary_df.sort_values(
+                ["jaccard_mean", "wwi_percent_mean"], ascending=False
+            ).iloc[0]
+
+            cfg_path = Path("config/pipeline_config.yaml")
+            cfg = yaml.safe_load(cfg_path.read_text()) if cfg_path.exists() else {}
+            selection = cfg.setdefault("selection", {})
+            selection["alpha_visual"] = float(best_row["alpha"])
+            selection["beta_spatial"] = float(best_row["beta"])
+            selection["gamma_temporal"] = float(best_row["gamma"])
+            selection["min_distance_km"] = int(best_row["min_distance_km"])
+            selection["n_samples"] = int(best_row["n_selected"])
+
+            out_cfg = Path("outputs/pipeline_config.bootstrap.yaml")
+            out_cfg.parent.mkdir(parents=True, exist_ok=True)
+            out_cfg.write_text(yaml.safe_dump(cfg, sort_keys=False))
             print(
                 "✓ Bootstrap-best config written to outputs/pipeline_config.bootstrap.yaml"
             )
@@ -572,10 +584,9 @@ def run_adaptive_pipeline(
             f"at {datetime.utcnow().isoformat()}Z\n"
         )
         print(f"Generating experiment report in: {report_dir}")
-        run_cmd(
-            f"PYTHONPATH=. python -m scripts.generate_experiment_report "
-            f'--outdir "{report_dir}"'
-        )
+        from dataselector.workflows.generate_reports import generate_experiment_report
+
+        generate_experiment_report(report_dir)
         print(f'Report written: {report_dir / "experiment_report.md"}')
     except Exception as e:
         print(f"Warning: automatic report generation failed: {e}")

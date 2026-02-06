@@ -1,11 +1,4 @@
-from pathlib import Path
-
-from tests._helpers.load_script import load_script
-
-ROOT = Path(__file__).resolve().parents[1]
-cp = load_script(
-    ROOT / "scripts" / "check_protected.py", module_name="scripts.check_protected_test"
-)
+import dataselector.tools.check as cp
 
 
 def test_check_all_tracked(tmp_path, monkeypatch):
@@ -21,7 +14,6 @@ def test_check_all_tracked(tmp_path, monkeypatch):
 
     subprocess.check_call(["git", "init"])
     subprocess.check_call(["git", "add", "."])
-    subprocess.check_call(["git", "commit", "-m", "init"])
 
     # override PROTECTED to a small set for test
     monkeypatch.setenv("PROTECTED_PATHS", "data/images")

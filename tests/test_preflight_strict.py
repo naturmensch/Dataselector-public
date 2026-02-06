@@ -4,15 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from scripts import xxl_KDR146_run_thesis_complete_modern as mod
+import dataselector.workflows.xxl as mod
 
 
 def test_phase0_fails_when_autoscale_missing(tmp_path, monkeypatch):
-    # Point module ROOT to a temp dir to avoid touching repo outputs
-    monkeypatch.setattr(mod, "ROOT", tmp_path)
-    (tmp_path / "outputs").mkdir()
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
 
-    autos = mod.read_autoscale_config()
+    autos = mod.read_autoscale_config(output_dir)
     assert autos["n_samples"] is None
 
     ok = mod.phase_0_preflight(autos, best_sampler="tpe", smoke=False)
@@ -20,10 +19,10 @@ def test_phase0_fails_when_autoscale_missing(tmp_path, monkeypatch):
 
 
 def test_phase0_allows_smoke_with_defaults(tmp_path, monkeypatch):
-    monkeypatch.setattr(mod, "ROOT", tmp_path)
-    (tmp_path / "outputs").mkdir()
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir()
 
-    autos = mod.read_autoscale_config()
+    autos = mod.read_autoscale_config(output_dir)
     assert autos["n_samples"] is None
 
     ok = mod.phase_0_preflight(autos, best_sampler="tpe", smoke=True)

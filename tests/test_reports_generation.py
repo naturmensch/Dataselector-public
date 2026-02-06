@@ -1,14 +1,13 @@
 import os
 import subprocess
 import sys
-from datetime import datetime
 from pathlib import Path
 
 OUT = Path("outputs")
 
 
 def test_generate_reports_creates_report(tmp_path):
-    cmd = [sys.executable, "scripts/generate_reports.py"]
+    cmd = [sys.executable, "-m", "dataselector", "generate-monitor"]
     env = os.environ.copy()
     env["PYTHONWARNINGS"] = "ignore"
     result = subprocess.run(
@@ -16,10 +15,11 @@ def test_generate_reports_creates_report(tmp_path):
     )
     assert result.returncode == 0, f"Script failed: {result.stdout}"
 
-    date = datetime.now().strftime("%Y%m%d")
-    report = OUT / f"report_{date}.md"
+    monitor_reports = OUT / "monitor_reports"
+    assert monitor_reports.exists(), "monitor_reports directory not created"
+    report = monitor_reports / "monitor_report.md"
     assert report.exists(), f"Report {report} not created"
 
-    # At least one file with date suffix should exist (report or png)
-    files_with_date = list(OUT.glob(f"*_{date}.*"))
-    assert len(files_with_date) >= 1
+    # At least one timestamped report should exist
+    dated_reports = list(monitor_reports.glob("monitor_report_*.md"))
+    assert dated_reports

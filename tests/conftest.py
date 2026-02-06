@@ -1,4 +1,3 @@
-import os
 import sys
 from pathlib import Path
 
@@ -200,38 +199,27 @@ def stub_feature_extraction(monkeypatch, fake_features):
 
 
 def pytest_configure(config):
-    """Warn if pytest is not run via exec_in_env.sh and validate the test environment.
+    """Validate test environment and record compatibility status.
 
-    - If not invoked via `exec_in_env.sh`, emit a clear warning.
-    - If invoked via `exec_in_env.sh`, run `scripts/check_env.py` and record its outcome.
-      E2E tests will be automatically skipped later when the environment check fails.
+    The canonical test surface is package-first (`python -m dataselector ...`).
+    E2E tests are automatically skipped when environment checks fail.
     """
     import subprocess
 
     from _pytest.config import Config
 
-    # Warn if not using the canonical wrapper
-    if not os.environ.get("EXEC_IN_ENV"):
-        import warnings
-
-        warnings.warn(
-            "pytest wird nicht über exec_in_env.sh ausgeführt! "
-            "Verwende 'make test' oder './scripts/exec_in_env.sh -- pytest ...' "
-            "um sicherzustellen, dass die korrekte Umgebung verwendet wird.",
-            UserWarning,
-            stacklevel=2,
-        )
-        # Mark environment as unchecked/invalid for E2E purposes
-        config._env_check_ok = False
-        config._env_check_msg = "EXEC_IN_ENV not set; run tests via './scripts/exec_in_env.sh --env dataselector -- pytest ...'"
-        return
-
-    # If we are inside the wrapper, run the environment diagnostic script to ensure compatibility
+    # Run environment audit via canonical package command.
     try:
         res = subprocess.run(
             [
                 sys.executable,
-                str(Path(__file__).parent.parent / "scripts" / "check_env.py"),
+                "-m",
+                "dataselector",
+                "check-env",
+                "dataselector",
+                "tests",
+                "Makefile",
+                ".github/workflows",
             ],
             capture_output=True,
             text=True,
@@ -246,9 +234,8 @@ def pytest_configure(config):
             err = (res.stderr or "").strip()
             config._env_check_msg = (
                 "Environment check failed: \n" + out + "\n" + err + "\n"
-                "Run: './scripts/exec_in_env.sh --env dataselector --create --ensure-packages "
-                "numpy==1.26.4 numba==0.63.1"
-                " --yes' to fix."
+                "Run tests in the dataselector environment (e.g. "
+                "'conda run -n dataselector -- python -m pytest ...')."
             )
     except Exception as e:
         config._env_check_ok = False

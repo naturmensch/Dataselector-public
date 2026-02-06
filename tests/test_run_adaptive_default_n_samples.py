@@ -18,7 +18,7 @@ def test_help_shows_no_hard_default_34():
     # ensure package imports from repo root work during subprocess execution
     env.setdefault("PYTHONPATH", os.getcwd())
     res = subprocess.run(
-        [sys.executable, "scripts/run_adaptive_pipeline.py", "--help"],
+        [sys.executable, "-m", "dataselector", "adaptive-pipeline", "--help"],
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
