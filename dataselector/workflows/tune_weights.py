@@ -18,7 +18,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 DATA_META = ROOT / "data" / "new_all_tiles.csv"
 OUTPUT_DIR = ROOT / "outputs" / "tuning_weights"
-MIN_DISTANCE_KM = 28.0
+
+# DEPRECATED: min_distance_km is now computed dynamically via compute_min_distance_km()
+# This constant remains only as fallback default (see adaptive_pipeline.py)
+MIN_DISTANCE_KM = 28.0  # Legacy fallback: use pipeline_utils.compute_min_distance_km() instead
 
 
 def generate_weights(n_points: int = 50, seed: int = 42, sampler: str = "lhs"):
@@ -73,7 +76,10 @@ def run_exploration(
     seed : int
         Random seed
     min_distance : float
-        Minimum distance constraint (km)
+        Minimum distance constraint (km).
+        When called from adaptive_pipeline, this is computed dynamically via
+        compute_min_distance_km() (data-driven, median NN-distance).
+        Default fallback is MIN_DISTANCE_KM = 28.0 km (legacy).
     pre_names : list | None
         Pre-selected tile names
     pre_indices : list | None
