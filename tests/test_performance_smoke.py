@@ -1,6 +1,7 @@
+import sys
 import time
 import types
-import sys
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -30,14 +31,22 @@ def test_selection_completes_on_moderate_size(monkeypatch):
     """Smoke test: ensure `DiversitySelector.select` completes on moderate input size."""
     _install_apricot_stub(monkeypatch)
     import importlib
+
     import dataselector.selection.diversity_selector as ds_mod
+
     importlib.reload(ds_mod)
     DiversitySelector = ds_mod.DiversitySelector
 
     n = 200
     dim = 64
     features = np.random.randn(n, dim)
-    meta = pd.DataFrame({"N": np.linspace(48.0, 52.0, n), "left": np.linspace(6.0, 10.0, n), "year": np.linspace(1890, 1930, n)})
+    meta = pd.DataFrame(
+        {
+            "N": np.linspace(48.0, 52.0, n),
+            "left": np.linspace(6.0, 10.0, n),
+            "year": np.linspace(1890, 1930, n),
+        }
+    )
 
     sel = DiversitySelector(n_samples=34, use_multi_criteria=False)
     t0 = time.time()

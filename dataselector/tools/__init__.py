@@ -23,5 +23,6 @@ def __getattr__(name: str):
     """Lazy import of tools modules."""
     if name in __all__:
         import importlib
+
         return importlib.import_module(f"dataselector.tools.{name}")
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

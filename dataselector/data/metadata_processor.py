@@ -41,10 +41,10 @@ class MetadataProcessor:
         if suffix == ".csv":
             self.df = pd.read_csv(self.csv_path)
             # Normalize column names for compatibility
-            if 'lat' in self.df.columns and 'N' not in self.df.columns:
-                self.df = self.df.rename(columns={'lat': 'N'})
-            if 'lon' in self.df.columns and 'left' not in self.df.columns:
-                self.df = self.df.rename(columns={'lon': 'left'})
+            if "lat" in self.df.columns and "N" not in self.df.columns:
+                self.df = self.df.rename(columns={"lat": "N"})
+            if "lon" in self.df.columns and "left" not in self.df.columns:
+                self.df = self.df.rename(columns={"lon": "left"})
         elif suffix == ".dbf":
             try:
                 from dbfread import DBF

@@ -197,23 +197,28 @@ def run_adaptive_pipeline(
     if plan_env:
         try:
             import json
+
             plan_path = Path(plan_env)
             if plan_path.exists():
                 with open(plan_path) as f:
                     plan_data = json.load(f)
                 exploration_plan = plan_data
-                print(f"\n🎯 BENCHMARK INTEGRATION: Loaded exploration plan from {plan_env}")
+                print(
+                    f"\n🎯 BENCHMARK INTEGRATION: Loaded exploration plan from {plan_env}"
+                )
                 print(f"   Recommended sampler: {plan_data.get('method', 'unknown')}")
-                print(f"   Recommended n_initial: {plan_data.get('n_initial_final', 'unknown')}")
-                
+                print(
+                    f"   Recommended n_initial: {plan_data.get('n_initial_final', 'unknown')}"
+                )
+
                 # Override sampler with benchmark result (if not explicitly provided)
                 if sampler is None:
-                    sampler = plan_data.get('method')
+                    sampler = plan_data.get("method")
                     print(f"   ✅ Using benchmark sampler: {sampler}")
-                
+
                 # Override n_lhs with benchmark result (if not explicitly provided)
                 if n_lhs is None:
-                    n_lhs = plan_data.get('n_initial_final')
+                    n_lhs = plan_data.get("n_initial_final")
                     print(f"   ✅ Using benchmark n_initial: {n_lhs}")
         except Exception as e:
             print(f"⚠️  Could not load exploration plan: {e}")
@@ -332,9 +337,9 @@ def run_adaptive_pipeline(
         print(
             f"Running {sampler} with {n_lhs} samples (replacing old manual Coarse Grid)..."
         )
-        
+
         from dataselector.workflows.tune_weights import run_exploration
-        
+
         run_exploration(
             n_samples=n_lhs,
             sampler=sampler,
@@ -370,9 +375,9 @@ def run_adaptive_pipeline(
 
         min_distances_list = [int(x) for x in fine_bounds]
         print("=== Phase 2: Fine Sweep (Adaptive Bounds) ===")
-        
+
         from dataselector.workflows.fine_sweep import run_fine_sweep
-        
+
         run_fine_sweep(
             min_distances=min_distances_list,
             output_dir=OUT / "fine_sweep",
@@ -441,7 +446,7 @@ def run_adaptive_pipeline(
                         chosen_n_samples = compute_adaptive_n_initial(n_dimensions)
 
                 print(
-                    f'Running Optuna with min_distance range: {opt_lo}-{opt_hi} km '
+                    f"Running Optuna with min_distance range: {opt_lo}-{opt_hi} km "
                     f'(center {center}km); n_samples={chosen_n_samples or "range mode"}'
                 )
 
@@ -568,7 +573,7 @@ def run_adaptive_pipeline(
         )
         print(f"Generating experiment report in: {report_dir}")
         run_cmd(
-            f'PYTHONPATH=. python -m scripts.generate_experiment_report '
+            f"PYTHONPATH=. python -m scripts.generate_experiment_report "
             f'--outdir "{report_dir}"'
         )
         print(f'Report written: {report_dir / "experiment_report.md"}')
@@ -741,10 +746,10 @@ def main(
     KDR146: bool = False,
 ) -> int:
     """CLI entry point for adaptive pipeline."""
-    
+
     # Convert csv_path string to Path if provided
     csv_path_obj = Path(csv_path) if csv_path else None
-    
+
     run_dir = run_adaptive_pipeline(
         experiment_name=experiment_name,
         csv_path=csv_path_obj,

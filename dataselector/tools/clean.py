@@ -100,7 +100,7 @@ def clean_workspace(
     delete_venvs: bool = False,
     archive: str | None = None,
     yes: bool = False,
-    extra_protected: Set[str] | None = None
+    extra_protected: Set[str] | None = None,
 ) -> int:
     """Clean workspace by removing or archiving old files.
 

@@ -2,7 +2,6 @@ import sys
 import types
 
 import pytest
-
 from src import compat
 
 
@@ -13,6 +12,7 @@ def test_no_numba_installed(monkeypatch):
     monkeypatch.delenv("NUMBA_TEST_DUMMY", raising=False)
 
     import builtins
+
     real_import = builtins.__import__
 
     def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
@@ -23,7 +23,6 @@ def test_no_numba_installed(monkeypatch):
     monkeypatch.setattr(builtins, "__import__", fake_import)
 
     assert compat.check_numba_numpy_compatibility() is True
-
 
 
 def test_numba_with_compatible_numpy(monkeypatch, request):
@@ -39,7 +38,8 @@ def test_numba_with_compatible_numpy(monkeypatch, request):
     def _reload_real_numba():
         try:
             import importlib
-            importlib.reload(importlib.import_module('numba'))
+
+            importlib.reload(importlib.import_module("numba"))
         except Exception:
             pass
 
@@ -61,7 +61,8 @@ def test_numba_with_incompatible_numpy(monkeypatch, request):
     def _reload_real_numba():
         try:
             import importlib
-            importlib.reload(importlib.import_module('numba'))
+
+            importlib.reload(importlib.import_module("numba"))
         except Exception:
             pass
 

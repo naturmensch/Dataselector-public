@@ -10,7 +10,9 @@ def test_run_single_optuna_missing_run_dir(tmp_path, monkeypatch):
     # Patch repo root to tmp_path
     monkeypatch.setattr(compare_samplers, "_get_repo_root", lambda: tmp_path)
 
-    monkeypatch.setattr(compare_samplers, "_get_run_optuna", lambda: (lambda **kwargs: None))
+    monkeypatch.setattr(
+        compare_samplers, "_get_run_optuna", lambda: (lambda **kwargs: None)
+    )
 
     with pytest.raises(FileNotFoundError, match="No run dir found"):
         compare_samplers.run_single_optuna(
@@ -29,7 +31,9 @@ def test_run_single_optuna_success(tmp_path, monkeypatch):
 
     monkeypatch.setattr(compare_samplers, "_get_repo_root", lambda: tmp_path)
 
-    monkeypatch.setattr(compare_samplers, "_get_run_optuna", lambda: (lambda **kwargs: None))
+    monkeypatch.setattr(
+        compare_samplers, "_get_run_optuna", lambda: (lambda **kwargs: None)
+    )
 
     exp_name = "hamburg_cmaes_10trials_s42"
     run_dir = tmp_path / "outputs" / "runs" / exp_name

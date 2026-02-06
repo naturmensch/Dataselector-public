@@ -23,7 +23,10 @@ def test_dataselector_help(run_dataselector_cli):
     """Test dataselector --help works."""
     result = run_dataselector_cli(["--help"])
     assert result.returncode == 0
-    assert "usage:" in result.stdout.decode().lower() or "dataselector" in result.stdout.decode()
+    assert (
+        "usage:" in result.stdout.decode().lower()
+        or "dataselector" in result.stdout.decode()
+    )
 
 
 @pytest.mark.smoke
@@ -44,13 +47,11 @@ def test_tools_check_geo(run_dataselector_cli):
     output = (result.stdout.decode() + result.stderr.decode()).lower()
     assert "geopandas" in output or result.returncode == 0
 
+
 @pytest.mark.integration
 def test_tools_clean_workspace_dryrun(tmp_workspace: Path, run_dataselector_cli):
     """Test tools clean-workspace --dry-run (fully implemented)."""
-    result = run_dataselector_cli(
-        ["tools", "clean-workspace"],
-        cwd=str(tmp_workspace)
-    )
+    result = run_dataselector_cli(["tools", "clean-workspace"], cwd=str(tmp_workspace))
     # Dry-run is default, should succeed
     assert result.returncode == 0
 
@@ -65,19 +66,20 @@ def test_invalid_subcommand(run_dataselector_cli):
     stderr = result.stderr.decode().lower()
     assert "error" in stderr or "unrecognized" in stderr
 
+
 @pytest.mark.smoke
 def test_build_tiles_empty_directory(tmp_workspace: Path, run_dataselector_cli):
     """Test build-tiles with empty image directory (fully implemented)."""
     image_dir = tmp_workspace / "empty_images"
     image_dir.mkdir(parents=True, exist_ok=True)
-    
+
     output_csv = tmp_workspace / "tiles.csv"
-    
+
     result = run_dataselector_cli(
         ["build-tiles", "--image-dir", str(image_dir), "--out", str(output_csv)],
-        cwd=str(tmp_workspace)
+        cwd=str(tmp_workspace),
     )
-    
+
     # Should complete successfully (empty CSV is OK)
     assert result.returncode == 0, f"build-tiles failed:\n{result.stderr.decode()}"
     assert output_csv.exists(), f"Output CSV {output_csv} not created"
@@ -91,6 +93,7 @@ def test_bootstrap_help(run_dataselector_cli):
 
     output = result.stdout.decode().lower()
     assert "bootstrap" in output or "resampling" in output
+
 
 @pytest.mark.integration
 def test_final_selection_help(run_dataselector_cli):
@@ -108,8 +111,11 @@ def test_optuna_optimize_help(run_dataselector_cli):
     output = result.stdout.decode().lower()
     assert "optuna" in output or "optimization" in output
 
+
 # Skip tests for wrapper-based commands until Phase 3R migration
-@pytest.mark.skip(reason="autoscale is a subprocess wrapper (Phase 3R migration pending)")
+@pytest.mark.skip(
+    reason="autoscale is a subprocess wrapper (Phase 3R migration pending)"
+)
 def test_autoscale_skipped(run_dataselector_cli):
     """Test autoscale - SKIPPED until Phase 3R native Python migration."""
     pass
@@ -121,7 +127,9 @@ def test_xxl_skipped(run_dataselector_cli):
     pass
 
 
-@pytest.mark.skip(reason="thesis-pipeline is a subprocess wrapper (Phase 3R migration pending)")
+@pytest.mark.skip(
+    reason="thesis-pipeline is a subprocess wrapper (Phase 3R migration pending)"
+)
 def test_thesis_pipeline_skipped(run_dataselector_cli):
     """Test thesis-pipeline - SKIPPED until Phase 3R native Python migration."""
     pass

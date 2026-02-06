@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
+import sys
+import tarfile
 from datetime import datetime
 from pathlib import Path
-import tarfile
-import re
-import sys
 
 from dataselector.cli_decorators import cli_command
 
@@ -48,24 +48,26 @@ def verify_archive(fail_on_reference: bool = False) -> int:
     for p in ROOT.rglob("**/*.*"):
         if not p.is_file():
             continue
-        if any(part.startswith('.git') for part in p.parts):
+        if any(part.startswith(".git") for part in p.parts):
             continue
         try:
-            text = p.read_text(errors='ignore')
+            text = p.read_text(errors="ignore")
         except Exception:
             continue
         for pat in ARCHIVE_REF_PATTERNS:
             for m in pat.finditer(text):
                 start = max(m.start() - 40, 0)
                 end = min(m.end() + 40, len(text))
-                snippet = text[start:end].replace('\n', ' ')
+                snippet = text[start:end].replace("\n", " ")
                 matches.append((str(p.relative_to(ROOT)), m.group(0), snippet))
 
     if matches:
         print("Found references to archived tests or _OLD files:")
         for fname, token, snippet in matches:
             print(f" - {fname}: '{token}' -> ...{snippet}...")
-        print('\nPlease review and remove references before moving tests to archive or update the reference target.')
+        print(
+            "\nPlease review and remove references before moving tests to archive or update the reference target."
+        )
         if fail_on_reference:
             return 1
     else:
@@ -75,6 +77,7 @@ def verify_archive(fail_on_reference: bool = False) -> int:
 
 
 # ===== Archive Management =====
+
 
 @cli_command(
     "archive-outputs",
@@ -99,9 +102,7 @@ def verify_archive(fail_on_reference: bool = False) -> int:
     },
 )
 def archive_outputs(
-    outputs: str,
-    dest: str = "data/archive",
-    exclude: list[str] | None = None
+    outputs: str, dest: str = "data/archive", exclude: list[str] | None = None
 ) -> Path:
     """Archive outputs directory to compressed tarball.
 
@@ -133,6 +134,7 @@ def archive_outputs(
                 skip = False
                 for pat in exclude:
                     from fnmatch import fnmatch
+
                     if fnmatch(rel, pat):
                         skip = True
                         break
@@ -185,22 +187,24 @@ def list_archives(dir: str = "data/archive") -> int:
     if not dir_path.exists():
         print(f"Archive directory not found: {dir_path}")
         return 0
-    
+
     archives = sorted(
         [p for p in dir_path.iterdir() if p.suffix in (".gz", ".tar")],
         key=lambda x: x.stat().st_mtime,
-        reverse=True
+        reverse=True,
     )
-    
+
     if not archives:
         print(f"No archives found in {dir_path}")
     else:
         print(f"Archives in {dir_path}:")
         for arch in archives:
             size = arch.stat().st_size / (1024 * 1024)  # MB
-            mtime = datetime.fromtimestamp(arch.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+            mtime = datetime.fromtimestamp(arch.stat().st_mtime).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
             print(f"  {arch.name:50s} {size:8.1f} MB  {mtime}")
-    
+
     return 0
 
 
@@ -251,9 +255,7 @@ def get_file_age_days(path: Path) -> int:
 
 
 def archive_workspace(
-    category: str = "all",
-    dry_run: bool = True,
-    age_threshold: int = 30
+    category: str = "all", dry_run: bool = True, age_threshold: int = 30
 ) -> int:
     """Archive old workspace files.
 
@@ -275,14 +277,21 @@ def archive_workspace(
         scripts_dir = ROOT / "scripts"
         if scripts_dir.exists():
             for script in scripts_dir.glob("*.py"):
-                if not is_whitelisted(script) and get_file_age_days(script) > age_threshold:
+                if (
+                    not is_whitelisted(script)
+                    and get_file_age_days(script) > age_threshold
+                ):
                     candidates.append(script)
 
     if category in ("outputs", "all"):
         outputs_dir = ROOT / "outputs"
         if outputs_dir.exists():
             for output in outputs_dir.rglob("*"):
-                if output.is_file() and not is_whitelisted(output) and get_file_age_days(output) > age_threshold:
+                if (
+                    output.is_file()
+                    and not is_whitelisted(output)
+                    and get_file_age_days(output) > age_threshold
+                ):
                     candidates.append(output)
 
     if category in ("temp", "all"):
@@ -292,7 +301,9 @@ def archive_workspace(
                     candidates.append(temp_file)
 
     if not candidates:
-        print(f"No files found for archiving (category={category}, age>{age_threshold}d)")
+        print(
+            f"No files found for archiving (category={category}, age>{age_threshold}d)"
+        )
         return 0
 
     print(f"Found {len(candidates)} files to archive:")

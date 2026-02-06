@@ -2,20 +2,19 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from dataselector.pipeline.cache import (
-    compute_meta_hash,
-    atomic_write_features_with_meta,
-    features_path_for_hash,
-    meta_path_for_hash,
-    load_features_by_hash,
-    create_meta_info,
-)
 
 import numpy as np
 
+from dataselector.pipeline.cache import (
+    atomic_write_features_with_meta,
+    compute_meta_hash,
+    create_meta_info,
+    features_path_for_hash,
+    load_features_by_hash,
+    meta_path_for_hash,
+)
+
 # Load src/cache.py directly to avoid top-level imports in package __init__ during tests
-
-
 
 
 def test_compute_meta_hash_deterministic(tmp_path: Path):
@@ -64,6 +63,7 @@ def test_migration_script(tmp_path: Path, monkeypatch):
 
     # Run migration function directly
     from scripts.migrate_feature_cache_to_hash import migrate
+
     code = migrate(out, csv, dry_run=False)
     assert code == 0
 

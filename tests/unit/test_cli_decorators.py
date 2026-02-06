@@ -3,16 +3,17 @@ Unit tests for CLI decorator system.
 """
 
 import argparse
+
 import pytest
 
 from dataselector.cli_decorators import (
+    _CLI_COMMANDS,
     ArgDef,
     CommandDef,
     build_parser_from_decorators,
     cli_command,
     dispatch_from_decorators,
     get_registered_commands,
-    _CLI_COMMANDS,
 )
 
 
@@ -336,7 +337,7 @@ class TestGetRegisteredCommands:
 
     def test_get_commands_returns_copy(self):
         """Test that returned dict is a copy (modifications don't affect registry)."""
-        
+
         @cli_command("test", args={})
         def main() -> int:
             return 0

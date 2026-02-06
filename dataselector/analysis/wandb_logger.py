@@ -5,13 +5,13 @@ and phase completion metrics.
 
 Usage:
     from dataselector.analysis.wandb_logger import WandBLogger
-    
+
     logger = WandBLogger(
         project="kdr100",
         run_name="phase1_hamburg_2026",
         tags=["phase-1", "optuna"]
     )
-    
+
     logger.log_trial(trial_num=1, objective=0.85, params={...})
     logger.finish()
 """
@@ -22,6 +22,7 @@ from typing import Any, Dict, Optional
 
 try:
     import wandb
+
     WANDB_AVAILABLE = True
 except ImportError:
     WANDB_AVAILABLE = False
@@ -29,11 +30,11 @@ except ImportError:
 
 class WandBLogger:
     """Experiment tracking with Weights & Biases.
-    
+
     Gracefully handles case where wandb is not installed or not configured.
     Falls back to no-op logging if wandb unavailable.
     """
-    
+
     def __init__(
         self,
         project: str = "kdr100",
@@ -43,7 +44,7 @@ class WandBLogger:
         disabled: bool = False,
     ):
         """Initialize wandb run.
-        
+
         Args:
             project: wandb project name
             run_name: human-readable run identifier
@@ -57,7 +58,7 @@ class WandBLogger:
         self.notes = notes
         self.disabled = disabled or not WANDB_AVAILABLE
         self.run = None
-        
+
         if not self.disabled:
             try:
                 self.run = wandb.init(
@@ -71,10 +72,10 @@ class WandBLogger:
             except Exception as e:
                 print(f"⚠️  wandb init failed: {e}; logging disabled")
                 self.disabled = True
-    
+
     def log_config(self, config: Dict[str, Any]) -> None:
         """Log configuration parameters.
-        
+
         Args:
             config: dictionary of configuration values
         """
@@ -84,7 +85,7 @@ class WandBLogger:
             self.run.config.update(config)
         except Exception as e:
             print(f"⚠️  wandb config log failed: {e}")
-    
+
     def log_trial(
         self,
         trial_num: int,
@@ -93,7 +94,7 @@ class WandBLogger:
         metrics: Optional[Dict[str, Any]] = None,
     ) -> None:
         """Log Optuna trial result.
-        
+
         Args:
             trial_num: trial number (1-indexed)
             objective: objective value (loss/score)
@@ -111,14 +112,14 @@ class WandBLogger:
             self.run.log(data)
         except Exception as e:
             print(f"⚠️  wandb trial log failed: {e}")
-    
+
     def log_bootstrap(
         self,
         iteration: int,
         metrics: Dict[str, float],
     ) -> None:
         """Log bootstrap iteration results.
-        
+
         Args:
             iteration: bootstrap iteration number
             metrics: stability metrics (Jaccard, coverage, etc.)
@@ -131,7 +132,7 @@ class WandBLogger:
             self.run.log(data)
         except Exception as e:
             print(f"⚠️  wandb bootstrap log failed: {e}")
-    
+
     def log_phase_completion(
         self,
         phase: int,
@@ -139,7 +140,7 @@ class WandBLogger:
         summary: Dict[str, Any],
     ) -> None:
         """Log phase completion with summary statistics.
-        
+
         Args:
             phase: phase number (0-5)
             duration_seconds: time taken
@@ -156,7 +157,7 @@ class WandBLogger:
             self.run.log(data)
         except Exception as e:
             print(f"⚠️  wandb phase log failed: {e}")
-    
+
     def log_artifact(
         self,
         artifact_path: str,
@@ -164,7 +165,7 @@ class WandBLogger:
         description: Optional[str] = None,
     ) -> None:
         """Log artifact (CSV, JSON, image).
-        
+
         Args:
             artifact_path: path to file
             artifact_type: type label (e.g., "result", "plot", "data")
@@ -184,14 +185,14 @@ class WandBLogger:
                 self.run.log_artifact(artifact)
         except Exception as e:
             print(f"⚠️  wandb artifact log failed: {e}")
-    
+
     def log_plot(
         self,
         plot_path: str,
         step: Optional[int] = None,
     ) -> None:
         """Log a plot image.
-        
+
         Args:
             plot_path: path to image file
             step: optional step/iteration number
@@ -200,6 +201,7 @@ class WandBLogger:
             return
         try:
             import matplotlib.image as mpimg
+
             img = mpimg.imread(plot_path)
             self.run.log(
                 {"plot": wandb.Image(img)},
@@ -207,7 +209,7 @@ class WandBLogger:
             )
         except Exception as e:
             print(f"⚠️  wandb plot log failed: {e}")
-    
+
     def finish(self) -> None:
         """Finalize run."""
         if self.disabled or self.run is None:
@@ -224,11 +226,11 @@ def get_wandb_logger(
     disabled: bool = False,
 ) -> WandBLogger:
     """Factory function for wandb logger.
-    
+
     Args:
         project: wandb project name
         disabled: if True, create no-op logger
-    
+
     Returns:
         WandBLogger instance (no-op if disabled or wandb unavailable)
     """

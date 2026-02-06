@@ -14,19 +14,26 @@ from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
+
 try:
     from apricot import FacilityLocationSelection
 except Exception:
     FacilityLocationSelection = None
-    print("[WARN] apricot FacilityLocationSelection not available; falling back to pure-Python methods where possible")
+    print(
+        "[WARN] apricot FacilityLocationSelection not available; falling back to pure-Python methods where possible"
+    )
 
 try:
-    from dataselector.selection.multi_criteria_facility_location import MultiCriteriaFacilityLocation
+    from dataselector.selection.multi_criteria_facility_location import (
+        MultiCriteriaFacilityLocation,
+    )
 except ImportError:
     MultiCriteriaFacilityLocation = None
 
 try:
-    from dataselector.selection.spatial_facility_location import SpatialConstrainedFacilityLocation
+    from dataselector.selection.spatial_facility_location import (
+        SpatialConstrainedFacilityLocation,
+    )
 except ImportError:
     SpatialConstrainedFacilityLocation = None
 
@@ -136,7 +143,11 @@ class DiversitySelector:
         n_to_select = min(self.n_samples, n_candidates)
 
         # Wähle Selektionsmodus
-        if self.use_multi_criteria and metadata is not None and MultiCriteriaFacilityLocation is not None:
+        if (
+            self.use_multi_criteria
+            and metadata is not None
+            and MultiCriteriaFacilityLocation is not None
+        ):
             # Multi-Criteria: Unified distance metric (EMPFOHLEN)
             print(
                 f"Führe Multi-Criteria Facility Location durch ({n_to_select} Samples)..."
@@ -148,12 +159,16 @@ class DiversitySelector:
             elif pre_selected_names is not None and metadata is not None:
                 for nm in pre_selected_names:
                     # match shortName exact (if exists) or longName substring (case-insensitive)
-                    mask = metadata["longName"].astype(str).str.lower().str.contains(
-                        str(nm).lower()
+                    mask = (
+                        metadata["longName"]
+                        .astype(str)
+                        .str.lower()
+                        .str.contains(str(nm).lower())
                     )
                     if "shortName" in metadata.columns:
                         mask = mask | (
-                            metadata["shortName"].astype(str).str.lower() == str(nm).lower()
+                            metadata["shortName"].astype(str).str.lower()
+                            == str(nm).lower()
                         )
                     idxs = list(mask[mask].index)
                     if len(idxs) == 0:
@@ -231,7 +246,9 @@ class DiversitySelector:
             print(f"Führe Facility Location Selection durch ({n_to_select} Samples)...")
             if self.use_lazy_greedy:
                 try:
-                    from dataselector.selection.lazy_facility_location import LazyFacilityLocationSelection
+                    from dataselector.selection.lazy_facility_location import (
+                        LazyFacilityLocationSelection,
+                    )
 
                     self.selector = LazyFacilityLocationSelection(
                         n_samples=n_to_select,
@@ -241,7 +258,9 @@ class DiversitySelector:
                     self.selector.fit(features)
                     self.selected_indices = self.selector.ranking
                 except Exception as e:
-                    print(f"[WARN] LazyFacilityLocation unavailable or failed: {e}; falling back to simple greedy selection")
+                    print(
+                        f"[WARN] LazyFacilityLocation unavailable or failed: {e}; falling back to simple greedy selection"
+                    )
 
             else:
                 if FacilityLocationSelection is not None:
@@ -253,7 +272,9 @@ class DiversitySelector:
                     self.selected_indices = self.selector.ranking
                 else:
                     # Fallback greedy diversity selection (farthest-point greedy on normalized features)
-                    print("[WARN] FacilityLocationSelection not available; using greedy farthest-point selection")
+                    print(
+                        "[WARN] FacilityLocationSelection not available; using greedy farthest-point selection"
+                    )
                     # Normalize features for cosine-like behavior
                     try:
                         feats = features.copy().astype(float)
@@ -273,7 +294,11 @@ class DiversitySelector:
                             cand = int(np.nanargmin(min_sim))
                             if cand in selected:
                                 # fallback: random selection
-                                remaining = [i for i in range(feats.shape[0]) if i not in selected]
+                                remaining = [
+                                    i
+                                    for i in range(feats.shape[0])
+                                    if i not in selected
+                                ]
                                 if not remaining:
                                     break
                                 cand = remaining[0]
@@ -409,7 +434,9 @@ class DiversitySelector:
                     distance = float(((a - b) ** 2).sum() ** 0.5) / 1000.0
                 else:
                     if processor is None:
-                        from dataselector.data.metadata_processor import MetadataProcessor
+                        from dataselector.data.metadata_processor import (
+                            MetadataProcessor,
+                        )
 
                         processor = MetadataProcessor("")
                     distance = processor.calculate_spatial_distance(

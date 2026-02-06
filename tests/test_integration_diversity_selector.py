@@ -1,14 +1,13 @@
 import os
 import sys
-import pytest
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from pathlib import Path
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 from tests.utils import load_module_from_path
-
 
 # Prefer shared fixtures to centralize data generation
 # Use small dim by default to keep integration tests fast
@@ -24,7 +23,9 @@ def make_features_local(make_features):
     return lambda n, dim=32, seed=0: make_features(n, dim=dim, seed=seed)
 
 
-def test_end_to_end_selection_and_export(tmp_path, make_features_local, make_metadata_local):
+def test_end_to_end_selection_and_export(
+    tmp_path, make_features_local, make_metadata_local
+):
     # Try to import the real selector; skip if native deps are incompatible in this environment
     try:
         from dataselector.selection.diversity_selector import DiversitySelector

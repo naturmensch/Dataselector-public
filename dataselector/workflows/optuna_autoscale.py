@@ -26,7 +26,9 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = Path("outputs")
 
 
-def load_or_create_data(out_dir: Path, n: int | None = None, dim: int = 256, seed: int = 123):
+def load_or_create_data(
+    out_dir: Path, n: int | None = None, dim: int = 256, seed: int = 123
+):
     """Load features and metadata, or create synthetic data for testing."""
     features_path = out_dir / "features.npy"
     metadata_path = out_dir / "metadata.csv"
@@ -38,6 +40,7 @@ def load_or_create_data(out_dir: Path, n: int | None = None, dim: int = 256, see
             out_dir=out_dir, csv_meta=str(metadata_path), batch_size=16, cache=False
         )
         from dataselector.data.io import load_metadata
+
         metadata = load_metadata(str(metadata_path))
     else:
         rng = np.random.RandomState(seed)
@@ -69,9 +72,11 @@ def make_objective(
     pre_selected_indices=None,
 ):
     """Create Optuna objective function for given stage."""
+
     def objective(trial):
         # Lazy import to avoid module-level side effects
         import optuna
+
         from dataselector.selection.diversity_selector import DiversitySelector
 
         a = trial.suggest_float("a", *min_distance_bounds["a"])
@@ -203,12 +208,13 @@ def run_autoscale(
         # Plot per-stage diagnostics
         try:
             import matplotlib
+
             matplotlib.use("Agg")
             import matplotlib.pyplot as plt
             import seaborn as sns
 
             date = datetime.now().strftime("%Y%m%d")
-            
+
             # Objective history
             values = [t.value for t in stage_trials if t.value is not None]
             if values:
@@ -217,7 +223,9 @@ def run_autoscale(
                 ax.set_xlabel("trial (stage)")
                 ax.set_ylabel("value")
                 ax.set_title(f"Stage {stage_idx+1} objective")
-                out = out_dir / f"optuna_autoscale_stage{stage_idx+1}_history_{date}.png"
+                out = (
+                    out_dir / f"optuna_autoscale_stage{stage_idx+1}_history_{date}.png"
+                )
                 fig.savefig(out, bbox_inches="tight")
                 plt.close(fig)
 
@@ -231,20 +239,32 @@ def run_autoscale(
                 fig, ax = plt.subplots(figsize=(6, 4))
                 sns.histplot(md_vals, bins=10, kde=False, ax=ax)
                 ax.set_title(f"Stage {stage_idx+1} min_distance distribution")
-                out = out_dir / f"optuna_autoscale_stage{stage_idx+1}_min_distance_{date}.png"
+                out = (
+                    out_dir
+                    / f"optuna_autoscale_stage{stage_idx+1}_min_distance_{date}.png"
+                )
                 fig.savefig(out, bbox_inches="tight")
                 plt.close(fig)
 
             # alpha vs beta scatter
-            alf = [t.user_attrs.get("alpha") for t in stage_trials if "alpha" in t.user_attrs]
-            bet = [t.user_attrs.get("beta") for t in stage_trials if "beta" in t.user_attrs]
+            alf = [
+                t.user_attrs.get("alpha")
+                for t in stage_trials
+                if "alpha" in t.user_attrs
+            ]
+            bet = [
+                t.user_attrs.get("beta") for t in stage_trials if "beta" in t.user_attrs
+            ]
             if alf and bet:
                 fig, ax = plt.subplots(figsize=(6, 4))
                 sns.scatterplot(x=alf, y=bet, ax=ax)
                 ax.set_xlabel("alpha")
                 ax.set_ylabel("beta")
                 ax.set_title(f"Stage {stage_idx+1} alpha vs beta")
-                out = out_dir / f"optuna_autoscale_stage{stage_idx+1}_alpha_beta_{date}.png"
+                out = (
+                    out_dir
+                    / f"optuna_autoscale_stage{stage_idx+1}_alpha_beta_{date}.png"
+                )
                 fig.savefig(out, bbox_inches="tight")
                 plt.close(fig)
 
@@ -334,7 +354,9 @@ def run_autoscale(
     try:
         lines.append(summary_df.to_markdown(index=False))
     except Exception:
-        lines.append(f"(could not render markdown table; saved CSV summary: {summary_file.name})")
+        lines.append(
+            f"(could not render markdown table; saved CSV summary: {summary_file.name})"
+        )
 
     lines.append("")
     lines.append("## Stage plots")
@@ -390,6 +412,7 @@ def run_autoscale(
     # Save study
     try:
         import joblib
+
         joblib.dump(study, out_dir / f"optuna_autoscale_study_{date}.pkl")
     except Exception:
         print("joblib not available; not saving study object")

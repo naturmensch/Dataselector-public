@@ -76,7 +76,9 @@ def generate_experiment_report(outdir: str | Path) -> Path:
         raise FileNotFoundError(f"Outdir not found: {outdir}")
 
     report_path = outdir / "experiment_report.md"
-    files = sorted([str(p.relative_to(outdir)) for p in outdir.rglob("*") if p.is_file()])
+    files = sorted(
+        [str(p.relative_to(outdir)) for p in outdir.rglob("*") if p.is_file()]
+    )
 
     optuna_cfg = None
     for candidate in [
@@ -835,7 +837,6 @@ def generate_thesis_final_cli(
     return 0
 
 
-
 if __name__ == "__main__":
     # Use CLI commands instead:
     #   dataselector generate-experiment --run-dir X
@@ -843,4 +844,3 @@ if __name__ == "__main__":
     #   dataselector generate-thesis
     #   dataselector generate-thesis-final
     raise SystemExit(1)
-

@@ -7,7 +7,9 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="dataselector")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    autoscale = sub.add_parser("autoscale", help="Run Optuna autoscale (direct workflow)")
+    autoscale = sub.add_parser(
+        "autoscale", help="Run Optuna autoscale (direct workflow)"
+    )
     autoscale.add_argument(
         "--csv",
         type=str,
@@ -122,9 +124,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run Optuna optimization (direct workflow)",
     )
     opt.add_argument("--n-trials", type=int, default=20, help="Number of Optuna trials")
-    opt.add_argument("--n-candidates", type=int, default=500, help="Number of candidates")
+    opt.add_argument(
+        "--n-candidates", type=int, default=500, help="Number of candidates"
+    )
     opt.add_argument("--dim", type=int, default=256, help="Feature dimension")
-    opt.add_argument("--n-samples", type=int, default=34, help="Number of samples to select")
+    opt.add_argument(
+        "--n-samples", type=int, default=34, help="Number of samples to select"
+    )
     opt.add_argument(
         "--smoke",
         action="store_true",
@@ -148,7 +154,9 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Max samples for range (ignored if n-samples-min not set)",
     )
-    opt.add_argument("--min-distance-km", type=int, default=28, help="Minimum distance in km")
+    opt.add_argument(
+        "--min-distance-km", type=int, default=28, help="Minimum distance in km"
+    )
     opt.add_argument("--seed", type=int, default=42, help="Random seed")
     opt.add_argument(
         "--checkpoint-every",
@@ -387,10 +395,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     bench.add_argument("args", nargs=argparse.REMAINDER)
     # report (alias for generate-reports with subcommands)
-    report_cmd = sub.add_parser(
-        "report",
-        help="Generate reports and visualizations"
-    )
+    report_cmd = sub.add_parser("report", help="Generate reports and visualizations")
     report_cmd.add_argument("args", nargs=argparse.REMAINDER)
     rep = sub.add_parser(
         "generate-reports",
@@ -400,17 +405,21 @@ def build_parser() -> argparse.ArgumentParser:
 
     # build-tiles
     build_tiles_cmd = sub.add_parser(
-        "build-tiles",
-        help="Build new_all_tiles.csv from image directory scan"
+        "build-tiles", help="Build new_all_tiles.csv from image directory scan"
     )
-    build_tiles_cmd.add_argument("--image-dir", required=True, help="Directory containing image files")
-    build_tiles_cmd.add_argument("--out", default="data/new_all_tiles.csv", help="Output CSV path")
-    build_tiles_cmd.add_argument("--force-source", help="Force a specific source CSV to use for provenance")
+    build_tiles_cmd.add_argument(
+        "--image-dir", required=True, help="Directory containing image files"
+    )
+    build_tiles_cmd.add_argument(
+        "--out", default="data/new_all_tiles.csv", help="Output CSV path"
+    )
+    build_tiles_cmd.add_argument(
+        "--force-source", help="Force a specific source CSV to use for provenance"
+    )
 
     # bootstrap
     bootstrap_cmd = sub.add_parser(
-        "bootstrap",
-        help="Bootstrap uncertainty quantification workflows"
+        "bootstrap", help="Bootstrap uncertainty quantification workflows"
     )
     bootstrap_cmd.add_argument("args", nargs=argparse.REMAINDER)
 
@@ -419,57 +428,124 @@ def build_parser() -> argparse.ArgumentParser:
     tools_sub = tools_parser.add_subparsers(dest="tool_cmd", required=True)
 
     # check-protected
-    check_prot = tools_sub.add_parser("check-protected", help="Check for modifications inside protected paths")
-    check_prot.add_argument("--list", action="store_true", help="List protected paths and exit")
-    check_prot.add_argument("--all", action="store_true", help="Check all tracked files (git ls-files)")
-    check_prot.add_argument("--protect", action="append", help="Add protected path (repeatable)")
+    check_prot = tools_sub.add_parser(
+        "check-protected", help="Check for modifications inside protected paths"
+    )
+    check_prot.add_argument(
+        "--list", action="store_true", help="List protected paths and exit"
+    )
+    check_prot.add_argument(
+        "--all", action="store_true", help="Check all tracked files (git ls-files)"
+    )
+    check_prot.add_argument(
+        "--protect", action="append", help="Add protected path (repeatable)"
+    )
 
     # check-env
-    check_env = tools_sub.add_parser("check-env", help="Check environment usage in scripts/CI")
-    check_env.add_argument("paths", nargs="*", help="Paths to scan (defaults to scripts, Makefile, .github/workflows)")
+    check_env = tools_sub.add_parser(
+        "check-env", help="Check environment usage in scripts/CI"
+    )
+    check_env.add_argument(
+        "paths",
+        nargs="*",
+        help="Paths to scan (defaults to scripts, Makefile, .github/workflows)",
+    )
 
     # check-geo
-    check_geo_cmd = tools_sub.add_parser("check-geo", help="Check geo dependencies (geopandas, pyproj, shapely, fiona, rtree)")
+    check_geo_cmd = tools_sub.add_parser(
+        "check-geo",
+        help="Check geo dependencies (geopandas, pyproj, shapely, fiona, rtree)",
+    )
 
     # verify-archive
-    verify_arch = tools_sub.add_parser("verify-archive", help="Verify no references to archived tests")
-    verify_arch.add_argument("--fail-on-reference", action="store_true", help="Exit with code 1 if references found")
+    verify_arch = tools_sub.add_parser(
+        "verify-archive", help="Verify no references to archived tests"
+    )
+    verify_arch.add_argument(
+        "--fail-on-reference",
+        action="store_true",
+        help="Exit with code 1 if references found",
+    )
 
     # archive-outputs
-    archive_out = tools_sub.add_parser("archive-outputs", help="Archive outputs directory")
+    archive_out = tools_sub.add_parser(
+        "archive-outputs", help="Archive outputs directory"
+    )
     archive_out.add_argument("--outputs", required=True, help="Directory to archive")
-    archive_out.add_argument("--dest", default="data/archive", help="Destination directory")
+    archive_out.add_argument(
+        "--dest", default="data/archive", help="Destination directory"
+    )
     archive_out.add_argument("--exclude", nargs="*", help="Glob patterns to exclude")
 
     # list-archives
     list_arch = tools_sub.add_parser("list-archives", help="List available archives")
-    list_arch.add_argument("--dir", default="data/archive", help="Directory containing archives")
+    list_arch.add_argument(
+        "--dir", default="data/archive", help="Directory containing archives"
+    )
 
     # align-audit
     align = tools_sub.add_parser("align-audit", help="Audit CSV vs raster alignment")
-    align.add_argument("--csv", default="data/new_all_tiles.csv", help="CSV with tile metadata")
+    align.add_argument(
+        "--csv", default="data/new_all_tiles.csv", help="CSV with tile metadata"
+    )
     align.add_argument("--base-dir", default=".", help="Base dir for image paths")
     align.add_argument("--aux-dir", help="Optional directory for .aux.xml files")
-    align.add_argument("--target-crs", default="EPSG:25832", help="Target CRS for metric comparisons")
-    align.add_argument("--max-offset-m", type=float, default=1000.0, help="Threshold (m) for outlier reporting")
+    align.add_argument(
+        "--target-crs", default="EPSG:25832", help="Target CRS for metric comparisons"
+    )
+    align.add_argument(
+        "--max-offset-m",
+        type=float,
+        default=1000.0,
+        help="Threshold (m) for outlier reporting",
+    )
     align.add_argument("--out", help="Path for JSON report")
     align.add_argument("--plot", help="Path for PNG plot")
 
     # clean-workspace
     clean = tools_sub.add_parser("clean-workspace", help="Clean workspace files")
-    clean.add_argument("--delete-outputs", action="store_true", help="Delete outputs/ (except protected)")
-    clean.add_argument("--delete-cache", action="store_true", help="Delete __pycache__ and .pytest_cache")
-    clean.add_argument("--delete-venvs", action="store_true", help="Delete .venv and venv")
+    clean.add_argument(
+        "--delete-outputs",
+        action="store_true",
+        help="Delete outputs/ (except protected)",
+    )
+    clean.add_argument(
+        "--delete-cache",
+        action="store_true",
+        help="Delete __pycache__ and .pytest_cache",
+    )
+    clean.add_argument(
+        "--delete-venvs", action="store_true", help="Delete .venv and venv"
+    )
     clean.add_argument("--archive", help="Archive instead of delete (path to .tar.gz)")
-    clean.add_argument("--yes", dest="dry_run", action="store_false", help="Actually perform cleanup (default is dry-run)")
+    clean.add_argument(
+        "--yes",
+        dest="dry_run",
+        action="store_false",
+        help="Actually perform cleanup (default is dry-run)",
+    )
 
     # docs-link-check
-    docs_check = tools_sub.add_parser("docs-link-check", help="Check for broken documentation links")
+    docs_check = tools_sub.add_parser(
+        "docs-link-check", help="Check for broken documentation links"
+    )
 
     # docs-link-autofix
-    docs_fix = tools_sub.add_parser("docs-link-autofix", help="Auto-fix broken documentation links")
-    docs_fix.add_argument("--yes", dest="dry_run", action="store_false", help="Actually fix links (default is dry-run)")
-    docs_fix.add_argument("--no-backup", dest="backup", action="store_false", help="Don't backup original files")
+    docs_fix = tools_sub.add_parser(
+        "docs-link-autofix", help="Auto-fix broken documentation links"
+    )
+    docs_fix.add_argument(
+        "--yes",
+        dest="dry_run",
+        action="store_false",
+        help="Actually fix links (default is dry-run)",
+    )
+    docs_fix.add_argument(
+        "--no-backup",
+        dest="backup",
+        action="store_false",
+        help="Don't backup original files",
+    )
 
     return p
 
@@ -480,6 +556,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if ns.cmd == "autoscale":
         from dataselector.workflows.autoscale import main as run
+
         # Convert namespace to argv format for the workflow main()
         argv = []
         if ns.csv:
@@ -518,6 +595,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if ns.cmd == "xxl":
         from dataselector.workflows.xxl import main as run
+
         # Convert namespace to argv format
         argv = ["--best-sampler", ns.best_sampler]
         argv.extend(["--phase", ns.phase])
@@ -720,27 +798,25 @@ def main(argv: list[str] | None = None) -> int:
 
     if ns.cmd == "build-tiles":
         from dataselector.data.build_tiles import build_tiles
+
         return build_tiles(
-            image_dir=ns.image_dir,
-            out=ns.out,
-            force_source=ns.force_source
+            image_dir=ns.image_dir, out=ns.out, force_source=ns.force_source
         )
 
     if ns.cmd == "bootstrap":
         from dataselector.workflows.bootstrap import main as run
+
         args = list(ns.args)
         if args and args[0] == "--":
             args = args[1:]
         return run(args)
 
     if ns.cmd == "tools":
-        from dataselector.tools import check, archive, audit, clean, docs_link
+        from dataselector.tools import archive, audit, check, clean, docs_link
 
         if ns.tool_cmd == "check-protected":
             return check.check_protected(
-                list_only=ns.list,
-                all_files=ns.all,
-                extra_protected=ns.protect
+                list_only=ns.list, all_files=ns.all, extra_protected=ns.protect
             )
 
         if ns.tool_cmd == "check-env":
@@ -754,15 +830,15 @@ def main(argv: list[str] | None = None) -> int:
 
         if ns.tool_cmd == "archive-outputs":
             from pathlib import Path
+
             archive_path = archive.archive_outputs(
-                outputs_dir=Path(ns.outputs),
-                dest_dir=Path(ns.dest),
-                exclude=ns.exclude
+                outputs_dir=Path(ns.outputs), dest_dir=Path(ns.dest), exclude=ns.exclude
             )
             return 0
 
         if ns.tool_cmd == "list-archives":
             from pathlib import Path
+
             archives = archive.list_archives(Path(ns.dir))
             if not archives:
                 print(f"No archives found in {ns.dir}")
@@ -780,7 +856,7 @@ def main(argv: list[str] | None = None) -> int:
                 target_crs=ns.target_crs,
                 max_offset_m=ns.max_offset_m,
                 out_json=ns.out,
-                out_plot=ns.plot
+                out_plot=ns.plot,
             )
 
         if ns.tool_cmd == "clean-workspace":
@@ -789,7 +865,7 @@ def main(argv: list[str] | None = None) -> int:
                 delete_cache=ns.delete_cache,
                 delete_venvs=ns.delete_venvs,
                 archive_path=ns.archive,
-                dry_run=ns.dry_run
+                dry_run=ns.dry_run,
             )
 
         if ns.tool_cmd == "docs-link-check":

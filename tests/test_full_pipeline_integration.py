@@ -1,10 +1,10 @@
 import importlib.util
-import sys
 import os
-from pathlib import Path
 import subprocess
+import sys
 import textwrap
 import time
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -16,15 +16,17 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # the real package `src` (which triggers heavy imports like umap/numba during test import).
 # Individual tests will override submodules as needed.
 import types
-if 'src' not in sys.modules:
-    mod = types.ModuleType('src')
+
+if "src" not in sys.modules:
+    mod = types.ModuleType("src")
     # mark as package so submodule imports (e.g., src.cache) work during tests
     mod.__path__ = []
-    sys.modules['src'] = mod
+    sys.modules["src"] = mod
 else:
     # if present but not package-like, add __path__ to allow submodule imports
-    if not hasattr(sys.modules['src'], '__path__'):
-        sys.modules['src'].__path__ = []
+    if not hasattr(sys.modules["src"], "__path__"):
+        sys.modules["src"].__path__ = []
+
 
 def _load_module_from_path(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, str(path))
@@ -52,44 +54,62 @@ def test_feature_cache_validation(tmp_path, monkeypatch):
     import types
 
     fake_feat = types.ModuleType("dataselectorfeature_extractor")
+
     class _FE:
         def __init__(self, *a, **k):
             pass
+
         def extract_features_batch(self, image_paths, data_dir, batch_size=16):
             # return zeros matching number of image_paths
             return np.zeros((len(image_paths), 16), dtype=np.float32)
+
     fake_feat.FeatureExtractor = _FE
 
     fake_meta = types.ModuleType("dataselectormetadata_processor")
+
     class _MP:
         def __init__(self, csv_path):
             self.csv_path = csv_path
+
         def load_csv(self):
             return pd.read_csv(self.csv_path)
+
         def add_temporal_metadata(self):
             return self.load_csv()
+
         def resolve_image_paths(self, image_dir):
             df = self.load_csv()
-            df['image_path'] = df.get('image_path', pd.Series([None]*len(df)))
+            df["image_path"] = df.get("image_path", pd.Series([None] * len(df)))
             return df
+
     fake_meta.MetadataProcessor = _MP
 
-    monkeypatch.setitem(sys.modules, 'src.feature_extractor', fake_feat)
-    monkeypatch.setitem(sys.modules, 'src.metadata_processor', fake_meta)
+    monkeypatch.setitem(sys.modules, "src.feature_extractor", fake_feat)
+    monkeypatch.setitem(sys.modules, "src.metadata_processor", fake_meta)
 
     # The io module imports from src.cache; ensure src.cache is loadable and registered
-    spec = importlib.util.spec_from_file_location("dataselectorcache", REPO_ROOT / "dataselector" / "pipeline" / "cache.py")
+    spec = importlib.util.spec_from_file_location(
+        "dataselectorcache", REPO_ROOT / "dataselector" / "pipeline" / "cache.py"
+    )
     cache_mod = importlib.util.module_from_spec(spec)
     monkeypatch.setitem(sys.modules, "dataselectorcache", cache_mod)
     spec.loader.exec_module(cache_mod)
 
     # load src/io.py as isolated module (avoid package-level side effects)
-    io_mod = _load_module_from_path("test_src_io", REPO_ROOT / "dataselector" / "data" / "io.py")
+    io_mod = _load_module_from_path(
+        "test_src_io", REPO_ROOT / "dataselector" / "data" / "io.py"
+    )
 
     # monkeypatch the heavy extractor to a fast deterministic stub (extra safety)
-    monkeypatch.setattr(io_mod, "extract_features", lambda metadata, batch_size=16: np.zeros((len(metadata), 16), dtype=np.float32))
+    monkeypatch.setattr(
+        io_mod,
+        "extract_features",
+        lambda metadata, batch_size=16: np.zeros((len(metadata), 16), dtype=np.float32),
+    )
 
-    feats = io_mod.load_or_extract_features(out_dir=tmp_out, csv_meta=str(meta), batch_size=4, cache=True)
+    feats = io_mod.load_or_extract_features(
+        out_dir=tmp_out, csv_meta=str(meta), batch_size=4, cache=True
+    )
 
     assert feats.shape[0] == 4
     assert (tmp_out / "features.npy").exists()
@@ -100,9 +120,12 @@ def test_multicriteria_fit_guard_raises_on_mismatch(monkeypatch):
 
     # Inject lightweight stub for src.spatial_facility_location used by the module
     import types
+
     fake_spatial = types.ModuleType("dataselectorspatial_facility_location")
+
     def _haversine_distance(lat1, lon1, lat2, lon2):
         return float(abs(lat1 - lat2) + abs(lon1 - lon2))
+
     def _haversine_matrix(lats, lons):
         n = len(lats)
         m = np.zeros((n, n))
@@ -110,19 +133,32 @@ def test_multicriteria_fit_guard_raises_on_mismatch(monkeypatch):
             for j in range(n):
                 m[i, j] = _haversine_distance(lats[i], lons[i], lats[j], lons[j])
         return m
+
     fake_spatial.haversine_distance = _haversine_distance
     fake_spatial.haversine_matrix = _haversine_matrix
-    monkeypatch.setitem(sys.modules, 'src.spatial_facility_location', fake_spatial)
+    monkeypatch.setitem(sys.modules, "src.spatial_facility_location", fake_spatial)
 
     mc_mod = _load_module_from_path(
-        "test_multi", REPO_ROOT / "dataselector" / "selection" / "multi_criteria_facility_location.py"
+        "test_multi",
+        REPO_ROOT
+        / "dataselector"
+        / "selection"
+        / "multi_criteria_facility_location.py",
     )
 
     # Create metadata with 5 rows
-    metadata = pd.DataFrame({"N": np.arange(5.0), "left": np.arange(5.0), "year": np.arange(1900, 1905)})
+    metadata = pd.DataFrame(
+        {"N": np.arange(5.0), "left": np.arange(5.0), "year": np.arange(1900, 1905)}
+    )
 
     # instantiate with n_samples small
-    mc = mc_mod.MultiCriteriaFacilityLocation(n_samples=3, metadata=metadata, alpha_visual=0.7, beta_spatial=0.15, gamma_temporal=0.15)
+    mc = mc_mod.MultiCriteriaFacilityLocation(
+        n_samples=3,
+        metadata=metadata,
+        alpha_visual=0.7,
+        beta_spatial=0.15,
+        gamma_temporal=0.15,
+    )
 
     # Create features with mismatched rows (4 != 5)
     X = np.zeros((4, 10))
@@ -137,15 +173,15 @@ def test_monitor_run_hook_with_dummy_script(tmp_path):
     The dummy script writes a small artifact in outputs/runs/dummy_run and exits 0. The test
     validates that run_hook returns success and that the artifact exists and logs were written.
     """
-    monitor_mod = _load_module_from_path("test_monitor", REPO_ROOT / "scripts" / "xxl_full_run_monitor.py")
+    monitor_mod = _load_module_from_path(
+        "test_monitor", REPO_ROOT / "scripts" / "xxl_full_run_monitor.py"
+    )
 
     # create a dummy script that simulates a run
     scripts_dir = tmp_path / "scripts"
     scripts_dir.mkdir()
     dummy = scripts_dir / "dummy_complete.py"
-    dummy.write_text(
-        textwrap.dedent(
-            """
+    dummy.write_text(textwrap.dedent("""
             #!/usr/bin/env python3
             import os, sys, time
             root = os.getcwd()
@@ -157,9 +193,7 @@ def test_monitor_run_hook_with_dummy_script(tmp_path):
             sys.stdout.flush()
             time.sleep(0.1)
             sys.exit(0)
-            """
-        )
-    )
+            """))
     dummy.chmod(0o755)
 
     base_log_dir = tmp_path / "logs"
@@ -168,6 +202,7 @@ def test_monitor_run_hook_with_dummy_script(tmp_path):
 
     # Use run_hook to execute the dummy script; ensure subprocess runs in tmp_path
     import sys
+
     cmd_str = f"{sys.executable} {str(dummy)}"
 
     old_cwd = os.getcwd()
@@ -207,7 +242,7 @@ def test_monitor_run_hook_with_dummy_script(tmp_path):
     assert "DUMMY_RUN_DONE" in runtxt
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # run tests locally for debugging convenience
     import pytest
 

@@ -186,17 +186,17 @@ def run_thesis_sampler_suite(
         print(
             "Running autoscale to determine best n_samples and hyperparams (this may take some time)..."
         )
-        
-        from dataselector.workflows.optuna_autoscale import run_autoscale, load_or_create_data
-        
+
+        from dataselector.workflows.optuna_autoscale import (
+            load_or_create_data,
+            run_autoscale,
+        )
+
         # Load data
         features, metadata = load_or_create_data(
-            out_dir=Path("outputs"),
-            n=n_candidates,
-            dim=256,
-            seed=42
+            out_dir=Path("outputs"), n=n_candidates, dim=256, seed=42
         )
-        
+
         try:
             # Run autoscale directly
             summary_file, best_json_path = run_autoscale(
@@ -208,7 +208,7 @@ def run_thesis_sampler_suite(
                 out_dir=Path("outputs"),
             )
             print(f"Autoscale complete: {best_json_path}")
-            
+
             # Read full best JSON to extract hyperparams
             best_json = Path("outputs") / "optuna_autoscale_best_latest.json"
             try:
@@ -249,7 +249,9 @@ def run_thesis_sampler_suite(
                     )
                 else:
                     # try to read simple n_samples text file
-                    sel_file = Path("outputs") / "optuna_autoscale_selected_n_samples.txt"
+                    sel_file = (
+                        Path("outputs") / "optuna_autoscale_selected_n_samples.txt"
+                    )
                     if sel_file.exists():
                         best_n_samples = int(sel_file.read_text().strip())
                         print(
@@ -391,7 +393,7 @@ def main(
     autoscale: bool = True,
 ) -> int:
     """CLI entry point for thesis sampler suite."""
-    
+
     # Apply defaults if None
     if seeds is None:
         seeds = [42, 43, 44, 45, 46, 47, 48, 49, 50, 51]
@@ -399,7 +401,7 @@ def main(
         datasets = ["hamburg", "kdr100"]
     if samplers is None:
         samplers = ["qmc", "tpe", "cmaes"]
-    
+
     suite_dir = run_thesis_sampler_suite(
         seeds=seeds,
         n_trials=n_trials,

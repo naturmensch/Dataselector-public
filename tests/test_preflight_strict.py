@@ -1,6 +1,7 @@
 import json
 import sys
 from pathlib import Path
+
 import pytest
 
 from scripts import xxl_KDR146_run_thesis_complete_modern as mod

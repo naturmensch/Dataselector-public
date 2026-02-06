@@ -16,7 +16,10 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
 
-from dataselector.selection.spatial_facility_location import haversine_distance, haversine_matrix
+from dataselector.selection.spatial_facility_location import (
+    haversine_distance,
+    haversine_matrix,
+)
 
 
 class MultiCriteriaFacilityLocation:
@@ -302,8 +305,13 @@ class MultiCriteriaFacilityLocation:
             meta_hash = None
             meta_path = None
             try:
-                from dataselector.pipeline.cache import compute_meta_hash, features_path_for_hash
                 import inspect
+
+                from dataselector.pipeline.cache import (
+                    compute_meta_hash,
+                    features_path_for_hash,
+                )
+
                 # Versuche, den Pfad zur Metadaten-CSV zu erraten
                 frame = inspect.currentframe()
                 csv_meta = None
@@ -329,7 +337,7 @@ class MultiCriteriaFacilityLocation:
                 msg += f"[Debug] expected features-cache: {meta_path}\n"
             msg += (
                 "Regeneriere den Feature-Cache passend zu den Metadaten, z.B.:\n"
-                "  rm outputs/features-*.npy && python -c \"from dataselector.data.io import load_or_extract_features; load_or_extract_features(cache=True)\""
+                '  rm outputs/features-*.npy && python -c "from dataselector.data.io import load_or_extract_features; load_or_extract_features(cache=True)"'
             )
             raise ValueError(msg)
 

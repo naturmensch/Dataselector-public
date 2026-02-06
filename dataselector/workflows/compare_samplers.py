@@ -46,20 +46,21 @@ def _build_constrain_bounds(
 
 def _get_run_optuna():
     """Late import hook for run_optuna to keep tests lightweight.
-    
+
     ⚠️ TODO Phase 5: This function depends on scripts/optuna_optimize.run_optuna()
     which was removed in Phase 4 migration. compare-samplers CLI command will fail
     if run_single_optuna() is actually called.
-    
+
     PROPER FIX NEEDED:
     1. Either: Re-implement run_optuna() as proper workflow function
     2. Or: Refactor run_single_optuna() to use subprocess call to optuna-optimize
     3. Or: Mark compare-samplers as DEPRECATED if it's not in active use
-    
+
     Current Status: Module imports OK (lazy import), but fails at runtime if called.
     """
     try:
         from scripts.optuna_optimize import run_optuna
+
         return run_optuna
     except (ImportError, ModuleNotFoundError) as e:
         raise RuntimeError(
@@ -67,7 +68,6 @@ def _get_run_optuna():
             "scripts.optuna_optimize was removed in Phase 4. "
             "See _get_run_optuna() docstring for TODO items to fix this."
         ) from e
-
 
 
 def run_single_optuna(
@@ -379,10 +379,14 @@ def compare_multi_seed(
             try:
                 df_meta = pd.read_csv(csv_meta_path)
                 n_candidates_local = len(df_meta)
-                print(f"[INFO] Auto-detected n_candidates from CSV: {n_candidates_local}")
+                print(
+                    f"[INFO] Auto-detected n_candidates from CSV: {n_candidates_local}"
+                )
             except FileNotFoundError:
                 n_candidates_local = 676
-                print(f"WARNING: {csv_meta_path} not found, using default {n_candidates_local}")
+                print(
+                    f"WARNING: {csv_meta_path} not found, using default {n_candidates_local}"
+                )
         else:
             n_candidates_local = n_candidates
 
@@ -500,10 +504,10 @@ def compare_seeded_vs_unseeded(
     OUT.mkdir(parents=True, exist_ok=True)
 
     # Runtime imports to avoid heavy deps at import-time
+    from dataselector.analysis.metrics import compute_metrics
+    from dataselector.data.io import load_metadata, load_or_extract_features
     from dataselector.selection.clustering import ClusteringPipeline
     from dataselector.selection.diversity_selector import DiversitySelector
-    from dataselector.data.io import load_metadata, load_or_extract_features
-    from dataselector.analysis.metrics import compute_metrics
 
     # Load cached features & metadata
     features = load_or_extract_features(
@@ -775,7 +779,7 @@ def main(
         samplers = ["qmc", "tpe", "cmaes"]
     if seeds is None:
         seeds = [42, 43, 44, 45, 46]
-    
+
     # Call the comparison
     compare_multi_seed(
         samplers=samplers,
@@ -797,8 +801,6 @@ def main(
     return 0
 
 
-
 if __name__ == "__main__":
     # Use CLI: dataselector compare-samplers --samplers X --seeds Y --n-trials Z
     raise SystemExit(1)
-

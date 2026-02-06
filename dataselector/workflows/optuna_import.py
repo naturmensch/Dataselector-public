@@ -80,7 +80,9 @@ def import_trials_from_csv(
         else:
             # Categorical for strings/other types
             unique_vals = col.unique().tolist()
-            distributions[p] = optuna.distributions.CategoricalDistribution(choices=unique_vals)
+            distributions[p] = optuna.distributions.CategoricalDistribution(
+                choices=unique_vals
+            )
 
     print(f"Detected {len(distributions)} parameters: {list(distributions.keys())}")
 

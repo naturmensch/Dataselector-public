@@ -1,7 +1,7 @@
 import json
+import os
 import sys
 from pathlib import Path
-import os
 
 from scripts import xxl_KDR146_run_thesis_complete_modern as mod
 from tests.helpers.create_minimal_autoscale import create_minimal_autoscale
@@ -19,7 +19,9 @@ def test_e2e_requires_autoscale_and_runs(tmp_path, monkeypatch):
     (out / "selected_sampler.json").write_text(json.dumps({"best": "tpe"}))
 
     # Run orchestrator in dry-run so heavy steps are simulated
-    monkeypatch.setattr(sys, "argv", ["xxl", "--best-sampler", "tpe", "--dry-run", "--skip-env-check"])
+    monkeypatch.setattr(
+        sys, "argv", ["xxl", "--best-sampler", "tpe", "--dry-run", "--skip-env-check"]
+    )
     rc = mod.main()
     assert rc == 0
     assert (tmp_path / "outputs" / "thesis_finalization_summary.json").exists()

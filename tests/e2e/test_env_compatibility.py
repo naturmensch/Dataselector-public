@@ -1,8 +1,10 @@
 import sys
 from pathlib import Path
+
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
 
 @pytest.mark.e2e
 def test_env_compatibility_exits_zero():

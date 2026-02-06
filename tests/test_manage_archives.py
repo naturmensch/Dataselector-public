@@ -1,7 +1,7 @@
-import tarfile
-from pathlib import Path
-import tempfile
 import os
+import tarfile
+import tempfile
+from pathlib import Path
 
 from scripts.manage_archives import archive_outputs, list_archives, restore_archive
 
@@ -23,7 +23,9 @@ def test_archive_with_exclude(tmp_path):
 
     dst = tmp_path / "archive"
     # exclude final_selection and tuning_weights
-    archive_path = archive_outputs(out, dst, exclude=["final_selection/*", "tuning_weights/*"]) 
+    archive_path = archive_outputs(
+        out, dst, exclude=["final_selection/*", "tuning_weights/*"]
+    )
 
     assert archive_path.exists()
 

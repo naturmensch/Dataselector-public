@@ -1,7 +1,7 @@
 import importlib.util
-from pathlib import Path
 import sys
 import types
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -10,17 +10,20 @@ import pytest
 # repo root (two levels up from tests/integration)
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+import sys
+
 # Prevent importing src/__init__.py (which pulls heavy native deps like umap/numba at import time)
 # by registering a lightweight package module early. This lets submodules be loaded directly
 # via importlib without executing package-level side-effects.
-import types, sys
-if 'src' not in sys.modules:
-    _src_pkg = types.ModuleType('src')
+import types
+
+if "src" not in sys.modules:
+    _src_pkg = types.ModuleType("src")
     _src_pkg.__path__ = []
-    sys.modules['src'] = _src_pkg
+    sys.modules["src"] = _src_pkg
 else:
-    if not hasattr(sys.modules['src'], '__path__'):
-        sys.modules['src'].__path__ = []
+    if not hasattr(sys.modules["src"], "__path__"):
+        sys.modules["src"].__path__ = []
 
 
 @pytest.mark.integration
@@ -36,7 +39,8 @@ def test_cache_migration_and_load(tmp_path):
 
     # Before importing the migrate script, inject a lightweight stub for `src.cache` to
     # avoid importing heavy native deps indirectly via package-level imports.
-    import types, sys
+    import sys
+    import types
 
     fake_cache = types.ModuleType("dataselectorcache")
 
@@ -49,6 +53,7 @@ def test_cache_migration_and_load(tmp_path):
     def atomic_write_features_with_meta(out_dir, feats, meta_hash, meta_info):
         # write a simple features-{meta_hash}.npy
         import numpy as _np
+
         target = Path(out_dir) / f"features-{meta_hash}.npy"
         _np.save(target, feats)
 
@@ -59,7 +64,9 @@ def test_cache_migration_and_load(tmp_path):
     sys.modules["dataselectorcache"] = fake_cache
 
     # Import migrate function
-    spec = importlib.util.spec_from_file_location("migrate_mod", REPO_ROOT / "scripts" / "migrate_feature_cache_to_hash.py")
+    spec = importlib.util.spec_from_file_location(
+        "migrate_mod", REPO_ROOT / "scripts" / "migrate_feature_cache_to_hash.py"
+    )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
 
@@ -129,20 +136,30 @@ def test_feature_cache_validation_reextracts(tmp_path, monkeypatch):
     monkeypatch.setitem(sys.modules, "dataselectormetadata_processor", fake_meta)
 
     # ensure src.cache is loadable
-    spec = importlib.util.spec_from_file_location("dataselectorcache", REPO_ROOT / "dataselector" / "pipeline" / "cache.py")
+    spec = importlib.util.spec_from_file_location(
+        "dataselectorcache", REPO_ROOT / "dataselector" / "pipeline" / "cache.py"
+    )
     cache_mod = importlib.util.module_from_spec(spec)
     sys.modules["dataselectorcache"] = cache_mod
     spec.loader.exec_module(cache_mod)
 
-    io_mod = load_module_from_path("test_src_io", REPO_ROOT / "dataselector" / "data" / "io.py")
+    io_mod = load_module_from_path(
+        "test_src_io", REPO_ROOT / "dataselector" / "data" / "io.py"
+    )
 
     # monkeypatch the heavy extractor to a fast deterministic stub (extra safety)
-    monkeypatch.setattr(io_mod, "extract_features", lambda metadata, batch_size=16: np.zeros((len(metadata), 16), dtype=np.float32))
+    monkeypatch.setattr(
+        io_mod,
+        "extract_features",
+        lambda metadata, batch_size=16: np.zeros((len(metadata), 16), dtype=np.float32),
+    )
 
-    feats = io_mod.load_or_extract_features(out_dir=tmp_out, csv_meta=str(meta), batch_size=4, cache=True)
+    feats = io_mod.load_or_extract_features(
+        out_dir=tmp_out, csv_meta=str(meta), batch_size=4, cache=True
+    )
 
     assert feats.shape[0] == 4
-    assert (tmp_out / "features.npy").exists() or list(tmp_out.glob('features-*.npy'))
+    assert (tmp_out / "features.npy").exists() or list(tmp_out.glob("features-*.npy"))
 
 
 @pytest.mark.integration
@@ -162,7 +179,9 @@ def test_pipeline_smoke_small(tmp_path, monkeypatch):
     for i in range(4):
         img = data_dir / "images" / f"KDR_{i:03d}.png"
         img.write_bytes(b"png")
-        rows.append(f"KDR_{i:03d}.png,KDR_{i:03d},{50.0+i},{8.0+i},{img},{img.name},{1890+i}")
+        rows.append(
+            f"KDR_{i:03d}.png,KDR_{i:03d},{50.0+i},{8.0+i},{img},{img.name},{1890+i}"
+        )
     csv_meta.write_text("\n".join(rows))
 
     # stub FeatureExtractor and apricot
@@ -170,9 +189,9 @@ def test_pipeline_smoke_small(tmp_path, monkeypatch):
 
     fake_feat = types.ModuleType("dataselectorfeature_extractor")
     fake_feat.FeatureExtractor = FakeFeatureExtractor
-    monkeypatch.setitem(sys.modules, 'src.feature_extractor', fake_feat)
+    monkeypatch.setitem(sys.modules, "src.feature_extractor", fake_feat)
 
-    fake_apricot = types.ModuleType('apricot')
+    fake_apricot = types.ModuleType("apricot")
 
     class _FakeFL:
         def __init__(self, n_samples=None, metric=None):
@@ -187,23 +206,40 @@ def test_pipeline_smoke_small(tmp_path, monkeypatch):
             self.gains_ = np.ones(n)
 
     fake_apricot.FacilityLocationSelection = _FakeFL
-    monkeypatch.setitem(sys.modules, 'apricot', fake_apricot)
+    monkeypatch.setitem(sys.modules, "apricot", fake_apricot)
 
     # load lightweight modules
-    spatial_mod = load_module_from_path('spatial_mod', REPO_ROOT / 'dataselector' / 'selection' / 'spatial_facility_location.py')
-    monkeypatch.setitem(sys.modules, 'src.spatial_facility_location', spatial_mod)
+    spatial_mod = load_module_from_path(
+        "spatial_mod",
+        REPO_ROOT / "dataselector" / "selection" / "spatial_facility_location.py",
+    )
+    monkeypatch.setitem(sys.modules, "src.spatial_facility_location", spatial_mod)
 
-    mc_mod = load_module_from_path('mc_mod', REPO_ROOT / 'dataselector' / 'selection' / 'multi_criteria_facility_location.py')
-    monkeypatch.setitem(sys.modules, 'src.multi_criteria_facility_location', mc_mod)
+    mc_mod = load_module_from_path(
+        "mc_mod",
+        REPO_ROOT
+        / "dataselector"
+        / "selection"
+        / "multi_criteria_facility_location.py",
+    )
+    monkeypatch.setitem(sys.modules, "src.multi_criteria_facility_location", mc_mod)
 
-    io_mod = load_module_from_path("io_mod", REPO_ROOT / "dataselector" / "data" / "io.py")
-    monkeypatch.setitem(sys.modules, 'src.io', io_mod)
+    io_mod = load_module_from_path(
+        "io_mod", REPO_ROOT / "dataselector" / "data" / "io.py"
+    )
+    monkeypatch.setitem(sys.modules, "src.io", io_mod)
 
     # Provide a fake DiversitySelector to avoid importing heavy package-level deps (umap/numba)
-    fake_divsel = types.ModuleType('src.diversity_selector')
+    fake_divsel = types.ModuleType("src.diversity_selector")
 
     class _FakeDS:
-        def __init__(self, n_samples=5, use_multi_criteria=False, use_constraint_integration=False, **kwargs):
+        def __init__(
+            self,
+            n_samples=5,
+            use_multi_criteria=False,
+            use_constraint_integration=False,
+            **kwargs,
+        ):
             # Accept extra kwargs (random_state, etc.) to be compatible with real API
             self.n_samples = n_samples
             self.use_multi_criteria = use_multi_criteria
@@ -216,32 +252,45 @@ def test_pipeline_smoke_small(tmp_path, monkeypatch):
 
         def export_selection(self, metadata, out_file):
             import pandas as _pd
-            sel = _pd.DataFrame({'selection_rank': list(range(min(self.n_samples, len(metadata))))})
+
+            sel = _pd.DataFrame(
+                {"selection_rank": list(range(min(self.n_samples, len(metadata))))}
+            )
             sel.to_csv(out_file, index=False)
             return sel
 
     fake_divsel.DiversitySelector = _FakeDS
-    monkeypatch.setitem(sys.modules, 'src.diversity_selector', fake_divsel)
+    monkeypatch.setitem(sys.modules, "src.diversity_selector", fake_divsel)
 
     # Provide a lightweight `src.metrics` to avoid importing heavy deps
-    fake_metrics = types.ModuleType('src.metrics')
-    def compute_metrics(selected_idx=None, metadata=None, cluster_labels=None, features=None):
-            # Minimal metrics consistent with src.metrics.compute_metrics
-            n_selected = len(selected_idx) if selected_idx is not None else 0
-            temporal_std = 0.0
-            spatial_mean_km = 0.0
-            clusters_covered = int(len(set(cluster_labels[selected_idx]))) if (cluster_labels is not None and selected_idx is not None) else 0
-            return {
-                'n_selected': n_selected,
-                'temporal_std': temporal_std,
-                'spatial_mean_km': spatial_mean_km,
-                'clusters_covered': clusters_covered,
-            }
-    fake_metrics.compute_metrics = compute_metrics
-    monkeypatch.setitem(sys.modules, 'src.metrics', fake_metrics)
+    fake_metrics = types.ModuleType("src.metrics")
 
-    experiments = load_module_from_path('experiments', REPO_ROOT / 'dataselector' / 'pipeline' / 'experiments.py')
-    monkeypatch.setitem(sys.modules, 'src.experiments', experiments)
+    def compute_metrics(
+        selected_idx=None, metadata=None, cluster_labels=None, features=None
+    ):
+        # Minimal metrics consistent with src.metrics.compute_metrics
+        n_selected = len(selected_idx) if selected_idx is not None else 0
+        temporal_std = 0.0
+        spatial_mean_km = 0.0
+        clusters_covered = (
+            int(len(set(cluster_labels[selected_idx])))
+            if (cluster_labels is not None and selected_idx is not None)
+            else 0
+        )
+        return {
+            "n_selected": n_selected,
+            "temporal_std": temporal_std,
+            "spatial_mean_km": spatial_mean_km,
+            "clusters_covered": clusters_covered,
+        }
+
+    fake_metrics.compute_metrics = compute_metrics
+    monkeypatch.setitem(sys.modules, "src.metrics", fake_metrics)
+
+    experiments = load_module_from_path(
+        "experiments", REPO_ROOT / "dataselector" / "pipeline" / "experiments.py"
+    )
+    monkeypatch.setitem(sys.modules, "src.experiments", experiments)
 
     # monkeypatch KMeans to simple fake
     class FakeKMeans:
@@ -257,8 +306,10 @@ def test_pipeline_smoke_small(tmp_path, monkeypatch):
     monkeypatch.setattr(experiments, "KMeans", FakeKMeans)
 
     # run io cache generation
-    io_mod.load_or_extract_features(out_dir=str(outputs), csv_meta=str(csv_meta), batch_size=4, cache=True)
-    found = list(outputs.glob('features-*.npy'))
+    io_mod.load_or_extract_features(
+        out_dir=str(outputs), csv_meta=str(csv_meta), batch_size=4, cache=True
+    )
+    found = list(outputs.glob("features-*.npy"))
     assert len(found) >= 1
 
     # Run a short sweep
@@ -266,7 +317,7 @@ def test_pipeline_smoke_small(tmp_path, monkeypatch):
     df = runner.run_weight_sweep(
         csv_meta=str(csv_meta),
         n_samples=3,
-        weight_combinations=[(0.7,0.2,0.1),(0.6,0.3,0.1)],
+        weight_combinations=[(0.7, 0.2, 0.1), (0.6, 0.3, 0.1)],
         n_clusters=2,
         batch_size=4,
         min_distance_km=0.0,

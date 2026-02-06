@@ -4,7 +4,7 @@ Optuna Optimization Workflow — Hyperparameter Tuning for Multi-Criteria Select
 
 Performs Optuna-based hyperparameter optimization for:
 - Visual diversity weight (alpha)
-- Spatial diversity weight (beta)  
+- Spatial diversity weight (beta)
 - Temporal diversity weight (gamma)
 - Minimum distance constraint
 - Number of samples (optional range)
@@ -299,28 +299,34 @@ def run_optuna(
         Completed Optuna study object
     """
     import optuna
+
     from dataselector.pipeline.pipeline_utils import compute_min_distance_km
 
     if out_dir is None:
         out_dir = Path("outputs")
     out_dir.mkdir(exist_ok=True)
-    
+
     # Compute min_distance_km bounds (no fallback)
     if metadata_path is None:
         raise ValueError(
             "metadata_path is required for computing min_distance_km bounds. "
             "No hardcoded fallback is provided (long-term solution)."
         )
-    
+
     metadata_path = Path(metadata_path)
     if not metadata_path.exists():
         raise FileNotFoundError(f"Metadata file not found: {metadata_path}")
-    
+
     min_dist_computed = compute_min_distance_km(str(metadata_path))
     # Bounds: ±20 km around computed value
-    min_distance_bounds = (max(10, int(min_dist_computed - 20)), min(100, int(min_dist_computed + 20)))
+    min_distance_bounds = (
+        max(10, int(min_dist_computed - 20)),
+        min(100, int(min_dist_computed + 20)),
+    )
 
-    features, metadata = load_or_create_data(out_dir, n=n_candidates, dim=dim, seed=seed)
+    features, metadata = load_or_create_data(
+        out_dir, n=n_candidates, dim=dim, seed=seed
+    )
 
     sampler = get_optuna_sampler(sampler_name, seed=seed)
 
@@ -429,10 +435,22 @@ def run_optuna(
     "optuna-optimize",
     help="Optuna hyperparameter optimization for multi-criteria selection",
     args={
-        "n_trials": {"type": int, "default": 20, "help": "Number of optimization trials"},
-        "n_candidates": {"type": int, "default": 500, "help": "Number of candidate tiles"},
+        "n_trials": {
+            "type": int,
+            "default": 20,
+            "help": "Number of optimization trials",
+        },
+        "n_candidates": {
+            "type": int,
+            "default": 500,
+            "help": "Number of candidate tiles",
+        },
         "dim": {"type": int, "default": 256, "help": "Feature dimension"},
-        "n_samples": {"type": int, "default": 34, "help": "Number of samples for selection"},
+        "n_samples": {
+            "type": int,
+            "default": 34,
+            "help": "Number of samples for selection",
+        },
         "smoke": {
             "type": bool,
             "action": "store_true",
@@ -453,14 +471,22 @@ def run_optuna(
             "default": None,
             "help": "Max samples for range (ignored if n-samples-min not set)",
         },
-        "min_distance_km": {"type": int, "default": 28, "help": "Minimum distance constraint in km"},
+        "min_distance_km": {
+            "type": int,
+            "default": 28,
+            "help": "Minimum distance constraint in km",
+        },
         "seed": {"type": int, "default": 42, "help": "Random seed"},
         "checkpoint_every": {
             "type": int,
             "default": 0,
             "help": "Save Optuna study every N trials (0 disables)",
         },
-        "sampler": {"type": str, "default": "tpe", "help": "Optuna sampler (qmc, tpe, cmaes)"},
+        "sampler": {
+            "type": str,
+            "default": "tpe",
+            "help": "Optuna sampler (qmc, tpe, cmaes)",
+        },
         "exp_name": {"type": str, "default": None, "help": "Experiment name"},
         "use_study_db": {
             "type": bool,
@@ -472,12 +498,36 @@ def run_optuna(
             "default": None,
             "help": "Path to SQLite DB file for Optuna storage",
         },
-        "constrain_a_min": {"type": float, "default": None, "help": "Constrain alpha min"},
-        "constrain_a_max": {"type": float, "default": None, "help": "Constrain alpha max"},
-        "constrain_b_min": {"type": float, "default": None, "help": "Constrain beta min"},
-        "constrain_b_max": {"type": float, "default": None, "help": "Constrain beta max"},
-        "constrain_c_min": {"type": float, "default": None, "help": "Constrain gamma min"},
-        "constrain_c_max": {"type": float, "default": None, "help": "Constrain gamma max"},
+        "constrain_a_min": {
+            "type": float,
+            "default": None,
+            "help": "Constrain alpha min",
+        },
+        "constrain_a_max": {
+            "type": float,
+            "default": None,
+            "help": "Constrain alpha max",
+        },
+        "constrain_b_min": {
+            "type": float,
+            "default": None,
+            "help": "Constrain beta min",
+        },
+        "constrain_b_max": {
+            "type": float,
+            "default": None,
+            "help": "Constrain beta max",
+        },
+        "constrain_c_min": {
+            "type": float,
+            "default": None,
+            "help": "Constrain gamma min",
+        },
+        "constrain_c_max": {
+            "type": float,
+            "default": None,
+            "help": "Constrain gamma max",
+        },
         "constrain_min_dist_min": {
             "type": int,
             "default": None,

@@ -66,6 +66,7 @@ def validate_pareto_candidates(
 
     if output_dir is None:
         from dataselector.config import get_config_value
+
         root = get_config_value("paths.root", default=Path.cwd())
         output_dir = Path(root) / "outputs" / "validation"
     else:
@@ -81,10 +82,20 @@ def validate_pareto_candidates(
         )
 
     # Load data once (reuse across all validation runs)
-    metadata_path_default = Path(get_config_value("paths.root", default=Path.cwd())) / "outputs" / "metadata.csv"
-    metadata_path = output_dir / "metadata.csv" if (output_dir / "metadata.csv").exists() else metadata_path_default
+    metadata_path_default = (
+        Path(get_config_value("paths.root", default=Path.cwd()))
+        / "outputs"
+        / "metadata.csv"
+    )
+    metadata_path = (
+        output_dir / "metadata.csv"
+        if (output_dir / "metadata.csv").exists()
+        else metadata_path_default
+    )
 
-    metadata = load_metadata(str(metadata_path) if metadata_path.exists() else "data/new_all_tiles.csv")
+    metadata = load_metadata(
+        str(metadata_path) if metadata_path.exists() else "data/new_all_tiles.csv"
+    )
 
     features = load_or_extract_features(
         output_dir,
@@ -119,16 +130,16 @@ def validate_pareto_candidates(
         for min_d in min_distances:
             for seed in seeds:
                 run_i += 1
-                print(f"Run {run_i}/{total}: α={alpha:.3f}, β={beta:.3f}, γ={gamma:.3f}, "
-                      f"min_dist={min_d}km, seed={seed}")
+                print(
+                    f"Run {run_i}/{total}: α={alpha:.3f}, β={beta:.3f}, γ={gamma:.3f}, "
+                    f"min_dist={min_d}km, seed={seed}"
+                )
 
                 t0 = time.time()
 
                 # Run selection with current configuration
                 ds = DiversitySelector(
-                    n_samples=n_samples,
-                    use_multi_criteria=True,
-                    random_state=int(seed)
+                    n_samples=n_samples, use_multi_criteria=True, random_state=int(seed)
                 )
                 selected = ds.select(
                     features=features,
@@ -144,20 +155,25 @@ def validate_pareto_candidates(
 
                 # Compute metrics
                 metrics = compute_metrics(selected, metadata, cluster_labels, features)
-                metrics.update({
-                    "alpha": alpha,
-                    "beta": beta,
-                    "gamma": gamma,
-                    "min_distance_km": min_d,
-                    "seed": seed,
-                    "duration_s": duration,
-                })
+                metrics.update(
+                    {
+                        "alpha": alpha,
+                        "beta": beta,
+                        "gamma": gamma,
+                        "min_distance_km": min_d,
+                        "seed": seed,
+                        "duration_s": duration,
+                    }
+                )
                 rows.append(metrics)
 
                 # Save selection snapshot
                 sel_df = metadata.iloc[selected].copy()
                 sel_df["selection_rank"] = range(len(sel_df))
-                sel_file = output_dir / f"selection_a{alpha}_b{beta}_g{gamma}_d{min_d}_s{seed}.csv"
+                sel_file = (
+                    output_dir
+                    / f"selection_a{alpha}_b{beta}_g{gamma}_d{min_d}_s{seed}.csv"
+                )
                 sel_df.to_csv(sel_file, index=False)
 
                 # Generate visualizations

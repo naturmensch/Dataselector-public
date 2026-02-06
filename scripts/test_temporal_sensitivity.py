@@ -97,7 +97,9 @@ def main() -> None:
                         )
                         pairwise.append(float((((a - b) ** 2).sum()) ** 0.5 / 1000.0))
                     else:
-                        from dataselector.selection.spatial_facility_location import haversine_distance
+                        from dataselector.selection.spatial_facility_location import (
+                            haversine_distance,
+                        )
 
                         r1 = meta.iloc[selected[i]]
                         r2 = meta.iloc[selected[j]]

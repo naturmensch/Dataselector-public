@@ -20,7 +20,7 @@ def should_run_tuning(
     tune_flag: bool, force: bool, ttl_days: int, csv_meta: Path, out_dir: Path
 ) -> bool:
     """Decide whether to run tuning (legacy logic from run_pipeline.py).
-    
+
     Rules:
       - If force: True -> run
       - If tune_flag False -> skip

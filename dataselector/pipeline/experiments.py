@@ -6,14 +6,14 @@ from typing import List, Tuple
 import pandas as pd
 from sklearn.cluster import KMeans
 
-from dataselector.selection.diversity_selector import DiversitySelector
+from dataselector.analysis.metrics import compute_metrics
 
 # Monkeypatch-friendly local wrappers for metadata/features I/O
 from dataselector.data.io import ensure_output_dir
 from dataselector.data.io import extract_features as _io_extract_features
 from dataselector.data.io import load_metadata as _io_load_metadata
 from dataselector.data.io import save_selection
-from dataselector.analysis.metrics import compute_metrics
+from dataselector.selection.diversity_selector import DiversitySelector
 
 
 def load_metadata(csv_path: str) -> pd.DataFrame:

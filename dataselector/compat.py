@@ -3,6 +3,7 @@
 Simple runtime check to detect NumPy <-> Numba incompatibilities and fail fast
 with a helpful message.
 """
+
 from __future__ import annotations
 
 from packaging.version import Version, parse
@@ -35,7 +36,8 @@ def check_numba_numpy_compatibility(raise_on_error: bool = True) -> bool:
             "compatibility issues in our environment.\n"
             "Options: (1) pin NumPy to '<2.4' (recommended), or (2) upgrade Numba "
             "to a release that explicitly supports NumPy >=2.4. See project docs "
-            "for details.")
+            "for details."
+        )
         if raise_on_error:
             raise RuntimeError(msg)
         return False

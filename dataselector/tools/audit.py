@@ -13,9 +13,9 @@ import pandas as pd
 from dataselector.cli_decorators import cli_command
 
 try:
+    import matplotlib.pyplot as plt
     from pyproj import Transformer
     from shapely.geometry import Point
-    import matplotlib.pyplot as plt
 except ImportError:  # pragma: no cover
     raise ImportError(
         "This tool requires geopandas, shapely, pyproj and matplotlib. "
@@ -46,11 +46,13 @@ def find_aux_xml(image_path: Path, aux_dir: Optional[Path] = None) -> Optional[P
     ]
 
     if aux_dir:
-        candidates.extend([
-            aux_dir / (image_path.name + ".aux.xml"),
-            aux_dir / (image_path.stem + ".aux.xml"),
-            aux_dir / (image_path.stem + image_path.suffix + ".aux.xml"),
-        ])
+        candidates.extend(
+            [
+                aux_dir / (image_path.name + ".aux.xml"),
+                aux_dir / (image_path.stem + ".aux.xml"),
+                aux_dir / (image_path.stem + image_path.suffix + ".aux.xml"),
+            ]
+        )
 
     for c in candidates:
         if c.exists():
@@ -59,7 +61,9 @@ def find_aux_xml(image_path: Path, aux_dir: Optional[Path] = None) -> Optional[P
     return None
 
 
-def extract_bounds_from_aux(aux_path: Path) -> Optional[Tuple[float, float, float, float]]:
+def extract_bounds_from_aux(
+    aux_path: Path,
+) -> Optional[Tuple[float, float, float, float]]:
     """Extract raster bounds from .aux.xml file.
 
     Args:
@@ -189,23 +193,27 @@ def align_audit(
         # Find aux.xml
         aux_path = find_aux_xml(image_path, aux_dir)
         if not aux_path:
-            results.append({
-                "index": int(idx),
-                "image_path": str(image_path),
-                "status": "missing_aux",
-                "offset_m": None
-            })
+            results.append(
+                {
+                    "index": int(idx),
+                    "image_path": str(image_path),
+                    "status": "missing_aux",
+                    "offset_m": None,
+                }
+            )
             continue
 
         # Extract bounds
         bounds = extract_bounds_from_aux(aux_path)
         if not bounds:
-            results.append({
-                "index": int(idx),
-                "image_path": str(image_path),
-                "status": "parse_error",
-                "offset_m": None
-            })
+            results.append(
+                {
+                    "index": int(idx),
+                    "image_path": str(image_path),
+                    "status": "parse_error",
+                    "offset_m": None,
+                }
+            )
             continue
 
         aux_left, aux_top, aux_right, aux_bottom = bounds
@@ -217,7 +225,7 @@ def align_audit(
         aux_x, aux_y = transformer.transform(aux_center_lon, aux_center_lat)
 
         # Compute offset
-        offset_m = np.sqrt((csv_x - aux_x)**2 + (csv_y - aux_y)**2)
+        offset_m = np.sqrt((csv_x - aux_x) ** 2 + (csv_y - aux_y) ** 2)
 
         result = {
             "index": int(idx),
@@ -225,7 +233,7 @@ def align_audit(
             "status": "ok",
             "offset_m": float(offset_m),
             "csv_center": [csv_center_lon, csv_center_lat],
-            "aux_center": [aux_center_lon, aux_center_lat]
+            "aux_center": [aux_center_lon, aux_center_lat],
         }
         results.append(result)
 
@@ -243,15 +251,17 @@ def align_audit(
         "outliers": len(outliers),
         "missing_aux": len([r for r in results if r["status"] == "missing_aux"]),
         "parse_errors": len([r for r in results if r["status"] == "parse_error"]),
-        "results": results
+        "results": results,
     }
 
     # Save JSON report
     if not out_json:
-        out_json = f"outputs/align_audit_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        out_json = (
+            f"outputs/align_audit_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        )
     out_json_path = Path(out_json)
     out_json_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(out_json_path, 'w') as f:
+    with open(out_json_path, "w") as f:
         json.dump(report, f, indent=2)
     print(f"Saved report: {out_json_path}")
 
@@ -261,15 +271,20 @@ def align_audit(
         if ok_results:
             offsets = [r["offset_m"] for r in ok_results]
             fig, ax = plt.subplots(figsize=(10, 6))
-            ax.hist(offsets, bins=50, edgecolor='black')
-            ax.axvline(max_offset_m, color='r', linestyle='--', label=f'Threshold: {max_offset_m}m')
-            ax.set_xlabel('Offset (m)')
-            ax.set_ylabel('Count')
-            ax.set_title(f'CSV vs AUX Centroid Offsets (n={len(ok_results)})')
+            ax.hist(offsets, bins=50, edgecolor="black")
+            ax.axvline(
+                max_offset_m,
+                color="r",
+                linestyle="--",
+                label=f"Threshold: {max_offset_m}m",
+            )
+            ax.set_xlabel("Offset (m)")
+            ax.set_ylabel("Count")
+            ax.set_title(f"CSV vs AUX Centroid Offsets (n={len(ok_results)})")
             ax.legend()
             out_plot_path = Path(out_plot)
             out_plot_path.parent.mkdir(parents=True, exist_ok=True)
-            plt.savefig(out_plot_path, dpi=150, bbox_inches='tight')
+            plt.savefig(out_plot_path, dpi=150, bbox_inches="tight")
             plt.close()
             print(f"Saved plot: {out_plot_path}")
 

@@ -198,11 +198,11 @@ def build_parser_from_decorators() -> argparse.ArgumentParser:
             kwargs: dict[str, Any] = {
                 "help": arg_def.help,
             }
-            
+
             # Add default only if not None (avoid conflicts with action)
             if arg_def.default is not None:
                 kwargs["default"] = arg_def.default
-            
+
             # Add required if specified
             if arg_def.required:
                 kwargs["required"] = True
@@ -262,9 +262,7 @@ def dispatch_from_decorators(ns: argparse.Namespace) -> int:
     # Extract command arguments from namespace
     # Remove internal metadata (cmd, _cmd_func)
     cmd_dict = {
-        k: v
-        for k, v in vars(ns).items()
-        if not k.startswith("_") and k != "cmd"
+        k: v for k, v in vars(ns).items() if not k.startswith("_") and k != "cmd"
     }
 
     # Convert hyphenated names back to underscores for function parameters

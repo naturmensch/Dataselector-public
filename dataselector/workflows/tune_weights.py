@@ -91,10 +91,12 @@ def run_exploration(
 
     # Pipeline integration
     import os
+
     em = None
     exp_dir = os.environ.get("EXPERIMENT_RUN_DIR")
     if exp_dir:
         from dataselector.pipeline.experiment_manager import ExperimentManager
+
         em = ExperimentManager.from_existing(exp_dir)
         em.log("Attached to pipeline run (exploration stage)")
         em.save_config(
@@ -103,12 +105,12 @@ def run_exploration(
         )
 
     from dataselector.pipeline.experiments import ExperimentRunner
+    from dataselector.pipeline.pipeline_utils import compute_min_distance_km
     from dataselector.selection.pareto import (
         compute_pareto_front,
         export_pareto_report,
         visualize_pareto_front,
     )
-    from dataselector.pipeline.pipeline_utils import compute_min_distance_km
 
     # Compute min_distance_km from data (no fallback)
     if metadata_path is None:
@@ -116,22 +118,26 @@ def run_exploration(
             "metadata_path is required for computing min_distance_km. "
             "No hardcoded fallback is provided (long-term solution)."
         )
-    
+
     metadata_path = Path(metadata_path)
     if not metadata_path.exists():
         raise FileNotFoundError(f"Metadata file not found: {metadata_path}")
-    
+
     min_distance = compute_min_distance_km(str(metadata_path))
 
     runner = ExperimentRunner(output_dir=str(output_dir))
 
     # Generate weight combinations
-    weight_combinations = generate_weights(n_points=n_samples, seed=seed, sampler=sampler)
+    weight_combinations = generate_weights(
+        n_points=n_samples, seed=seed, sampler=sampler
+    )
 
     print("\n" + "=" * 70)
     print("PHASE 1: EXPLORATION (LHS SWEEP)")
     print("=" * 70)
-    print(f"Weight combinations: {len(weight_combinations)} ({sampler.upper()}-samples)")
+    print(
+        f"Weight combinations: {len(weight_combinations)} ({sampler.upper()}-samples)"
+    )
     print(f"Min Distance Constraint: {min_distance} km")
     print(f"Seed: {seed}")
     print("=" * 70 + "\n")
@@ -179,6 +185,7 @@ def run_exploration(
     if em is not None:
         try:
             import pandas as pd
+
             em.save_results("pareto_solutions", pd.read_csv(report_path), format="csv")
             em.mark_stage_complete(
                 "exploration",
@@ -200,14 +207,21 @@ def main(argv: list[str] | None = None) -> int:
         description="Phase 1: Exploration with LHS/Sobol sweep"
     )
     parser.add_argument("--n-samples", type=int, default=50)
-    parser.add_argument("--sampler", choices=["lhs", "sobol"], required=False, default=None)
+    parser.add_argument(
+        "--sampler", choices=["lhs", "sobol"], required=False, default=None
+    )
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--metadata-path", type=str, required=False, help="Path to metadata CSV (required)")
+    parser.add_argument(
+        "--metadata-path",
+        type=str,
+        required=False,
+        help="Path to metadata CSV (required)",
+    )
     parser.add_argument("--pre-names", type=str, nargs="*", default=None)
     parser.add_argument("--pre-indices", type=int, nargs="*", default=None)
 
     args = parser.parse_args(argv)
-    
+
     # metadata_path defaults to DATA_META if not provided
     metadata_path = args.metadata_path or DATA_META
 
