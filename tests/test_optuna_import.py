@@ -12,8 +12,9 @@ def test_optuna_import_importable():
 
 def test_import_signature():
     """Test import_trials_from_csv function signature."""
-    from dataselector.workflows.optuna_import import import_trials_from_csv
     import inspect
+
+    from dataselector.workflows.optuna_import import import_trials_from_csv
 
     sig = inspect.signature(import_trials_from_csv)
     params = list(sig.parameters.keys())
@@ -29,9 +30,10 @@ def test_import_signature():
 )
 def test_import_trials_integration():
     """Integration test for import_trials_from_csv (skipped in CI)."""
-    from dataselector.workflows.optuna_import import import_trials_from_csv
-    from pathlib import Path
     import tempfile
+    from pathlib import Path
+
+    from dataselector.workflows.optuna_import import import_trials_from_csv
 
     with tempfile.TemporaryDirectory() as tmpdir:
         # Would require:

@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Iterable, List, Set
-import re
-import sys
 
 from dataselector.cli_decorators import cli_command
 
@@ -167,6 +167,7 @@ def check_geo() -> int:
     Respects pipeline_config.yaml features.geo setting - skips check if disabled.
     """
     from importlib import import_module
+
     import yaml
     
     REQS = ["geopandas", "pyproj", "shapely", "fiona", "rtree"]

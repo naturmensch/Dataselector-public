@@ -8,14 +8,15 @@ Dieses Modul reduziert die Feature-Dimensionalität und gruppiert
 from typing import Optional, Tuple
 
 import numpy as np
+
 try:
     import umap
     UMAP_AVAILABLE = True
 except Exception:
     UMAP_AVAILABLE = False
 from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
 from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
 
 
 class ClusteringPipeline:

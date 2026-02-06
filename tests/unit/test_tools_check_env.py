@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+
 from dataselector.cli_decorators import _CLI_COMMANDS
 from dataselector.tools import check
 

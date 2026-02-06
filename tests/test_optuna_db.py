@@ -3,7 +3,11 @@ from pathlib import Path
 
 import numpy as np
 
-from scripts.optuna_optimize import run_optuna, DIVERSITY_IMPORT_ERROR, DiversitySelector
+from scripts.optuna_optimize import (
+    DIVERSITY_IMPORT_ERROR,
+    DiversitySelector,
+    run_optuna,
+)
 
 
 class DummySelector:

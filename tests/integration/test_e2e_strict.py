@@ -1,7 +1,7 @@
 import json
+import os
 import sys
 from pathlib import Path
-import os
 
 from scripts import xxl_KDR146_run_thesis_complete_modern as mod
 from tests.helpers.create_minimal_autoscale import create_minimal_autoscale

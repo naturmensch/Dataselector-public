@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
+import sys
+import tarfile
 from datetime import datetime
 from pathlib import Path
-import tarfile
-import re
-import sys
 
 from dataselector.cli_decorators import cli_command
 

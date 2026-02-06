@@ -238,7 +238,7 @@ def configure_venv_path(monkeypatch):
     """
     import os
     import sys
-    
+
     # Get the venv bin directory
     venv_bin = Path(sys.executable).parent
     
@@ -360,6 +360,7 @@ def resource_monitor(request):
     Logs resource usage at end of test.
     """
     import time
+
     import psutil
     
     process = psutil.Process()

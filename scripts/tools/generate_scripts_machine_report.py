@@ -9,9 +9,9 @@ Heuristics used for suggestions:
  - multiple similarly named scripts -> suggestion: consolidate into unified CLI/subcommand
  - small utilities (check_*, verify_*, diagnose_*) -> suggestion: move into tools/ or consolidate
 """
-from pathlib import Path
-import re
 import json
+import re
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC_MD = ROOT / "docs" / "all_scripts_overview_detailed.md"
@@ -104,6 +104,7 @@ for sec in sections:
 
 # group related files by token heuristics for suggestions
 from collections import defaultdict
+
 groups = defaultdict(list)
 for e in entries:
     n = Path(e['path']).name
@@ -169,6 +170,7 @@ lines = ["# All Scripts Cleanup Plan\n", "This plan groups files with suggested 
 
 # summary counts
 from collections import Counter
+
 cats = Counter([e['category'] for e in entries])
 lines.append(f"- Total files scanned: {len(entries)}\n")
 for c, cnt in cats.items():

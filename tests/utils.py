@@ -1,10 +1,11 @@
 import importlib.util
 import sys
-from pathlib import Path
-import types
-import pandas as pd
-import numpy as np
 import textwrap
+import types
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
 
 
 def load_module_from_path(name: str, path: Path, register: bool = False):

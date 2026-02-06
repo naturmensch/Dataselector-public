@@ -299,6 +299,7 @@ def run_optuna(
         Completed Optuna study object
     """
     import optuna
+
     from dataselector.pipeline.pipeline_utils import compute_min_distance_km
 
     if out_dir is None:

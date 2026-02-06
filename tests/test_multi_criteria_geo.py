@@ -1,8 +1,12 @@
 import numpy as np
 import pandas as pd
 
-from dataselector.selection.multi_criteria_facility_location import MultiCriteriaFacilityLocation
-from dataselector.selection.spatial_facility_location import SpatialConstrainedFacilityLocation
+from dataselector.selection.multi_criteria_facility_location import (
+    MultiCriteriaFacilityLocation,
+)
+from dataselector.selection.spatial_facility_location import (
+    SpatialConstrainedFacilityLocation,
+)
 
 
 class DummyMetadata:

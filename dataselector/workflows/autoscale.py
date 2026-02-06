@@ -48,7 +48,7 @@ def load_or_create_data(csv_meta=None, n=None, dim=256, seed=123, out_dir=None):
     features_path = out_dir / "features.npy"
     metadata_path = out_dir / "metadata.csv" if csv_meta is None else Path(csv_meta)
 
-    from dataselector.data.io import load_or_extract_features, load_metadata
+    from dataselector.data.io import load_metadata, load_or_extract_features
 
     if features_path.exists() and metadata_path.exists():
         features = load_or_extract_features(

@@ -4,8 +4,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from dataselector.features.feature_extractor import FeatureExtractor
 from dataselector.data.metadata_processor import MetadataProcessor
+from dataselector.features.feature_extractor import FeatureExtractor
 
 
 def load_metadata(csv_path: str) -> pd.DataFrame:
@@ -90,10 +90,10 @@ def load_or_extract_features(
     from dataselector.pipeline.cache import (
         atomic_write_features_with_meta,
         compute_meta_hash,
+        create_meta_info,
         features_path_for_hash,
         find_cache_by_hash,
         load_features_by_hash,
-        create_meta_info,
     )
 
     out_dir = Path(out_dir)

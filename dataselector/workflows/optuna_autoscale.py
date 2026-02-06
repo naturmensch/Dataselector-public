@@ -72,6 +72,7 @@ def make_objective(
     def objective(trial):
         # Lazy import to avoid module-level side effects
         import optuna
+
         from dataselector.selection.diversity_selector import DiversitySelector
 
         a = trial.suggest_float("a", *min_distance_bounds["a"])

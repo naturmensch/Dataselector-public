@@ -187,8 +187,11 @@ def run_thesis_sampler_suite(
             "Running autoscale to determine best n_samples and hyperparams (this may take some time)..."
         )
         
-        from dataselector.workflows.optuna_autoscale import run_autoscale, load_or_create_data
-        
+        from dataselector.workflows.optuna_autoscale import (
+            load_or_create_data,
+            run_autoscale,
+        )
+
         # Load data
         features, metadata = load_or_create_data(
             out_dir=Path("outputs"),

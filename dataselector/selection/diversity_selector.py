@@ -14,6 +14,7 @@ from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
+
 try:
     from apricot import FacilityLocationSelection
 except Exception:
@@ -21,12 +22,16 @@ except Exception:
     print("[WARN] apricot FacilityLocationSelection not available; falling back to pure-Python methods where possible")
 
 try:
-    from dataselector.selection.multi_criteria_facility_location import MultiCriteriaFacilityLocation
+    from dataselector.selection.multi_criteria_facility_location import (
+        MultiCriteriaFacilityLocation,
+    )
 except ImportError:
     MultiCriteriaFacilityLocation = None
 
 try:
-    from dataselector.selection.spatial_facility_location import SpatialConstrainedFacilityLocation
+    from dataselector.selection.spatial_facility_location import (
+        SpatialConstrainedFacilityLocation,
+    )
 except ImportError:
     SpatialConstrainedFacilityLocation = None
 
@@ -231,7 +236,9 @@ class DiversitySelector:
             print(f"Führe Facility Location Selection durch ({n_to_select} Samples)...")
             if self.use_lazy_greedy:
                 try:
-                    from dataselector.selection.lazy_facility_location import LazyFacilityLocationSelection
+                    from dataselector.selection.lazy_facility_location import (
+                        LazyFacilityLocationSelection,
+                    )
 
                     self.selector = LazyFacilityLocationSelection(
                         n_samples=n_to_select,
@@ -409,7 +416,9 @@ class DiversitySelector:
                     distance = float(((a - b) ** 2).sum() ** 0.5) / 1000.0
                 else:
                     if processor is None:
-                        from dataselector.data.metadata_processor import MetadataProcessor
+                        from dataselector.data.metadata_processor import (
+                            MetadataProcessor,
+                        )
 
                         processor = MetadataProcessor("")
                     distance = processor.calculate_spatial_distance(

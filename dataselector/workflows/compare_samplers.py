@@ -500,10 +500,10 @@ def compare_seeded_vs_unseeded(
     OUT.mkdir(parents=True, exist_ok=True)
 
     # Runtime imports to avoid heavy deps at import-time
+    from dataselector.analysis.metrics import compute_metrics
+    from dataselector.data.io import load_metadata, load_or_extract_features
     from dataselector.selection.clustering import ClusteringPipeline
     from dataselector.selection.diversity_selector import DiversitySelector
-    from dataselector.data.io import load_metadata, load_or_extract_features
-    from dataselector.analysis.metrics import compute_metrics
 
     # Load cached features & metadata
     features = load_or_extract_features(

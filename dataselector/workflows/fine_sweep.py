@@ -65,6 +65,7 @@ def run_fine_sweep(
         (full_results_df, pareto_front)
     """
     import os
+
     import pandas as pd
     import yaml
 
@@ -136,7 +137,9 @@ def run_fine_sweep(
                         n_tiles = len(pd.read_csv(data_path))
                     except Exception:
                         pass
-                from dataselector.pipeline.pipeline_utils import compute_adaptive_n_initial
+                from dataselector.pipeline.pipeline_utils import (
+                    compute_adaptive_n_initial,
+                )
 
                 n_samples_cfg = compute_adaptive_n_initial(
                     n_dimensions=3, n_tiles=n_tiles, strategy="modern"

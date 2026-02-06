@@ -12,8 +12,9 @@ def test_final_selection_importable():
 
 def test_final_selection_signature():
     """Test run_final_selection function signature."""
-    from dataselector.workflows.final_selection import run_final_selection
     import inspect
+
+    from dataselector.workflows.final_selection import run_final_selection
 
     sig = inspect.signature(run_final_selection)
     params = list(sig.parameters.keys())
@@ -39,9 +40,10 @@ def test_final_selection_signature():
 )
 def test_run_final_selection_integration():
     """Integration test for run_final_selection (skipped in CI)."""
-    from dataselector.workflows.final_selection import run_final_selection
-    from pathlib import Path
     import tempfile
+    from pathlib import Path
+
+    from dataselector.workflows.final_selection import run_final_selection
 
     with tempfile.TemporaryDirectory() as tmpdir:
         output_dir = Path(tmpdir) / "final_selection"

@@ -1,10 +1,10 @@
 import importlib.util
-import sys
 import os
-from pathlib import Path
 import subprocess
+import sys
 import textwrap
 import time
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -16,6 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # the real package `src` (which triggers heavy imports like umap/numba during test import).
 # Individual tests will override submodules as needed.
 import types
+
 if 'src' not in sys.modules:
     mod = types.ModuleType('src')
     # mark as package so submodule imports (e.g., src.cache) work during tests

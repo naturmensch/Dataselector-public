@@ -52,10 +52,10 @@ def run_thesis_pipeline(
         True if all phases succeeded, False otherwise
     """
     # Lazy imports to avoid heavy dependencies at import time
-    from dataselector.workflows.tune_weights import run_exploration
-    from dataselector.workflows.optuna_optimize import run_optuna
     from dataselector.workflows.bootstrap import bootstrap_pareto_candidates
     from dataselector.workflows.generate_reports import generate_thesis_final_report
+    from dataselector.workflows.optuna_optimize import run_optuna
+    from dataselector.workflows.tune_weights import run_exploration
 
     if output_dir is None:
         output_dir = Path("outputs")

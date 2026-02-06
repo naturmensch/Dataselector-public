@@ -2,16 +2,17 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from dataselector.pipeline.cache import (
-    compute_meta_hash,
-    atomic_write_features_with_meta,
-    features_path_for_hash,
-    meta_path_for_hash,
-    load_features_by_hash,
-    create_meta_info,
-)
 
 import numpy as np
+
+from dataselector.pipeline.cache import (
+    atomic_write_features_with_meta,
+    compute_meta_hash,
+    create_meta_info,
+    features_path_for_hash,
+    load_features_by_hash,
+    meta_path_for_hash,
+)
 
 # Load src/cache.py directly to avoid top-level imports in package __init__ during tests
 

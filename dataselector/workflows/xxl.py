@@ -27,6 +27,7 @@ from typing import Optional
 
 from dataselector.cli_decorators import cli_command
 
+
 def log(level: str, msg: str):
     """Simple logging with timestamp."""
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")

@@ -1,14 +1,13 @@
 import os
 import sys
-import pytest
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from pathlib import Path
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 from tests.utils import load_module_from_path
-
 
 # Prefer shared fixtures to centralize data generation
 # Use small dim by default to keep integration tests fast

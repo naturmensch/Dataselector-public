@@ -48,10 +48,10 @@ def test_resume_with_missing_monitor_state(tmp_path, monkeypatch):
     (test_run / "config" / "config_optuna.yaml").write_text("n_trials: 10\n")
 
     # Create an optuna DB using the same helper as other tests
-    from scripts.optuna_optimize import run_optuna
-
     import numpy as _np
     import pandas as _pd
+
+    from scripts.optuna_optimize import run_optuna
 
     features = _np.random.RandomState(1).randn(20, 16).astype("float32")
     metadata = _pd.DataFrame({

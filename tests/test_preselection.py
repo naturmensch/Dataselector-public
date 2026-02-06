@@ -2,9 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from dataselector.selection.diversity_selector import DiversitySelector
 import dataselector.data.io
-
+from dataselector.selection.diversity_selector import DiversitySelector
 
 
 @pytest.mark.parametrize("test_case", [

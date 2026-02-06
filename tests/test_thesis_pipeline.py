@@ -12,8 +12,9 @@ def test_thesis_pipeline_importable():
 
 def test_thesis_pipeline_signature():
     """Test run_thesis_pipeline function signature."""
-    from dataselector.workflows.thesis_pipeline import run_thesis_pipeline
     import inspect
+
+    from dataselector.workflows.thesis_pipeline import run_thesis_pipeline
 
     sig = inspect.signature(run_thesis_pipeline)
     params = list(sig.parameters.keys())
@@ -37,9 +38,10 @@ def test_thesis_pipeline_signature():
 )
 def test_run_thesis_pipeline_integration():
     """Integration test for run_thesis_pipeline (skipped in CI)."""
-    from dataselector.workflows.thesis_pipeline import run_thesis_pipeline
-    from pathlib import Path
     import tempfile
+    from pathlib import Path
+
+    from dataselector.workflows.thesis_pipeline import run_thesis_pipeline
 
     with tempfile.TemporaryDirectory() as tmpdir:
         output_dir = Path(tmpdir) / "outputs"

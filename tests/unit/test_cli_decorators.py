@@ -3,16 +3,17 @@ Unit tests for CLI decorator system.
 """
 
 import argparse
+
 import pytest
 
 from dataselector.cli_decorators import (
+    _CLI_COMMANDS,
     ArgDef,
     CommandDef,
     build_parser_from_decorators,
     cli_command,
     dispatch_from_decorators,
     get_registered_commands,
-    _CLI_COMMANDS,
 )
 
 

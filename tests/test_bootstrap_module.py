@@ -3,15 +3,15 @@
 Tests the new direct function implementations (non-subprocess).
 """
 
-import pytest
 import numpy as np
 import pandas as pd
+import pytest
 
 
 def test_jaccard():
     """Test jaccard similarity function."""
     from dataselector.workflows.bootstrap import jaccard
-    
+
     # Identical sets
     assert jaccard([1, 2, 3], [1, 2, 3]) == 1.0
     
@@ -58,7 +58,7 @@ def test_run_bootstrap_pareto_importable():
 def test_summarize_bootstrap():
     """Test summarize_bootstrap function."""
     from dataselector.workflows.bootstrap import summarize_bootstrap
-    
+
     # Create mock bootstrap results
     df_boot = pd.DataFrame({
         'n_selected': [100, 102, 98, 101],
@@ -91,8 +91,9 @@ def test_summarize_bootstrap():
 def test_bootstrap_module_no_subprocess():
     """Verify that the bootstrap module doesn't use subprocess anymore."""
     import inspect
+
     from dataselector.workflows import bootstrap
-    
+
     # Read the source code
     source = inspect.getsource(bootstrap)
     

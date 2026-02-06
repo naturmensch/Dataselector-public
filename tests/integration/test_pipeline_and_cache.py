@@ -1,7 +1,7 @@
 import importlib.util
-from pathlib import Path
 import sys
 import types
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -10,10 +10,13 @@ import pytest
 # repo root (two levels up from tests/integration)
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
+import sys
+
 # Prevent importing src/__init__.py (which pulls heavy native deps like umap/numba at import time)
 # by registering a lightweight package module early. This lets submodules be loaded directly
 # via importlib without executing package-level side-effects.
-import types, sys
+import types
+
 if 'src' not in sys.modules:
     _src_pkg = types.ModuleType('src')
     _src_pkg.__path__ = []
@@ -36,7 +39,8 @@ def test_cache_migration_and_load(tmp_path):
 
     # Before importing the migrate script, inject a lightweight stub for `src.cache` to
     # avoid importing heavy native deps indirectly via package-level imports.
-    import types, sys
+    import sys
+    import types
 
     fake_cache = types.ModuleType("dataselectorcache")
 

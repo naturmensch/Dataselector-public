@@ -1,17 +1,22 @@
-import sys
+import importlib.util
 import os
 import shutil
 import subprocess
+import sys
 import time
-from pathlib import Path
-import importlib.util
 import types
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from tests.utils import load_module_from_path, FakeFeatureExtractor, FakeMetadataProcessor, create_dummy_script
+from tests.utils import (
+    FakeFeatureExtractor,
+    FakeMetadataProcessor,
+    create_dummy_script,
+    load_module_from_path,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 

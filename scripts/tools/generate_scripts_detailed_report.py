@@ -9,8 +9,8 @@ Outputs Markdown to docs/all_scripts_overview_detailed.md
 """
 
 import ast
-from pathlib import Path
 import sys
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 EXCLUDE_DIRS = {"tests", "archive", "docs/.*/archive", ".git", "node_modules", "archive_local"}

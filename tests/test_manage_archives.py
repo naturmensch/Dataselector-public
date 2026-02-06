@@ -1,7 +1,7 @@
-import tarfile
-from pathlib import Path
-import tempfile
 import os
+import tarfile
+import tempfile
+from pathlib import Path
 
 from scripts.manage_archives import archive_outputs, list_archives, restore_archive
 

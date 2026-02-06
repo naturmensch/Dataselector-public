@@ -13,9 +13,9 @@ import pandas as pd
 from dataselector.cli_decorators import cli_command
 
 try:
+    import matplotlib.pyplot as plt
     from pyproj import Transformer
     from shapely.geometry import Point
-    import matplotlib.pyplot as plt
 except ImportError:  # pragma: no cover
     raise ImportError(
         "This tool requires geopandas, shapely, pyproj and matplotlib. "

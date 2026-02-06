@@ -3,8 +3,9 @@
 
 Exits non-zero if a mismatch is found.
 """
-from pathlib import Path
 import sys
+from pathlib import Path
+
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]

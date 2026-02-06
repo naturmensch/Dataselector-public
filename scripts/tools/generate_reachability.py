@@ -16,11 +16,12 @@ This is a static approximation (no runtime tracing).
 """
 
 from __future__ import annotations
-import re
-import csv
-from pathlib import Path
-from collections import defaultdict, deque
+
 import ast
+import csv
+import re
+from collections import defaultdict, deque
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS_DIR = ROOT / "scripts"

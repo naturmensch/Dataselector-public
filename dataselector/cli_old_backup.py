@@ -480,6 +480,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if ns.cmd == "autoscale":
         from dataselector.workflows.autoscale import main as run
+
         # Convert namespace to argv format for the workflow main()
         argv = []
         if ns.csv:
@@ -518,6 +519,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if ns.cmd == "xxl":
         from dataselector.workflows.xxl import main as run
+
         # Convert namespace to argv format
         argv = ["--best-sampler", ns.best_sampler]
         argv.extend(["--phase", ns.phase])
@@ -734,7 +736,7 @@ def main(argv: list[str] | None = None) -> int:
         return run(args)
 
     if ns.cmd == "tools":
-        from dataselector.tools import check, archive, audit, clean, docs_link
+        from dataselector.tools import archive, audit, check, clean, docs_link
 
         if ns.tool_cmd == "check-protected":
             return check.check_protected(

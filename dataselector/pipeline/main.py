@@ -16,11 +16,11 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from dataselector.analysis.visualizer import Visualizer
+from dataselector.data.metadata_processor import MetadataProcessor
+from dataselector.features.feature_extractor import FeatureExtractor
 from dataselector.selection.clustering import ClusteringPipeline
 from dataselector.selection.diversity_selector import DiversitySelector
-from dataselector.features.feature_extractor import FeatureExtractor
-from dataselector.data.metadata_processor import MetadataProcessor
-from dataselector.analysis.visualizer import Visualizer
 
 
 class KDR100SelectionPipeline:

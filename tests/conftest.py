@@ -1,7 +1,8 @@
 
-import sys
 import os
+import sys
 from pathlib import Path
+
 import numpy as np
 
 # --- PFAD-SETUP: MUSS GANZ OBEN STEHEN ---
@@ -19,10 +20,11 @@ except Exception:
     pass
 # -----------------------------------------
 
+import types
+from pathlib import Path
+
 import pytest
 from _pytest.config import Config
-from pathlib import Path
-import types
 
 REPO_ROOT_PATH = Path(root_dir)
 
@@ -34,26 +36,27 @@ def _register_all_cli_commands():
     """Import all CLI modules to populate _CLI_COMMANDS registry."""
     try:
         # Import all workflow modules
-        import dataselector.workflows.autoscale
-        import dataselector.workflows.optuna_optimize
-        import dataselector.workflows.adaptive_pipeline
-        import dataselector.workflows.xxl
-        import dataselector.workflows.thesis_sampler_suite
-        import dataselector.workflows.sampler_suite
-        import dataselector.workflows.final_selection
-        import dataselector.workflows.thesis_pipeline
-        import dataselector.workflows.benchmark_sampling
-        import dataselector.workflows.compare_samplers
-        import dataselector.workflows.bootstrap
-        import dataselector.workflows.generate_reports
         # Import data module
         import dataselector.data.build_tiles
-        # Import all tools modules
-        import dataselector.tools.check
         import dataselector.tools.archive
         import dataselector.tools.audit
+
+        # Import all tools modules
+        import dataselector.tools.check
         import dataselector.tools.clean
         import dataselector.tools.docs_link
+        import dataselector.workflows.adaptive_pipeline
+        import dataselector.workflows.autoscale
+        import dataselector.workflows.benchmark_sampling
+        import dataselector.workflows.bootstrap
+        import dataselector.workflows.compare_samplers
+        import dataselector.workflows.final_selection
+        import dataselector.workflows.generate_reports
+        import dataselector.workflows.optuna_optimize
+        import dataselector.workflows.sampler_suite
+        import dataselector.workflows.thesis_pipeline
+        import dataselector.workflows.thesis_sampler_suite
+        import dataselector.workflows.xxl
     except ImportError:
         pass  # Let pytest show the actual error
 
@@ -73,8 +76,8 @@ def repo_root():
 @pytest.fixture
 def make_dummy_metadata():
     """Return a factory that creates deterministic metadata DataFrames."""
-    import pandas as _pd
     import numpy as _np
+    import pandas as _pd
 
     def _make(n, seed: int = 0):
         rng = _np.random.RandomState(seed)
@@ -178,8 +181,9 @@ def fake_features():
 @pytest.fixture
 def stub_feature_extraction(monkeypatch, fake_features):
     """Stub load_or_extract_features to return fake features instead of running extraction."""
-    import pandas as pd
     import sys
+
+    import pandas as pd
 
     def _fake_loader(tmp_path, csv_meta, cache=True, batch_size=16, **kwargs):
         meta = pd.read_csv(csv_meta)
@@ -199,6 +203,7 @@ def pytest_configure(config):
       E2E tests will be automatically skipped later when the environment check fails.
     """
     import subprocess
+
     from _pytest.config import Config
 
     # Warn if not using the canonical wrapper

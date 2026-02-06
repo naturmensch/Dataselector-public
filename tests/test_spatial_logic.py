@@ -1,14 +1,16 @@
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
-from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 from tests.utils import load_module_from_path
 
 
 def _install_apricot_stub(monkeypatch):
-    import types, sys
+    import sys
+    import types
 
     class _FakeFacilityLocation:
         def __init__(self, n_samples=None, metric=None, random_state=None):
@@ -132,7 +134,8 @@ def test_adaptive_fallback_allows_duplicates(monkeypatch):
 
 def test_spatial_penalty_increases_nearby_distances(monkeypatch):
     # Prevent src package init from importing heavy deps by stubbing required submodules
-    import types, sys
+    import sys
+    import types
     src_pkg = types.ModuleType("src")
     src_pkg.__path__ = []
     monkeypatch.setitem(sys.modules, "src", src_pkg)

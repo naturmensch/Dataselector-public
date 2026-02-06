@@ -8,10 +8,11 @@ This test file validates:
 4. Tile geometry is reasonable
 """
 
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pytest
-from pathlib import Path
 
 
 @pytest.fixture

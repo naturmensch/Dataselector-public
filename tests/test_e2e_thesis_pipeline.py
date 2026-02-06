@@ -477,10 +477,10 @@ def test_monitor_reconcile_with_db(data_symlink, tmp_path, monkeypatch):
     (test_run / "config" / "config_optuna.yaml").write_text("n_trials: 10\n")
 
     # Create an optuna DB with 3 completed trials by invoking run_optuna
-    from scripts.optuna_optimize import run_optuna
-
     # Provide synthetic features and dummy selector to avoid heavy deps
     import numpy as _np
+
+    from scripts.optuna_optimize import run_optuna
     features = _np.random.RandomState(1).randn(20, 16).astype("float32")
     import pandas as _pd
     metadata = _pd.DataFrame({

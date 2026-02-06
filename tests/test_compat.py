@@ -1,6 +1,6 @@
+import importlib
 import sys
 from types import SimpleNamespace
-import importlib
 
 import pytest
 
@@ -54,6 +54,7 @@ def test_validate_environment_full_pass(monkeypatch):
 def test_validate_environment_full_numpy_mismatch(monkeypatch):
     _patch_modules(monkeypatch, numpy_version="2.4.0")
     import importlib
+
     import dataselector.compat as compat
     with pytest.raises(RuntimeError) as exc:
         compat.validate_environment_full(raise_on_error=True)

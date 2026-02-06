@@ -1,10 +1,16 @@
 import os
 import tempfile
 from pathlib import Path
+
 import pandas as pd
 import yaml
 
-from scripts.apply_optuna_best import extract_params_from_trial, find_best_trial, write_new_config, inject_into_config
+from scripts.apply_optuna_best import (
+    extract_params_from_trial,
+    find_best_trial,
+    inject_into_config,
+    write_new_config,
+)
 
 
 def make_dummy_optuna_csv(path: Path):

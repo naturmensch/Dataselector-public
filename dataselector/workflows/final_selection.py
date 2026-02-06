@@ -50,10 +50,10 @@ def run_final_selection(
     # Lazy imports to avoid heavy dependencies at import time
     import yaml
 
-    from dataselector.data.io import load_metadata, load_or_extract_features
-    from dataselector.selection.diversity_selector import DiversitySelector
     from dataselector.analysis.metrics import compute_metrics
     from dataselector.analysis.visualizer import Visualizer
+    from dataselector.data.io import load_metadata, load_or_extract_features
+    from dataselector.selection.diversity_selector import DiversitySelector
 
     # Set up output directory
     if output_dir is None:
@@ -84,7 +84,7 @@ def run_final_selection(
         cfg = {}
 
     from dataselector.pipeline.pipeline_utils import compute_min_distance_km
-    
+
     # Extract parameters (CLI overrides config)
     n_samples = n_samples or cfg.get("selection", {}).get("n_samples", 34)
     alpha = alpha if alpha is not None else cfg.get("selection", {}).get("alpha_visual", 0.7)

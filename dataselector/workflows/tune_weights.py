@@ -103,12 +103,12 @@ def run_exploration(
         )
 
     from dataselector.pipeline.experiments import ExperimentRunner
+    from dataselector.pipeline.pipeline_utils import compute_min_distance_km
     from dataselector.selection.pareto import (
         compute_pareto_front,
         export_pareto_report,
         visualize_pareto_front,
     )
-    from dataselector.pipeline.pipeline_utils import compute_min_distance_km
 
     # Compute min_distance_km from data (no fallback)
     if metadata_path is None:

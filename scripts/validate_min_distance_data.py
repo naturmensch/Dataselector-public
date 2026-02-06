@@ -8,10 +8,11 @@ Directly analyzes the KDR100 dataset to identify:
 3. Potential data quality issues
 """
 
+import sys
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
-import sys
 
 
 def analyze_coordinates(csv_path):
