@@ -17,8 +17,6 @@ from dataselector.pipeline.cache import (
 # Load src/cache.py directly to avoid top-level imports in package __init__ during tests
 
 
-
-
 def test_compute_meta_hash_deterministic(tmp_path: Path):
     csv = tmp_path / "meta.csv"
     csv.write_text("id,x\n1,10\n2,20\n")
@@ -65,6 +63,7 @@ def test_migration_script(tmp_path: Path, monkeypatch):
 
     # Run migration function directly
     from scripts.migrate_feature_cache_to_hash import migrate
+
     code = migrate(out, csv, dry_run=False)
     assert code == 0
 

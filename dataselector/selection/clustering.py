@@ -11,6 +11,7 @@ import numpy as np
 
 try:
     import umap
+
     UMAP_AVAILABLE = True
 except Exception:
     UMAP_AVAILABLE = False
@@ -69,7 +70,6 @@ class ClusteringPipeline:
         """
         # 1. Standardisierung
         features_scaled = self.scaler.fit_transform(features)
-
 
         # 3. K-Means Clustering
         print(f"Führe K-Means Clustering durch ({self.n_clusters} Cluster)...")

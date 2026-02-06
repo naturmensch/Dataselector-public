@@ -25,9 +25,7 @@ def test_import_signature():
         assert param in params, f"Missing parameter: {param}"
 
 
-@pytest.mark.skipif(
-    True, reason="Requires optuna and valid CSV/storage setup"
-)
+@pytest.mark.skipif(True, reason="Requires optuna and valid CSV/storage setup")
 def test_import_trials_integration():
     """Integration test for import_trials_from_csv (skipped in CI)."""
     import tempfile

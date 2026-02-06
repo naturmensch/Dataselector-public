@@ -180,7 +180,9 @@ def compute_min_distance_km(
                     lat2, lon2 = lats[j], lons[j]
                     # Approximate km per degree (ignoring spheroid for speed)
                     dlat_km = (lat2 - lat1) * 111.0
-                    dlon_km = (lon2 - lon1) * 111.0 * np.cos(np.radians((lat1 + lat2) / 2))
+                    dlon_km = (
+                        (lon2 - lon1) * 111.0 * np.cos(np.radians((lat1 + lat2) / 2))
+                    )
                     dist_km = np.sqrt(dlat_km**2 + dlon_km**2)
                     distances.append(dist_km)
             if distances:

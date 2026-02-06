@@ -1,4 +1,3 @@
-
 import os
 import sys
 from pathlib import Path
@@ -151,7 +150,7 @@ def tmp_dirs(tmp_path):
 @pytest.fixture
 def inject_src_stub(monkeypatch):
     """
-    Ensures 'src' package exists in sys.modules and cleans up any 
+    Ensures 'src' package exists in sys.modules and cleans up any
     submodules attached to it during the test.
     """
     # Ensure src package exists
@@ -168,13 +167,16 @@ def inject_src_stub(monkeypatch):
     for k in current_keys - original_keys:
         del sys.modules[k]
 
+
 @pytest.fixture
 def fake_features():
     """Return a function that generates fake feature arrays mimicking DINOv2 output."""
+
     def _fake(n_samples, feature_dim=768):
         # Use random features to avoid identical visual distances
         rng = np.random.RandomState(42)
         return rng.randn(n_samples, feature_dim).astype(np.float32)
+
     return _fake
 
 
@@ -191,7 +193,9 @@ def stub_feature_extraction(monkeypatch, fake_features):
         return fake_features(n)
 
     # Patch the function in the module
-    monkeypatch.setattr(sys.modules["dataselector.data.io"], "load_or_extract_features", _fake_loader)
+    monkeypatch.setattr(
+        sys.modules["dataselector.data.io"], "load_or_extract_features", _fake_loader
+    )
     return _fake_loader
 
 
@@ -224,7 +228,14 @@ def pytest_configure(config):
 
     # If we are inside the wrapper, run the environment diagnostic script to ensure compatibility
     try:
-        res = subprocess.run([sys.executable, str(Path(__file__).parent.parent / "scripts" / "check_env.py")], capture_output=True, text=True)
+        res = subprocess.run(
+            [
+                sys.executable,
+                str(Path(__file__).parent.parent / "scripts" / "check_env.py"),
+            ],
+            capture_output=True,
+            text=True,
+        )
         if res.returncode == 0:
             config._env_check_ok = True
             config._env_check_msg = "Environment check passed"
@@ -235,7 +246,9 @@ def pytest_configure(config):
             err = (res.stderr or "").strip()
             config._env_check_msg = (
                 "Environment check failed: \n" + out + "\n" + err + "\n"
-                "Run: './scripts/exec_in_env.sh --env dataselector --create --ensure-packages ""numpy==1.26.4 numba==0.63.1"" --yes' to fix."
+                "Run: './scripts/exec_in_env.sh --env dataselector --create --ensure-packages "
+                "numpy==1.26.4 numba==0.63.1"
+                " --yes' to fix."
             )
     except Exception as e:
         config._env_check_ok = False
@@ -251,7 +264,9 @@ def pytest_collection_modifyitems(config: Config, items):
     if getattr(config, "_env_check_ok", False):
         return
 
-    skip_reason = getattr(config, "_env_check_msg", "Environment not suitable for E2E tests")
+    skip_reason = getattr(
+        config, "_env_check_msg", "Environment not suitable for E2E tests"
+    )
     skip_marker = pytest.mark.skip(reason=skip_reason)
 
     for item in list(items):

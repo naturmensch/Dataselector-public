@@ -337,7 +337,7 @@ class TestGetRegisteredCommands:
 
     def test_get_commands_returns_copy(self):
         """Test that returned dict is a copy (modifications don't affect registry)."""
-        
+
         @cli_command("test", args={})
         def main() -> int:
             return 0

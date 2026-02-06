@@ -44,23 +44,24 @@ from dataselector.cli_decorators import (
 
 def main(argv: list[str] | None = None) -> int:
     """Main CLI entry point using decorator-based dispatcher.
-    
+
     Args:
         argv: Command line arguments (defaults to sys.argv)
-        
+
     Returns:
         Exit code (0 = success, non-zero = error)
     """
     # Build parser from all registered @cli_command decorators
     parser = build_parser_from_decorators()
-    
+
     # Parse arguments
     args = parser.parse_args(argv)
-    
+
     # Dispatch to registered command handler
     return dispatch_from_decorators(args)
 
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(main())

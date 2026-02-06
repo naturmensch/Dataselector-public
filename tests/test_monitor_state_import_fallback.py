@@ -54,28 +54,52 @@ def test_resume_with_missing_monitor_state(tmp_path, monkeypatch):
     from scripts.optuna_optimize import run_optuna
 
     features = _np.random.RandomState(1).randn(20, 16).astype("float32")
-    metadata = _pd.DataFrame({
-        "N": _np.random.uniform(48, 55, 20),
-        "left": _np.random.uniform(6, 15, 20),
-        "year": _np.random.randint(1880, 1945, 20),
-    })
+    metadata = _pd.DataFrame(
+        {
+            "N": _np.random.uniform(48, 55, 20),
+            "left": _np.random.uniform(6, 15, 20),
+            "year": _np.random.randint(1880, 1945, 20),
+        }
+    )
 
-    monkeypatch.setattr("scripts.optuna_optimize.load_or_create_data", lambda n, dim, seed: (features, metadata), raising=False)
+    monkeypatch.setattr(
+        "scripts.optuna_optimize.load_or_create_data",
+        lambda n, dim, seed: (features, metadata),
+        raising=False,
+    )
 
     class DummySelector:
         def __init__(self, n_samples, use_multi_criteria=True):
             self.n_samples = n_samples
 
-        def select(self, features, metadata, spatial_constraint, min_distance_km, alpha_visual, beta_spatial, gamma_temporal):
+        def select(
+            self,
+            features,
+            metadata,
+            spatial_constraint,
+            min_distance_km,
+            alpha_visual,
+            beta_spatial,
+            gamma_temporal,
+        ):
             n = min(self.n_samples, len(features))
             return list(range(n))
 
         def _calculate_diversity_score(self, selected_features):
             return float(_np.mean(_np.var(selected_features, axis=0)))
 
-    monkeypatch.setattr("scripts.optuna_optimize.DiversitySelector", DummySelector, raising=False)
+    monkeypatch.setattr(
+        "scripts.optuna_optimize.DiversitySelector", DummySelector, raising=False
+    )
 
-    run_optuna(n_trials=3, n_candidates=20, dim=16, n_samples=5, out_dir=test_run, study_db=str(test_run / "optuna_study.db"))
+    run_optuna(
+        n_trials=3,
+        n_candidates=20,
+        dim=16,
+        n_samples=5,
+        out_dir=test_run,
+        study_db=str(test_run / "optuna_study.db"),
+    )
     assert (test_run / "optuna_study.db").exists()
 
     # Ensure RecoveryPlanner is importable

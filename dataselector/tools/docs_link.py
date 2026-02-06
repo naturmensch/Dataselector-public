@@ -8,7 +8,9 @@ from typing import List, Tuple
 
 from dataselector.cli_decorators import cli_command
 
-ROOT = Path(__file__).resolve().parents[2]  # dataselector/tools/docs_link.py -> repo root
+ROOT = (
+    Path(__file__).resolve().parents[2]
+)  # dataselector/tools/docs_link.py -> repo root
 
 
 def find_broken_links(docs_dir: Path = None) -> List[Tuple[Path, str, str]]:
@@ -24,17 +26,17 @@ def find_broken_links(docs_dir: Path = None) -> List[Tuple[Path, str, str]]:
     if not docs_dir.exists():
         return []
 
-    link_pattern = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
+    link_pattern = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
     broken = []
 
     for md_file in docs_dir.rglob("*.md"):
-        text = md_file.read_text(encoding='utf-8', errors='ignore')
+        text = md_file.read_text(encoding="utf-8", errors="ignore")
         for match in link_pattern.finditer(text):
             link_text = match.group(1)
             link_target = match.group(2)
 
             # Skip external links
-            if link_target.startswith(('http://', 'https://', 'mailto:', '#')):
+            if link_target.startswith(("http://", "https://", "mailto:", "#")):
                 continue
 
             # Resolve relative path
@@ -81,7 +83,7 @@ def autofix_links(yes: bool = False, no_backup: bool = False) -> int:
 
     print(f"Found {len(broken)} broken links")
 
-    archive_dir = ROOT / 'archive_local' / 'docs_migration_backup' / 'autofix'
+    archive_dir = ROOT / "archive_local" / "docs_migration_backup" / "autofix"
     if backup and not dry_run:
         archive_dir.mkdir(parents=True, exist_ok=True)
 
@@ -92,7 +94,8 @@ def autofix_links(yes: bool = False, no_backup: bool = False) -> int:
         # Try to find target by basename
         target_basename = Path(target).name
         candidates = [
-            p for p in ROOT.rglob('*')
+            p
+            for p in ROOT.rglob("*")
             if p.is_file() and p.name.lower() == target_basename.lower()
         ]
 
@@ -100,6 +103,7 @@ def autofix_links(yes: bool = False, no_backup: bool = False) -> int:
             # Unique match found
             cand = candidates[0]
             import os
+
             rel_path = os.path.relpath(str(cand), start=str(src_file.parent))
 
             if dry_run:
@@ -108,14 +112,14 @@ def autofix_links(yes: bool = False, no_backup: bool = False) -> int:
             else:
                 # Backup original
                 if backup:
-                    backup_path = archive_dir / (src_file.name + '.orig')
+                    backup_path = archive_dir / (src_file.name + ".orig")
                     if not backup_path.exists():
                         backup_path.write_bytes(src_file.read_bytes())
 
                 # Replace in file
-                content = src_file.read_text(encoding='utf-8')
+                content = src_file.read_text(encoding="utf-8")
                 new_content = content.replace(f"]({target})", f"]({rel_path})")
-                src_file.write_text(new_content, encoding='utf-8')
+                src_file.write_text(new_content, encoding="utf-8")
                 fixed.append((src_file, target, rel_path))
         else:
             manual.append((src_file, target, len(candidates)))

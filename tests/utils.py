@@ -36,6 +36,7 @@ def load_module_from_path(name: str, path: Path, register: bool = False):
 
 class FakeFeatureExtractor:
     """Stub for src.feature_extractor.FeatureExtractor"""
+
     def __init__(self, *args, **kwargs):
         pass
 
@@ -46,6 +47,7 @@ class FakeFeatureExtractor:
 
 class FakeMetadataProcessor:
     """Stub for src.metadata_processor.MetadataProcessor"""
+
     def __init__(self, csv_path):
         self.csv_path = csv_path
 
@@ -57,17 +59,15 @@ class FakeMetadataProcessor:
 
     def resolve_image_paths(self, image_dir):
         df = self.load_csv()
-        if 'image_path' not in df.columns:
-            df['image_path'] = pd.Series([None] * len(df))
+        if "image_path" not in df.columns:
+            df["image_path"] = pd.Series([None] * len(df))
         return df
 
 
 def create_dummy_script(path: Path, marker: str = "DUMMY_RUN_DONE"):
     """Creates a standalone dummy python script for testing monitors."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        textwrap.dedent(
-            f"""
+    path.write_text(textwrap.dedent(f"""
             #!/usr/bin/env python3
             import os, sys, time
             
@@ -84,10 +84,5 @@ def create_dummy_script(path: Path, marker: str = "DUMMY_RUN_DONE"):
             sys.stdout.flush()
             time.sleep(0.1)
             sys.exit(0)
-            """
-        )
-    )
+            """))
     path.chmod(0o755)
-
-
-

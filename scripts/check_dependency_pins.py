@@ -3,6 +3,7 @@
 
 Exits non-zero if a mismatch is found.
 """
+
 import sys
 from pathlib import Path
 

@@ -114,7 +114,9 @@ def run_fine_sweep(
                 n_lhs = run_cfg.get("n_lhs")
                 if n_lhs:
                     n_samples_cfg = int(n_lhs)
-                    print(f"ℹ️ Using n_samples from run config (n_lhs): {n_samples_cfg}")
+                    print(
+                        f"ℹ️ Using n_samples from run config (n_lhs): {n_samples_cfg}"
+                    )
 
             if n_samples_cfg is None:
                 expl_cfg_path = em.get_path("config") / "config_exploration.yaml"
@@ -123,7 +125,9 @@ def run_fine_sweep(
                     n_expl = expl_cfg.get("n_samples")
                     if n_expl:
                         n_samples_cfg = int(n_expl)
-                        print(f"ℹ️ Using n_samples from exploration config: {n_samples_cfg}")
+                        print(
+                            f"ℹ️ Using n_samples from exploration config: {n_samples_cfg}"
+                        )
         except Exception as e:
             print(f"⚠️ Error reading run configs: {e}")
 
@@ -213,10 +217,10 @@ def run_fine_sweep(
     n_infeasible = (~feasible_mask).sum()
     if n_infeasible > 0:
         print(f"Info: {n_infeasible} infeasible runs removed from Pareto computation.")
-    
+
     feasible_df = full_df[feasible_mask].reset_index(drop=True)
     pareto_front = compute_pareto_front(feasible_df)
-    
+
     export_pareto_report(
         pareto_front, output_path=str(output_dir / "pareto_solutions.csv")
     )
@@ -224,7 +228,7 @@ def run_fine_sweep(
     visualize_pareto_front(
         feasible_df, pareto_front, output_dir=str(output_dir / "plots")
     )
-    
+
     print("Fine sweep + Pareto finished")
 
     return full_df, pareto_front

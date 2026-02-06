@@ -76,6 +76,7 @@ def test_check_all_tracked(tmp_path, monkeypatch):
 
 # clean_workspace related tests
 
+
 def test_dry_run_shows_protected(tmp_path, capsys, monkeypatch):
     cw = load_module_from_path("cw", REPO_ROOT / "scripts" / "clean_workspace.py")
     monkeypatch.chdir(tmp_path)

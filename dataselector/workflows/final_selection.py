@@ -87,10 +87,20 @@ def run_final_selection(
 
     # Extract parameters (CLI overrides config)
     n_samples = n_samples or cfg.get("selection", {}).get("n_samples", 34)
-    alpha = alpha if alpha is not None else cfg.get("selection", {}).get("alpha_visual", 0.7)
-    beta = beta if beta is not None else cfg.get("selection", {}).get("beta_spatial", 0.05)
-    gamma = gamma if gamma is not None else cfg.get("selection", {}).get("gamma_temporal", 0.25)
-    
+    alpha = (
+        alpha
+        if alpha is not None
+        else cfg.get("selection", {}).get("alpha_visual", 0.7)
+    )
+    beta = (
+        beta if beta is not None else cfg.get("selection", {}).get("beta_spatial", 0.05)
+    )
+    gamma = (
+        gamma
+        if gamma is not None
+        else cfg.get("selection", {}).get("gamma_temporal", 0.25)
+    )
+
     # Compute min_distance_km (no fallback)
     if metadata_path is None:
         # Try common locations
@@ -103,8 +113,12 @@ def run_final_selection(
                 "Metadata not found at outputs/metadata.csv or data/new_all_tiles.csv. "
                 "Cannot compute min_distance_km (no hardcoded fallback)."
             )
-    
-    min_distance_km = compute_min_distance_km(str(metadata_path)) if min_distance_km is None else min_distance_km
+
+    min_distance_km = (
+        compute_min_distance_km(str(metadata_path))
+        if min_distance_km is None
+        else min_distance_km
+    )
 
     print(f"\nFinal selection parameters:")
     print(f"  n_samples: {n_samples}")
@@ -168,7 +182,9 @@ def run_final_selection(
         embeddings_2d = None
 
     # Initialize selector
-    selector = DiversitySelector(n_samples=n_samples, random_state=seed, use_multi_criteria=True)
+    selector = DiversitySelector(
+        n_samples=n_samples, random_state=seed, use_multi_criteria=True
+    )
 
     # Pre-selected names/indices (optional)
     pre_selected_names = cfg.get("selection", {}).get("pre_selected_names", None)
@@ -374,17 +390,36 @@ def main(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run final selection workflow")
     parser.add_argument("--n-samples", type=int, default=None, help="Number of samples")
-    parser.add_argument("--alpha", type=float, default=None, help="Visual diversity weight")
-    parser.add_argument("--beta", type=float, default=None, help="Spatial diversity weight")
-    parser.add_argument("--gamma", type=float, default=None, help="Temporal diversity weight")
-    parser.add_argument("--min-distance-km", type=float, default=None, help="Min distance constraint (km)")
-    parser.add_argument("--use-bootstrap-best", action="store_true", help="Use bootstrap-best config")
+    parser.add_argument(
+        "--alpha", type=float, default=None, help="Visual diversity weight"
+    )
+    parser.add_argument(
+        "--beta", type=float, default=None, help="Spatial diversity weight"
+    )
+    parser.add_argument(
+        "--gamma", type=float, default=None, help="Temporal diversity weight"
+    )
+    parser.add_argument(
+        "--min-distance-km",
+        type=float,
+        default=None,
+        help="Min distance constraint (km)",
+    )
+    parser.add_argument(
+        "--use-bootstrap-best", action="store_true", help="Use bootstrap-best config"
+    )
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--output-dir", type=str, default=None, help="Output directory")
-    parser.add_argument("--config-path", type=str, default=None, help="Config file path")
-    parser.add_argument("--metadata-path", type=str, default=None, help="Metadata CSV path")
-    parser.add_argument("--features-path", type=str, default=None, help="Features NPY path")
-    
+    parser.add_argument(
+        "--config-path", type=str, default=None, help="Config file path"
+    )
+    parser.add_argument(
+        "--metadata-path", type=str, default=None, help="Metadata CSV path"
+    )
+    parser.add_argument(
+        "--features-path", type=str, default=None, help="Features NPY path"
+    )
+
     args = parser.parse_args()
     main(
         n_samples=args.n_samples,

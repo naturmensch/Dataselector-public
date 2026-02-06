@@ -13,20 +13,31 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-EXCLUDE_DIRS = {"tests", "archive", "docs/.*/archive", ".git", "node_modules", "archive_local"}
+EXCLUDE_DIRS = {
+    "tests",
+    "archive",
+    "docs/.*/archive",
+    ".git",
+    "node_modules",
+    "archive_local",
+}
 
 out_lines = ["# Detailed Python Scripts Report\n"]
 
 py_files = sorted(ROOT.glob("**/*.py"))
 
+
 def is_excluded(p: Path):
     parts = set(p.parts)
-    if "tests" in p.parts or any(str(p).startswith(str(ROOT / d)) for d in ["archive", "archive_local"]):
+    if "tests" in p.parts or any(
+        str(p).startswith(str(ROOT / d)) for d in ["archive", "archive_local"]
+    ):
         return True
     # exclude tests and test helpers
     if "/tests/" in str(p) or str(p).endswith("_test.py"):
         return True
     return False
+
 
 for p in py_files:
     rel = p.relative_to(ROOT)
@@ -88,7 +99,13 @@ for p in py_files:
                 elif isinstance(node.func.value, ast.Name):
                     pass
             elif isinstance(node.func, ast.Name):
-                if node.func.id in {"Popen", "run", "call", "check_output", "check_call"}:
+                if node.func.id in {
+                    "Popen",
+                    "run",
+                    "call",
+                    "check_output",
+                    "check_call",
+                }:
                     subprocess_calls.add(node.func.id)
                 if node.func.id == "system":
                     subprocess_calls.add("os.system")
@@ -113,11 +130,19 @@ for p in py_files:
     # build markdown section
     out_lines.append(f"## {rel}\n")
     out_lines.append(f"- **Path:** `{rel}`\n")
-    out_lines.append(f"- **Imports (top-level modules):** {', '.join(sorted(imports)) if imports else '*(none detected)*'}\n")
-    out_lines.append(f"- **Top-level functions:** {', '.join(top_level_funcs) if top_level_funcs else '*(none)*'}\n")
-    out_lines.append(f"- **Top-level classes:** {', '.join(top_level_classes) if top_level_classes else '*(none)*'}\n")
+    out_lines.append(
+        f"- **Imports (top-level modules):** {', '.join(sorted(imports)) if imports else '*(none detected)*'}\n"
+    )
+    out_lines.append(
+        f"- **Top-level functions:** {', '.join(top_level_funcs) if top_level_funcs else '*(none)*'}\n"
+    )
+    out_lines.append(
+        f"- **Top-level classes:** {', '.join(top_level_classes) if top_level_classes else '*(none)*'}\n"
+    )
     out_lines.append(f"- **Has __main__ guard:** {'Yes' if has_main_guard else 'No'}\n")
-    out_lines.append(f"- **Subprocess-like calls detected:** {', '.join(sorted(subprocess_calls)) if subprocess_calls else '*(none)*'}\n")
+    out_lines.append(
+        f"- **Subprocess-like calls detected:** {', '.join(sorted(subprocess_calls)) if subprocess_calls else '*(none)*'}\n"
+    )
     if click_or_argparse:
         out_lines.append(f"- **CLI libs detected:** {', '.join(click_or_argparse)}\n")
     out_lines.append("\n")

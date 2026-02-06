@@ -22,7 +22,7 @@ class SimpleRegressor(nn.Module):
             nn.ReLU(),
             nn.Linear(64, 32),
             nn.ReLU(),
-            nn.Linear(32, 1)
+            nn.Linear(32, 1),
         )
 
     def forward(self, x):
@@ -36,7 +36,7 @@ def fit_ensemble_on_bootstrap_df(
     n_models: int = 5,
     epochs: int = 100,
     lr: float = 0.01,
-    random_seed: int = 42
+    random_seed: int = 42,
 ) -> List[nn.Module]:
     """Fit an ensemble of neural networks on bootstrap data.
 
@@ -96,8 +96,7 @@ def fit_ensemble_on_bootstrap_df(
 
 
 def predict_with_uncertainty(
-    models: List[nn.Module],
-    X_query: np.ndarray
+    models: List[nn.Module], X_query: np.ndarray
 ) -> Tuple[float, float]:
     """Predict with uncertainty using ensemble.
 
@@ -109,7 +108,7 @@ def predict_with_uncertainty(
         Tuple of (mean_prediction, std_prediction)
     """
     if not models:
-        return float('nan'), float('nan')
+        return float("nan"), float("nan")
 
     predictions = []
     for model in models:
@@ -122,7 +121,7 @@ def predict_with_uncertainty(
             predictions.append(pred)
 
     if not predictions:
-        return float('nan'), float('nan')
+        return float("nan"), float("nan")
 
     mean_pred = np.mean(predictions)
     std_pred = np.std(predictions)

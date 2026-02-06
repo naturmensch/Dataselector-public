@@ -15,10 +15,24 @@ from scripts.apply_optuna_best import (
 
 def make_dummy_optuna_csv(path: Path):
     # Create a small dataframe emulating optuna trials dataframe
-    df = pd.DataFrame([
-        {"value": 0.5, "user_attrs_alpha": 0.7, "user_attrs_beta": 0.1, "user_attrs_gamma": 0.2, "user_attrs_min_distance_km": 50},
-        {"value": 0.8, "user_attrs_alpha": 0.6, "user_attrs_beta": 0.15, "user_attrs_gamma": 0.25, "user_attrs_min_distance_km": 37},
-    ])
+    df = pd.DataFrame(
+        [
+            {
+                "value": 0.5,
+                "user_attrs_alpha": 0.7,
+                "user_attrs_beta": 0.1,
+                "user_attrs_gamma": 0.2,
+                "user_attrs_min_distance_km": 50,
+            },
+            {
+                "value": 0.8,
+                "user_attrs_alpha": 0.6,
+                "user_attrs_beta": 0.15,
+                "user_attrs_gamma": 0.25,
+                "user_attrs_min_distance_km": 37,
+            },
+        ]
+    )
     df.to_csv(path, index=False)
     return df
 
@@ -61,4 +75,3 @@ def test_inject_and_backup(tmp_path, monkeypatch):
     new_cfg = yaml.safe_load(cfg_path.read_text())
     sel = new_cfg.get("selection", {})
     assert float(sel.get("alpha_visual")) == float(params["alpha"])
-

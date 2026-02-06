@@ -160,29 +160,31 @@ def check_protected(
 )
 def check_geo() -> int:
     """Quick Geo dependency checker.
-    
-    Checks if all required geo packages (geopandas, pyproj, shapely, fiona, rtree) 
+
+    Checks if all required geo packages (geopandas, pyproj, shapely, fiona, rtree)
     are importable. Returns 0 if all OK, 2 if any missing.
-    
+
     Respects pipeline_config.yaml features.geo setting - skips check if disabled.
     """
     from importlib import import_module
 
     import yaml
-    
+
     REQS = ["geopandas", "pyproj", "shapely", "fiona", "rtree"]
-    
+
     # Check pipeline config to see whether geo features are enabled
     try:
         cfg = yaml.safe_load(open("config/pipeline_config.yaml"))
         geo_enabled = bool(cfg.get("features", {}).get("geo", True))
     except Exception:
         geo_enabled = True
-    
+
     if not geo_enabled:
-        print("Geo feature disabled in config/pipeline_config.yaml — skipping geo dependency check.")
+        print(
+            "Geo feature disabled in config/pipeline_config.yaml — skipping geo dependency check."
+        )
         return 0
-    
+
     failures = []
     for pkg in REQS:
         try:
@@ -192,10 +194,12 @@ def check_geo() -> int:
         except Exception as e:
             print(f"{pkg}: MISSING ({e})")
             failures.append(pkg)
-    
+
     if failures:
         print("\nMissing geo dependencies: ", ", ".join(failures))
-        print("Install with conda: conda install -n dataselector -c conda-forge geopandas pyproj shapely fiona rtree rasterio")
+        print(
+            "Install with conda: conda install -n dataselector -c conda-forge geopandas pyproj shapely fiona rtree rasterio"
+        )
         return 2
     else:
         print("All geo dependencies available.")
@@ -203,6 +207,7 @@ def check_geo() -> int:
 
 
 # ===== Environment Usage Checker =====
+
 
 def _get_repo_root() -> Path:
     """Get repository root directory."""
@@ -215,14 +220,38 @@ DEFAULT_SCAN_PATHS = [ROOT / "scripts", ROOT / "Makefile", ROOT / ".github/workf
 
 ENV_PATTERNS = [
     (re.compile(r"\.\/scripts\/exec_in_env\.sh"), "uses exec_in_env wrapper", "good"),
-    (re.compile(r"(conda|mamba)\s+run\s+-n\s+['\"]?(?P<env>\w+)"), "uses conda/mamba run -n <env>", "good_if_env_matches"),
-    (re.compile(r"conda\s+activate\b"), "uses 'conda activate' inside scripts (fragile)", "bad"),
+    (
+        re.compile(r"(conda|mamba)\s+run\s+-n\s+['\"]?(?P<env>\w+)"),
+        "uses conda/mamba run -n <env>",
+        "good_if_env_matches",
+    ),
+    (
+        re.compile(r"conda\s+activate\b"),
+        "uses 'conda activate' inside scripts (fragile)",
+        "bad",
+    ),
     (re.compile(r"source\s+activate\b"), "uses 'source activate' (fragile)", "bad"),
-    (re.compile(r"\bpython\b"), "calls python directly (may rely on PATH)", "suspicious"),
-    (re.compile(r"#!/usr/bin/env\s+python"), "shebang uses /usr/bin/env python (portable but depends on PATH)", "neutral"),
-    (re.compile(r"#!/usr/bin/python"), "shebang uses absolute python path (not portable)", "suspicious"),
+    (
+        re.compile(r"\bpython\b"),
+        "calls python directly (may rely on PATH)",
+        "suspicious",
+    ),
+    (
+        re.compile(r"#!/usr/bin/env\s+python"),
+        "shebang uses /usr/bin/env python (portable but depends on PATH)",
+        "neutral",
+    ),
+    (
+        re.compile(r"#!/usr/bin/python"),
+        "shebang uses absolute python path (not portable)",
+        "suspicious",
+    ),
     (re.compile(r"pytest\b"), "invokes pytest directly", "suspicious"),
-    (re.compile(r"exec_in_env\.sh\s+--env\s+dataselector"), "explicitly runs with dataselector env", "good"),
+    (
+        re.compile(r"exec_in_env\.sh\s+--env\s+dataselector"),
+        "explicitly runs with dataselector env",
+        "good",
+    ),
 ]
 
 
@@ -230,20 +259,30 @@ def scan_file_env(path: Path):
     """Scan a file for environment usage patterns."""
     if not path.is_file():
         return []
-    text = path.read_text(errors='ignore')
+    text = path.read_text(errors="ignore")
     findings = []
     for pat, desc, level in ENV_PATTERNS:
         for m in pat.finditer(text):
-            snippet = text[max(0, m.start() - 40): m.end() + 40].replace('\n', ' ')
+            snippet = text[max(0, m.start() - 40) : m.end() + 40].replace("\n", " ")
             findings.append((pat.pattern, desc, level, m.group(0), snippet.strip()))
     # special handling for Makefile lines invoking python without wrapper
-    if path.name.lower() == 'makefile' or path.match('*Makefile'):
+    if path.name.lower() == "makefile" or path.match("*Makefile"):
         for ln in text.splitlines():
-            if ln.strip().startswith('#') or not ln.strip():
+            if ln.strip().startswith("#") or not ln.strip():
                 continue
             if re.search(r"\b(py)?test\b", ln) or re.search(r"\bpython\b", ln):
-                uses_wrapper = 'exec_in_env.sh' in ln or 'conda run' in ln or 'mamba run' in ln
-                findings.append(("Makefile-line", "Makefile command", "good" if uses_wrapper else "suspicious", ln.strip(), ln.strip()))
+                uses_wrapper = (
+                    "exec_in_env.sh" in ln or "conda run" in ln or "mamba run" in ln
+                )
+                findings.append(
+                    (
+                        "Makefile-line",
+                        "Makefile command",
+                        "good" if uses_wrapper else "suspicious",
+                        ln.strip(),
+                        ln.strip(),
+                    )
+                )
     return findings
 
 
@@ -258,8 +297,13 @@ def scan_paths_env(paths):
         if not p.exists():
             continue
         if p.is_dir():
-            for f in sorted(p.rglob('*')):
-                if f.is_file() and f.suffix in {'.sh', '.py', '.yml', '.yaml', '.md'} or f.name.lower() == 'makefile' or f.suffix == '':
+            for f in sorted(p.rglob("*")):
+                if (
+                    f.is_file()
+                    and f.suffix in {".sh", ".py", ".yml", ".yaml", ".md"}
+                    or f.name.lower() == "makefile"
+                    or f.suffix == ""
+                ):
                     findings = scan_file_env(f)
                     if findings:
                         rel_path = str(f.relative_to(ROOT))
@@ -311,19 +355,25 @@ def check_env_usage(paths=None) -> int:
         print(f"- {path}:")
         for pat, desc, level, match, snippet in findings:
             print(f"    * [{level}] {desc}: '{match}'")
-            if level in ('bad', 'suspicious'):
+            if level in ("bad", "suspicious"):
                 bad += 1
-        print('')
-    
+        print("")
+
     if not report:
-        print('No issues found. Great!')
+        print("No issues found. Great!")
     else:
-        print('Summary:')
-        print(f'  files with findings: {len(report)}')
-        print(f'  suspicious/bad occurrences: {bad}')
-        print('\nRecommendations:')
-        print("- Prefer using './scripts/exec_in_env.sh --env dataselector -- <cmd>' or 'conda/mamba run -n dataselector -- <cmd>' for CI/Makefile targets.")
-        print("- Avoid 'conda activate' or 'source activate' inside scripts; prefer explicit runner invocation.")
-        print("- Replace direct 'python' or 'pytest' calls in Makefile with the wrapper or annotate them in the Makefile.")
+        print("Summary:")
+        print(f"  files with findings: {len(report)}")
+        print(f"  suspicious/bad occurrences: {bad}")
+        print("\nRecommendations:")
+        print(
+            "- Prefer using './scripts/exec_in_env.sh --env dataselector -- <cmd>' or 'conda/mamba run -n dataselector -- <cmd>' for CI/Makefile targets."
+        )
+        print(
+            "- Avoid 'conda activate' or 'source activate' inside scripts; prefer explicit runner invocation."
+        )
+        print(
+            "- Replace direct 'python' or 'pytest' calls in Makefile with the wrapper or annotate them in the Makefile."
+        )
 
     return 2 if bad else 0

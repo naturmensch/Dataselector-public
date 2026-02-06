@@ -25,7 +25,19 @@ def test_finalize_with_run_dir_succeeds(tmp_path, monkeypatch):
     best = {"a": 0.2, "b": 0.3, "c": 0.5, "min_distance_km": 50, "n_samples": 40}
     (run / "results" / "best_trial.json").write_text(json.dumps(best))
 
-    monkeypatch.setattr(sys, "argv", ["xxl", "--phase", "finalize", "--run-dir", str(run), "--dry-run", "--skip-env-check"])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "xxl",
+            "--phase",
+            "finalize",
+            "--run-dir",
+            str(run),
+            "--dry-run",
+            "--skip-env-check",
+        ],
+    )
     rc = mod.main()
     assert rc == 0
     assert (tmp_path / "outputs" / "thesis_finalization_summary.json").exists()

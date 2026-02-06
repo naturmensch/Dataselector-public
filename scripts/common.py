@@ -1,6 +1,7 @@
 """Shared script utilities.
 Provides a canonical DATA_DIR that respects the DATA_DIR environment variable.
 """
+
 import os
 from pathlib import Path
 

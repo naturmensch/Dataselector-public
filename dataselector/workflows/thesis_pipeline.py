@@ -270,13 +270,15 @@ def main(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run thesis optimization pipeline")
     parser.add_argument("--n-lhs", type=int, default=None, help="Number of LHS samples")
-    parser.add_argument("--n-trials", type=int, default=100, help="Number of Optuna trials")
+    parser.add_argument(
+        "--n-trials", type=int, default=100, help="Number of Optuna trials"
+    )
     parser.add_argument("--skip-exploration", action="store_true", help="Skip Phase 1")
     parser.add_argument("--skip-optimization", action="store_true", help="Skip Phase 2")
     parser.add_argument("--skip-validation", action="store_true", help="Skip Phase 3")
     parser.add_argument("--dry-run", action="store_true", help="Dry run")
     parser.add_argument("--output-dir", type=str, default=None, help="Output directory")
-    
+
     args = parser.parse_args()
     main(
         n_lhs=args.n_lhs,

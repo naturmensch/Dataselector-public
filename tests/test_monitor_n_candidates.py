@@ -3,7 +3,9 @@ from pathlib import Path
 
 
 def _load_monitor_module():
-    module_path = Path(__file__).resolve().parents[1] / "scripts" / "xxl_full_run_monitor.py"
+    module_path = (
+        Path(__file__).resolve().parents[1] / "scripts" / "xxl_full_run_monitor.py"
+    )
     spec = importlib.util.spec_from_file_location("monitor_mod", str(module_path))
     monitor = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(monitor)

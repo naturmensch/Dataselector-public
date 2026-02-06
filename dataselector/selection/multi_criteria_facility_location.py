@@ -337,7 +337,7 @@ class MultiCriteriaFacilityLocation:
                 msg += f"[Debug] expected features-cache: {meta_path}\n"
             msg += (
                 "Regeneriere den Feature-Cache passend zu den Metadaten, z.B.:\n"
-                "  rm outputs/features-*.npy && python -c \"from dataselector.data.io import load_or_extract_features; load_or_extract_features(cache=True)\""
+                '  rm outputs/features-*.npy && python -c "from dataselector.data.io import load_or_extract_features; load_or_extract_features(cache=True)"'
             )
             raise ValueError(msg)
 

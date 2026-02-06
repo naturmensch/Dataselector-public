@@ -68,7 +68,7 @@ def extract_year_from_name(name: str) -> Optional[int]:
 def build_dataframe(image_dir: Path):
     """Scan image directory and build DataFrame with metadata."""
     import pandas as pd
-    
+
     rows = []
     if not image_dir.exists():
         raise SystemExit(f"Image dir not found: {image_dir}")
@@ -80,15 +80,19 @@ def build_dataframe(image_dir: Path):
             continue
         img_name = p.name
         stem = p.stem
-        
+
         # Find sidecar XML
         side = None
         for suf in SIDECAR_SUFFIXES:
-            candidate = p.with_suffix(p.suffix + suf) if suf.startswith(".") and not str(p).endswith(suf) else p.with_suffix(suf)
+            candidate = (
+                p.with_suffix(p.suffix + suf)
+                if suf.startswith(".") and not str(p).endswith(suf)
+                else p.with_suffix(suf)
+            )
             if candidate.exists():
                 side = candidate
                 break
-        
+
         # Fallback: check <stem> + suffix
         if side is None:
             for suf in SIDECAR_SUFFIXES:
@@ -96,11 +100,11 @@ def build_dataframe(image_dir: Path):
                 if candidate.exists():
                     side = candidate
                     break
-        
+
         meta: Dict[str, Optional[str]] = {}
         if side is not None:
             meta = extract_from_xml(side)
-        
+
         year = extract_year_from_name(img_name)
         rows.append(
             {
@@ -116,19 +120,19 @@ def build_dataframe(image_dir: Path):
     for col in ["year"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
-    
+
     return df
 
 
 def atomic_write_csv(df, out: Path) -> None:
     """Write CSV atomically with backup of existing file."""
     out.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Backup existing file
     if out.exists():
         bak = out.with_suffix(f".backup_{int(time.time())}.csv")
         shutil.copy2(out, bak)
-    
+
     # Write to temp and move
     fd, tmpname = tempfile.mkstemp(dir=str(out.parent), prefix=".new_all_tiles_")
     os.close(fd)
@@ -144,7 +148,9 @@ def write_provenance(src: Path, out: Path, rows: int) -> None:
         "source_sha256": sha256_of_file(src) if src.exists() else None,
         "rows": rows,
     }
-    (out.parent / (out.stem + "_provenance.json")).write_text(json.dumps(prov, indent=2))
+    (out.parent / (out.stem + "_provenance.json")).write_text(
+        json.dumps(prov, indent=2)
+    )
 
 
 def choose_source(candidates: list[Path]) -> Optional[Path]:
@@ -155,23 +161,25 @@ def choose_source(candidates: list[Path]) -> Optional[Path]:
     return None
 
 
-def build_tiles(image_dir: str | Path, out: str | Path, force_source: Optional[str] = None) -> int:
+def build_tiles(
+    image_dir: str | Path, out: str | Path, force_source: Optional[str] = None
+) -> int:
     """Main build function.
-    
+
     Args:
         image_dir: Directory containing image files
         out: Output CSV path
         force_source: Optional source CSV for provenance
-        
+
     Returns:
         Exit code (0 = success)
     """
     image_dir = Path(image_dir)
     out = Path(out)
-    
+
     # Build DataFrame from image scan
     df = build_dataframe(image_dir)
-    
+
     # Determine source for provenance
     src = None
     if force_source:
@@ -182,7 +190,7 @@ def build_tiles(image_dir: str | Path, out: str | Path, force_source: Optional[s
             out.parent / "tiles.csv",
         ]
         src = choose_source(candidates)
-    
+
     # Write CSV atomically and provenance
     atomic_write_csv(df, out)
     if src:
@@ -195,7 +203,9 @@ def build_tiles(image_dir: str | Path, out: str | Path, force_source: Optional[s
             "image_dir": str(image_dir),
             "rows": len(df),
         }
-        (out.parent / (out.stem + "_provenance.json")).write_text(json.dumps(prov, indent=2))
+        (out.parent / (out.stem + "_provenance.json")).write_text(
+            json.dumps(prov, indent=2)
+        )
 
     print(f"Wrote {out} ({len(df)} rows)")
     return 0
@@ -222,14 +232,12 @@ def build_tiles(image_dir: str | Path, out: str | Path, force_source: Optional[s
         },
     },
 )
-def main(image_dir: str, out: str = "data/new_all_tiles.csv", force_source: str | None = None) -> int:
+def main(
+    image_dir: str, out: str = "data/new_all_tiles.csv", force_source: str | None = None
+) -> int:
     """CLI entry point."""
-    
-    return build_tiles(
-        image_dir=image_dir,
-        out=out,
-        force_source=force_source
-    )
+
+    return build_tiles(image_dir=image_dir, out=out, force_source=force_source)
 
 
 if __name__ == "__main__":

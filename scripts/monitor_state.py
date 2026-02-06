@@ -5,6 +5,7 @@ This implementation is intentionally lightweight and robust:
 - It performs simple checks on the run folder to compute counts and best values
 - It is suitable for use in tests and small deployments
 """
+
 from __future__ import annotations
 
 import json
@@ -51,7 +52,9 @@ class ExperimentStateAnalyzer:
                     if "state" in df.columns:
                         out["csv_completed"] = int((df["state"] == "COMPLETE").sum())
                     elif "datetime_complete" in df.columns:
-                        out["csv_completed"] = int(df["datetime_complete"].notnull().sum())
+                        out["csv_completed"] = int(
+                            df["datetime_complete"].notnull().sum()
+                        )
                     else:
                         out["csv_completed"] = int(len(df))
 
@@ -81,7 +84,9 @@ class ExperimentStateAnalyzer:
                     pass
                 # Try to find best value
                 try:
-                    cur.execute("SELECT value FROM trials WHERE value IS NOT NULL ORDER BY value DESC LIMIT 1;")
+                    cur.execute(
+                        "SELECT value FROM trials WHERE value IS NOT NULL ORDER BY value DESC LIMIT 1;"
+                    )
                     best = cur.fetchone()
                     if best and best[0] is not None:
                         out["db_best"] = float(best[0])

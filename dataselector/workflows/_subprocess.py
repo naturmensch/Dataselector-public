@@ -19,5 +19,7 @@ def run_script(module_path: str | Path, argv: Sequence[str]) -> int:
     env = os.environ.copy()
     # Ensure repo root is on PYTHONPATH for script imports.
     repo_root = str(Path(__file__).resolve().parents[2])
-    env["PYTHONPATH"] = repo_root + (":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else "")
+    env["PYTHONPATH"] = repo_root + (
+        ":" + env["PYTHONPATH"] if env.get("PYTHONPATH") else ""
+    )
     return subprocess.call(cmd, env=env)

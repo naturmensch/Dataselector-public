@@ -81,4 +81,6 @@ def test_cli_integration():
     )
 
     assert result.returncode == 0
-    assert "final-selection" in result.stdout.lower() or "usage" in result.stdout.lower()
+    assert (
+        "final-selection" in result.stdout.lower() or "usage" in result.stdout.lower()
+    )

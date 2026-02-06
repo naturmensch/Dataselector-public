@@ -31,20 +31,20 @@ def clamp(v, lo, hi):
 
 def load_or_create_data(csv_meta=None, n=None, dim=256, seed=123, out_dir=None):
     """Load features and metadata from cache or extract/generate them.
-    
+
     Args:
         csv_meta: Path to CSV metadata file
         n: Number of samples (fallback if not loading from CSV)
         dim: Feature dimension (fallback)
         seed: Random seed
         out_dir: Output directory for cache files
-        
+
     Returns:
         features (np.ndarray), metadata (pd.DataFrame)
     """
     out_dir = Path(out_dir or "outputs")
     out_dir.mkdir(exist_ok=True, parents=True)
-    
+
     features_path = out_dir / "features.npy"
     metadata_path = out_dir / "metadata.csv" if csv_meta is None else Path(csv_meta)
 
@@ -81,7 +81,7 @@ def make_objective(
     pre_selected_indices=None,
 ):
     """Create objective function for Optuna trial.
-    
+
     Args:
         features: Feature matrix
         metadata: Metadata DataFrame
@@ -89,10 +89,11 @@ def make_objective(
         min_distance_bounds: Dict with keys 'a', 'b', 'c', 'min_distance_km'
         pre_selected_names: Optional list of pre-selected tile names
         pre_selected_indices: Optional list of pre-selected tile indices
-        
+
     Returns:
         objective function callable
     """
+
     def objective(trial):
         a = trial.suggest_float("a", *min_distance_bounds["a"])
         b = trial.suggest_float("b", *min_distance_bounds["b"])
@@ -155,7 +156,7 @@ def run_autoscale(
     pre_indices=None,
 ):
     """Run multi-stage Optuna optimization with progressive refinement.
-    
+
     Args:
         n_trials_per_stage: List of trial counts per stage
         stages_samples: List of n_samples values per stage
@@ -166,7 +167,7 @@ def run_autoscale(
         tol: Tolerance dict for convergence detection
         pre_names: Optional pre-selected tile names
         pre_indices: Optional pre-selected tile indices
-        
+
     Returns:
         summary_file (Path), best_file (Path)
     """
@@ -223,7 +224,7 @@ def run_autoscale(
             import seaborn as sns
 
             date = datetime.now().strftime("%Y%m%d")
-            
+
             # Objective history
             values = [t.value for t in stage_trials if t.value is not None]
             if values:
@@ -259,9 +260,7 @@ def run_autoscale(
                 if "alpha" in t.user_attrs
             ]
             bet = [
-                t.user_attrs.get("beta")
-                for t in stage_trials
-                if "beta" in t.user_attrs
+                t.user_attrs.get("beta") for t in stage_trials if "beta" in t.user_attrs
             ]
             if alf and bet:
                 fig, ax = plt.subplots(figsize=(6, 4))
@@ -269,7 +268,9 @@ def run_autoscale(
                 ax.set_xlabel("alpha")
                 ax.set_ylabel("beta")
                 ax.set_title(f"Stage {stage_idx+1} alpha vs beta")
-                out_file = out_dir / f"autoscale_stage{stage_idx+1}_alpha_beta_{date}.png"
+                out_file = (
+                    out_dir / f"autoscale_stage{stage_idx+1}_alpha_beta_{date}.png"
+                )
                 fig.savefig(out_file, bbox_inches="tight")
                 plt.close(fig)
 
@@ -503,7 +504,7 @@ def main(
     pre_indices: list[int] | None = None,
 ) -> int:
     """Entry point for autoscale command.
-    
+
     Runs Optuna in stages for increasing n_samples, progressively refining
     search ranges around best parameters found. Stops early if convergence
     detected (parameter deltas < tolerance) for `patience` stages.
@@ -513,7 +514,7 @@ def main(
         n_trials = [20, 40, 80, 160]
     if stages is None:
         stages = ["50", "100", "300", "full"]
-    
+
     features, metadata = load_or_create_data(
         csv_meta=csv,
         n=n_candidates,

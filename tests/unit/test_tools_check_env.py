@@ -12,7 +12,7 @@ def test_check_env_registered():
     """Test that check-env command is registered via @cli_command."""
     # Import triggers decorator execution
     import dataselector.tools.check as check_module
-    
+
     assert "check-env" in _CLI_COMMANDS, "check-env should be registered"
     cmd_def = _CLI_COMMANDS["check-env"]
     assert cmd_def.func == check_module.check_env_usage
@@ -23,7 +23,7 @@ def test_check_env_registered():
 def test_check_env_args():
     """Test that check-env has correct argument definition."""
     cmd_def = _CLI_COMMANDS["check-env"]
-    
+
     paths_arg = cmd_def.args["paths"]
     assert paths_arg.type == str
     assert paths_arg.nargs == "*"
@@ -49,6 +49,7 @@ def test_check_env_with_paths():
 # check-protected tests
 # ============================================================================
 
+
 def test_check_protected_registered():
     """Test that check-protected command is registered via @cli_command."""
     assert "check-protected" in _CLI_COMMANDS, "check-protected should be registered"
@@ -63,15 +64,15 @@ def test_check_protected_registered():
 def test_check_protected_args():
     """Test that check-protected has correct argument definitions."""
     cmd_def = _CLI_COMMANDS["check-protected"]
-    
+
     list_arg = cmd_def.args["list"]
     assert list_arg.type == bool
     assert list_arg.action == "store_true"
-    
+
     all_arg = cmd_def.args["all"]
     assert all_arg.type == bool
     assert all_arg.action == "store_true"
-    
+
     protect_arg = cmd_def.args["protect"]
     assert protect_arg.type == str
     assert protect_arg.nargs == "*"
@@ -93,12 +94,16 @@ def test_check_protected_empty_staged():
 # check-geo tests
 # ============================================================================
 
+
 def test_check_geo_registered():
     """Test that check-geo command is registered via @cli_command."""
     assert "check-geo" in _CLI_COMMANDS, "check-geo should be registered"
     cmd_def = _CLI_COMMANDS["check-geo"]
     assert cmd_def.func == check.check_geo
-    assert cmd_def.help == "Check geo dependencies (geopandas, pyproj, shapely, fiona, rtree)"
+    assert (
+        cmd_def.help
+        == "Check geo dependencies (geopandas, pyproj, shapely, fiona, rtree)"
+    )
     assert len(cmd_def.args) == 0  # No arguments
 
 

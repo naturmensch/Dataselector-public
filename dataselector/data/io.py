@@ -84,9 +84,7 @@ def load_or_extract_features(
     batch_size: int = 16,
     cache: bool = True,
 ) -> np.ndarray:
-    """Load features from a hash-identified cache or extract and create a new cache.
-
-    """
+    """Load features from a hash-identified cache or extract and create a new cache."""
     from dataselector.pipeline.cache import (
         atomic_write_features_with_meta,
         compute_meta_hash,
@@ -109,8 +107,12 @@ def load_or_extract_features(
         meta_hash = compute_meta_hash(csv_meta, params=params)
     except Exception:
         # If we cannot compute a hash (e.g., missing CSV), fall back to legacy behavior
-        print("[WARN] Could not compute metadata hash; falling back to legacy cache behavior.")
-        return load_or_extract_features_legacy(out_dir=out_dir, csv_meta=csv_meta, batch_size=batch_size, cache=cache)
+        print(
+            "[WARN] Could not compute metadata hash; falling back to legacy cache behavior."
+        )
+        return load_or_extract_features_legacy(
+            out_dir=out_dir, csv_meta=csv_meta, batch_size=batch_size, cache=cache
+        )
 
     # Try to find existing hash-named cache
     cached = load_features_by_hash(out_dir, meta_hash)
@@ -143,14 +145,18 @@ def load_or_extract_features(
             if legacy_feats.shape[0] == len(meta):
                 # Safe to migrate
                 meta_info = create_meta_info(csv_meta, params=params)
-                atomic_write_features_with_meta(out_dir, legacy_feats, meta_hash, meta_info)
+                atomic_write_features_with_meta(
+                    out_dir, legacy_feats, meta_hash, meta_info
+                )
                 # preserve legacy file as a timestamped backup
                 backup_dir = out_dir / "backups"
                 backup_dir.mkdir(exist_ok=True)
                 ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
                 backup_path = backup_dir / f"features_legacy_backup_{ts}.npy"
                 legacy.rename(backup_path)
-                print(f"[INFO] Migrated legacy features.npy to features-{meta_hash}.npy and backed up legacy file.")
+                print(
+                    f"[INFO] Migrated legacy features.npy to features-{meta_hash}.npy and backed up legacy file."
+                )
                 return legacy_feats
             else:
                 print(
@@ -159,7 +165,9 @@ def load_or_extract_features(
                     )
                 )
         except Exception:
-            print("[WARN] Could not migrate legacy features.npy (read error); ignoring it.")
+            print(
+                "[WARN] Could not migrate legacy features.npy (read error); ignoring it."
+            )
 
     # No usable cache found: extract and create a new hash-named cache
     meta = load_metadata(csv_meta)
@@ -205,7 +213,9 @@ def load_or_extract_features_legacy(
             if feats.shape[0] != len(meta):
                 print(
                     "[WARN] Cached features.npy rows ({}) != metadata rows ({}). "
-                    "Removing stale cache and re-extracting features.".format(feats.shape[0], len(meta))
+                    "Removing stale cache and re-extracting features.".format(
+                        feats.shape[0], len(meta)
+                    )
                 )
                 try:
                     features_path.unlink()
@@ -216,7 +226,9 @@ def load_or_extract_features_legacy(
                 return feats
         except Exception:
             # If metadata cannot be loaded for validation, conservatively re-extract
-            print("[WARN] Could not validate feature cache against metadata; re-extracting.")
+            print(
+                "[WARN] Could not validate feature cache against metadata; re-extracting."
+            )
             try:
                 features_path.unlink()
             except Exception:

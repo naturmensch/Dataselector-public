@@ -29,11 +29,13 @@ class TestDataIntegrity:
 
     def test_no_duplicate_coordinates(self, metadata_csv):
         """Check if any tiles have identical coordinates (duplicates)."""
-        coord_cols = ['ul_x', 'ul_y']
-        duplicates = metadata_csv[metadata_csv.duplicated(subset=coord_cols, keep=False)]
-        
+        coord_cols = ["ul_x", "ul_y"]
+        duplicates = metadata_csv[
+            metadata_csv.duplicated(subset=coord_cols, keep=False)
+        ]
+
         if len(duplicates) > 0:
-            dup_names = duplicates['shortName'].tolist()
+            dup_names = duplicates["shortName"].tolist()
             pytest.fail(
                 f"Found {len(duplicates)} rows with duplicate coordinates:\n"
                 f"{dup_names}\n"
@@ -43,8 +45,8 @@ class TestDataIntegrity:
 
     def test_coordinates_are_not_null(self, metadata_csv):
         """Check if coordinates have NaN or infinity values."""
-        coord_cols = ['ul_x', 'ul_y', 'lr_x', 'lr_y']
-        
+        coord_cols = ["ul_x", "ul_y", "lr_x", "lr_y"]
+
         for col in coord_cols:
             assert not metadata_csv[col].isna().any(), f"Found NaN in {col}"
             assert np.isfinite(metadata_csv[col]).all(), f"Found inf in {col}"
@@ -55,23 +57,25 @@ class TestDataIntegrity:
         # Expected ranges (approximately):
         # X: 2,300,000 - 2,500,000 meters (East-West)
         # Y: 5,200,000 - 6,400,000 meters (South-North)
-        
-        assert metadata_csv['ul_x'].min() > 2_000_000, "ul_x too far west"
-        assert metadata_csv['ul_x'].max() < 3_000_000, "ul_x too far east"
-        assert metadata_csv['ul_y'].min() > 5_000_000, "ul_y too far south"
-        assert metadata_csv['ul_y'].max() < 7_000_000, "ul_y too far north"
+
+        assert metadata_csv["ul_x"].min() > 2_000_000, "ul_x too far west"
+        assert metadata_csv["ul_x"].max() < 3_000_000, "ul_x too far east"
+        assert metadata_csv["ul_y"].min() > 5_000_000, "ul_y too far south"
+        assert metadata_csv["ul_y"].max() < 7_000_000, "ul_y too far north"
 
     def test_tiles_have_non_zero_extent(self, metadata_csv):
         """Check if tiles have reasonable size (not points)."""
-        width = (metadata_csv['lr_x'] - metadata_csv['ul_x']).abs()
-        height = (metadata_csv['ul_y'] - metadata_csv['lr_y']).abs()
-        
+        width = (metadata_csv["lr_x"] - metadata_csv["ul_x"]).abs()
+        height = (metadata_csv["ul_y"] - metadata_csv["lr_y"]).abs()
+
         assert (width > 0).all(), "Some tiles have zero width"
         assert (height > 0).all(), "Some tiles have zero height"
-        
+
         # Median tile size should be reasonable (e.g., ~30-100 km)
         median_width_km = width.median() / 1000
-        assert 20 < median_width_km < 200, f"Tile width unreasonable: {median_width_km:.1f} km"
+        assert (
+            20 < median_width_km < 200
+        ), f"Tile width unreasonable: {median_width_km:.1f} km"
 
 
 class TestNearestNeighborDistances:
@@ -81,10 +85,10 @@ class TestNearestNeighborDistances:
         """Check that all NN distances are > 0 (no self-distances or duplicates)."""
         xs = metadata_csv["ul_x"].values
         ys = metadata_csv["ul_y"].values
-        
+
         nn_distances = []
         zero_pairs = []
-        
+
         for i in range(len(xs)):
             x1, y1 = xs[i], ys[i]
             distances = []
@@ -96,13 +100,13 @@ class TestNearestNeighborDistances:
             if distances:
                 nn_distance = min(distances)
                 nn_distances.append(nn_distance)
-                
+
                 if nn_distance == 0.0:
-                    tile_i = metadata_csv.iloc[i]['shortName']
+                    tile_i = metadata_csv.iloc[i]["shortName"]
                     zero_pairs.append((tile_i, nn_distance))
-        
+
         nn_distances = np.array(nn_distances)
-        
+
         # Check for 0.0 values
         zero_count = (nn_distances == 0.0).sum()
         if zero_count > 0:
@@ -114,7 +118,7 @@ class TestNearestNeighborDistances:
             )
             for tile, dist in zero_pairs[:5]:
                 msg += f"  • {tile}: {dist} km NN-distance\n"
-            
+
             msg += (
                 f"\nThis indicates:\n"
                 f"  1. Duplicate coordinates in dataset\n"
@@ -129,14 +133,14 @@ class TestNearestNeighborDistances:
                 f"{'='*70}\n"
             )
             pytest.fail(msg)
-        
+
         assert (nn_distances > 0).all(), "All NN-distances must be positive"
 
     def test_nn_distance_distribution_is_reasonable(self, metadata_csv):
         """Check if NN distance distribution looks reasonable."""
         xs = metadata_csv["ul_x"].values
         ys = metadata_csv["ul_y"].values
-        
+
         nn_distances = []
         for i in range(len(xs)):
             x1, y1 = xs[i], ys[i]
@@ -148,11 +152,11 @@ class TestNearestNeighborDistances:
                     distances.append(dist_km)
             if distances:
                 nn_distances.append(min(distances))
-        
+
         nn_distances = np.array(nn_distances)
         median_nn = np.median(nn_distances)
         mean_nn = np.mean(nn_distances)
-        
+
         print(f"\n{'='*70}")
         print(f"NN-Distance Statistics (centroid-to-centroid):")
         print(f"  Count:    {len(nn_distances)}")
@@ -164,12 +168,12 @@ class TestNearestNeighborDistances:
         print(f"  Mean:     {mean_nn:.4f} km")
         print(f"  Std:      {np.std(nn_distances):.4f} km")
         print(f"{'='*70}")
-        
+
         # Sanity check: median should be >= mean (if there are 0.0 values, mean << median)
         if median_nn < mean_nn - 5:
             print(f"\n⚠️  Median ({median_nn:.1f}) < Mean ({mean_nn:.1f})")
             print(f"    This is unusual! Check for outliers or 0.0 values.")
-        
+
         # For grid-like spacing, expect median in reasonable range
         # For KDR100: expect 25-60 km
         assert 10 < median_nn < 100, (

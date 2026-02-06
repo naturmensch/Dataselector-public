@@ -195,7 +195,7 @@ def main(
     # Default for n_samples
     if n_samples is None:
         n_samples = [32, 64, 128]
-    
+
     # Call the core implementation logic
     return _benchmark_implementation(
         n_initial_raw=n_initial_raw,
@@ -261,9 +261,7 @@ def _benchmark_implementation(
         df = pd.read_csv(bench_csv)
         present = set(df["method"].astype(str).str.strip().str.lower().unique())
         missing = [
-            m
-            for m in [x.strip().lower() for x in require_methods]
-            if m not in present
+            m for m in [x.strip().lower() for x in require_methods] if m not in present
         ]
         if missing:
             raise RuntimeError(
@@ -319,25 +317,45 @@ if __name__ == "__main__":
         prog="dataselector benchmark-sampling",
         description="Benchmark initial sampling methods and persist an exploration plan",
     )
-    parser.add_argument("--n-initial-raw", type=int, default=20, help="Raw heuristic sample count")
-    parser.add_argument("--n-dims", type=int, default=4, help="Dimensionality for benchmark")
-    parser.add_argument("--n-samples", nargs="+", type=int, default=[32, 64, 128], help="Sample sizes")
-    parser.add_argument("--n-repeats", type=int, default=5, help="Repeats per method/sample size")
-    parser.add_argument("--prefer-method", type=str, default=None, help="Force chosen method")
-    parser.add_argument("--require-methods", nargs="+", default=None, help="Required methods")
-    parser.add_argument("--out-dir", type=str, default="outputs", help="Output directory")
-    parser.add_argument("--min-sobol", type=int, default=32, help="Minimum Sobol sample size")
-    parser.add_argument("--lhs-multiple", type=int, default=8, help="Round LHS to multiple of")
-    
+    parser.add_argument(
+        "--n-initial-raw", type=int, default=20, help="Raw heuristic sample count"
+    )
+    parser.add_argument(
+        "--n-dims", type=int, default=4, help="Dimensionality for benchmark"
+    )
+    parser.add_argument(
+        "--n-samples", nargs="+", type=int, default=[32, 64, 128], help="Sample sizes"
+    )
+    parser.add_argument(
+        "--n-repeats", type=int, default=5, help="Repeats per method/sample size"
+    )
+    parser.add_argument(
+        "--prefer-method", type=str, default=None, help="Force chosen method"
+    )
+    parser.add_argument(
+        "--require-methods", nargs="+", default=None, help="Required methods"
+    )
+    parser.add_argument(
+        "--out-dir", type=str, default="outputs", help="Output directory"
+    )
+    parser.add_argument(
+        "--min-sobol", type=int, default=32, help="Minimum Sobol sample size"
+    )
+    parser.add_argument(
+        "--lhs-multiple", type=int, default=8, help="Round LHS to multiple of"
+    )
+
     args = parser.parse_args()
-    sys.exit(main(
-        n_initial_raw=args.n_initial_raw,
-        n_dims=args.n_dims,
-        n_samples=args.n_samples,
-        n_repeats=args.n_repeats,
-        prefer_method=args.prefer_method,
-        require_methods=args.require_methods,
-        out_dir=args.out_dir,
-        min_sobol=args.min_sobol,
-        lhs_multiple=args.lhs_multiple,
-    ))
+    sys.exit(
+        main(
+            n_initial_raw=args.n_initial_raw,
+            n_dims=args.n_dims,
+            n_samples=args.n_samples,
+            n_repeats=args.n_repeats,
+            prefer_method=args.prefer_method,
+            require_methods=args.require_methods,
+            out_dir=args.out_dir,
+            min_sobol=args.min_sobol,
+            lhs_multiple=args.lhs_multiple,
+        )
+    )

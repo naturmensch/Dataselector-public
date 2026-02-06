@@ -6,4 +6,6 @@ def test_compare_samplers_multi_seed_deprecated():
 
     See tests/test_compare_samplers.py for workflow-based tests.
     """
-    pytest.skip("compare_samplers_multi_seed script deprecated; workflow tests cover functionality")
+    pytest.skip(
+        "compare_samplers_multi_seed script deprecated; workflow tests cover functionality"
+    )

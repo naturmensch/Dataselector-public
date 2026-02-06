@@ -29,9 +29,7 @@ def test_load_or_create_data_synthetic(tmp_path):
     """Test synthetic data generation when features/metadata don't exist."""
     from dataselector.workflows.optuna_autoscale import load_or_create_data
 
-    features, metadata = load_or_create_data(
-        out_dir=tmp_path, n=100, dim=64, seed=123
-    )
+    features, metadata = load_or_create_data(out_dir=tmp_path, n=100, dim=64, seed=123)
 
     assert features.shape == (100, 64)
     assert len(metadata) == 100
@@ -48,4 +46,3 @@ def test_cli_integration():
         main(["--help"])
     except SystemExit as e:
         assert e.code == 0
-

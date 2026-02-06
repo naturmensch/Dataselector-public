@@ -29,13 +29,13 @@ def _get_repo_root() -> Path:
 
 def jaccard(a, b) -> float:
     """Jaccard similarity between two sets.
-    
+
     Shared utility function used by all bootstrap scripts.
-    
+
     Args:
         a: First set (or list)
         b: Second set (or list)
-        
+
     Returns:
         Jaccard similarity coefficient [0, 1]
     """
@@ -63,7 +63,7 @@ def bootstrap_selection(
     pre_selected_indices: Optional[np.ndarray] = None,
 ) -> pd.DataFrame:
     """Perform bootstrap resampling to assess selection stability.
-    
+
     Args:
         alpha: Visual diversity weight
         beta: Spatial diversity weight
@@ -78,18 +78,18 @@ def bootstrap_selection(
         random_seed: Random seed for reproducibility
         pre_selected_names: Optional pre-selected tile names
         pre_selected_indices: Optional pre-selected tile indices
-    
+
     Returns:
         DataFrame with columns: iteration, n_samples, jaccard_with_original,
         clusters_covered, temporal_std, spatial_mean_km, wwi_percent, etc.
     """
     from dataselector.analysis.metrics import compute_metrics
     from dataselector.selection.diversity_selector import DiversitySelector
-    
+
     rng = np.random.default_rng(random_seed)
     N = features.shape[0]
     results = []
-    
+
     ds = DiversitySelector(
         n_samples=n_samples,
         clustering_method="kmeans",
@@ -101,7 +101,7 @@ def bootstrap_selection(
         sample_idx = rng.integers(0, N, size=N)
         boot_features = features[sample_idx]
         boot_meta = metadata.iloc[sample_idx].reset_index(drop=True)
-        
+
         selected_boot = ds.select(
             features=boot_features,
             metadata=boot_meta,
@@ -129,11 +129,11 @@ def bootstrap_selection(
 
 def summarize_bootstrap(df_boot: pd.DataFrame, original_metrics: dict) -> pd.Series:
     """Compute summary statistics (mean, std, CI) for bootstrap results.
-    
+
     Args:
         df_boot: Bootstrap results DataFrame
         original_metrics: Original selection metrics
-        
+
     Returns:
         Series with summary statistics (_mean, _std, _ci_lower, _ci_upper, _original)
     """
@@ -157,7 +157,7 @@ def summarize_bootstrap(df_boot: pd.DataFrame, original_metrics: dict) -> pd.Ser
                 summary[f"{m}_ci_lower"] = vals.quantile(0.025)
                 summary[f"{m}_ci_upper"] = vals.quantile(0.975)
                 summary[f"{m}_original"] = original_metrics.get(m, np.nan)
-    
+
     return pd.Series(summary)
 
 
@@ -174,7 +174,7 @@ def bootstrap_candidate(
     random_seed: int = 42,
 ) -> pd.DataFrame:
     """Perform bootstrap resampling for Pareto candidate.
-    
+
     Args:
         alpha: Visual diversity weight
         beta: Spatial diversity weight
@@ -186,7 +186,7 @@ def bootstrap_candidate(
         cluster_labels_full: Cluster labels
         n_boot: Number of bootstrap iterations
         random_seed: Random seed
-        
+
     Returns:
         DataFrame with bootstrap statistics
     """
@@ -194,18 +194,18 @@ def bootstrap_candidate(
     from dataselector.data.io import attach_metric_gdf, get_metric_gdf
     from dataselector.selection.clustering import ClusteringPipeline
     from dataselector.selection.diversity_selector import DiversitySelector
-    
+
     rng = np.random.default_rng(random_seed)
     N = features.shape[0]
     results = []
-    
+
     ds = DiversitySelector(n_samples=300, clustering_method="kmeans", n_clusters=8)
 
     for i in range(n_boot):
         sample_idx = rng.integers(0, N, size=N)
         boot_features = features[sample_idx]
         boot_meta = metadata.iloc[sample_idx].reset_index(drop=True)
-        
+
         # Preserve projected coords in the bootstrap sample if present
         gdf_metric = get_metric_gdf(metadata)
         if gdf_metric is not None:
@@ -250,24 +250,24 @@ def run_bootstrap_final(
     seed: int = 42,
 ) -> int:
     """High-level orchestration: Bootstrap UQ for final Optuna selection.
-    
+
     This replaces the main() function from bootstrap_final_selection.py.
-    
+
     Args:
         run_dir: Path to run directory
         n_boot: Number of bootstrap iterations
         seed: Random seed
-        
+
     Returns:
         Exit code (0 on success)
     """
     from dataselector.data.io import load_metadata, load_or_extract_features
     from dataselector.selection.clustering import ClusteringPipeline
     from dataselector.selection.diversity_selector import DiversitySelector
-    
+
     ROOT = _get_repo_root()
     run_dir = Path(run_dir)
-    
+
     if not run_dir.exists():
         print(f"Error: Run directory not found: {run_dir}")
         return 1
@@ -348,8 +348,9 @@ def run_bootstrap_final(
         pre_selected=sel_config.get("pre_selected_indices"),
         pre_selected_names=sel_config.get("pre_selected_names"),
     )
-    
+
     from dataselector.analysis.metrics import compute_metrics
+
     original_metrics = compute_metrics(
         original_selection, metadata, cluster_labels_full, features
     )
@@ -422,23 +423,23 @@ def run_bootstrap_pareto(
     uq_method: str = "bootstrap",
 ) -> int:
     """High-level orchestration: Bootstrap UQ for Pareto candidates.
-    
+
     This replaces the main() function from bootstrap_pareto_candidates.py.
-    
+
     Args:
         pareto_csv: Path to Pareto candidates CSV
         n_boot: Number of bootstrap iterations
         output_csv: Optional output CSV path
         random_seed: Random seed
         uq_method: UQ method ('bootstrap' or 'ensemble')
-        
+
     Returns:
         Exit code (0 on success)
     """
     from dataselector.data.io import load_metadata, load_or_extract_features
     from dataselector.selection.clustering import ClusteringPipeline
     from dataselector.selection.diversity_selector import DiversitySelector
-    
+
     ROOT = _get_repo_root()
     pareto = pd.read_csv(pareto_csv)
 
@@ -448,7 +449,7 @@ def run_bootstrap_pareto(
         metadata = load_metadata(str(ROOT / "data" / "new_all_tiles.csv"))
     else:
         metadata = load_metadata(str(metadata_path))
-    
+
     features = load_or_extract_features(
         ROOT / "outputs",
         csv_meta=str(metadata_path) if metadata_path.exists() else None,
@@ -461,10 +462,10 @@ def run_bootstrap_pareto(
         embeddings_full, cluster_labels_full = clustering.fit_transform(features)
     except Exception:
         cluster_labels_full = np.zeros(features.shape[0], dtype=int)
-    
+
     all_boot = []
     summary_rows = []
-    
+
     ds = DiversitySelector(n_samples=300, clustering_method="kmeans", n_clusters=8)
 
     for idx, row in pareto.iterrows():
@@ -552,6 +553,7 @@ def run_bootstrap_pareto(
     print("Bootstrap finished. Results saved.")
     return 0
 
+
 @cli_command(
     "bootstrap-final",
     help="Bootstrap UQ for final Optuna selection",
@@ -630,41 +632,51 @@ def bootstrap_pareto_cli(
 # Legacy support: for backwards compatibility with old CLI structure
 def main(argv=None) -> int:
     """Legacy wrapper for old subcommand-based interface.
-    
+
     This is kept for backwards compatibility only.
     New code should use bootstrap_final_cli() or bootstrap_pareto_cli() directly.
     """
     import argparse
-    
+
     parser = argparse.ArgumentParser(
         prog="dataselector bootstrap",
-        description="Bootstrap uncertainty quantification workflows"
+        description="Bootstrap uncertainty quantification workflows",
     )
     subparsers = parser.add_subparsers(dest="subcommand", required=True)
-    
+
     # bootstrap final
     final_parser = subparsers.add_parser(
-        "final",
-        help="Bootstrap UQ for final Optuna selection"
+        "final", help="Bootstrap UQ for final Optuna selection"
     )
     final_parser.add_argument("--run-dir", required=True, help="Path to run directory")
-    final_parser.add_argument("--n-boot", type=int, default=500, help="Number of bootstrap iterations")
+    final_parser.add_argument(
+        "--n-boot", type=int, default=500, help="Number of bootstrap iterations"
+    )
     final_parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    
+
     # bootstrap pareto
     pareto_parser = subparsers.add_parser(
-        "pareto",
-        help="Bootstrap UQ for Pareto candidates"
+        "pareto", help="Bootstrap UQ for Pareto candidates"
     )
-    pareto_parser.add_argument("--pareto-csv", required=True, help="Path to Pareto candidates CSV")
-    pareto_parser.add_argument("--n-boot", type=int, default=200, help="Number of bootstrap iterations")
+    pareto_parser.add_argument(
+        "--pareto-csv", required=True, help="Path to Pareto candidates CSV"
+    )
+    pareto_parser.add_argument(
+        "--n-boot", type=int, default=200, help="Number of bootstrap iterations"
+    )
     pareto_parser.add_argument("--output-csv", help="Optional output CSV path")
-    pareto_parser.add_argument("--random-seed", type=int, default=42, help="Random seed")
-    pareto_parser.add_argument("--uq-method", choices=["bootstrap", "ensemble"], default="bootstrap", 
-                               help="UQ method (bootstrap only for now)")
-    
+    pareto_parser.add_argument(
+        "--random-seed", type=int, default=42, help="Random seed"
+    )
+    pareto_parser.add_argument(
+        "--uq-method",
+        choices=["bootstrap", "ensemble"],
+        default="bootstrap",
+        help="UQ method (bootstrap only for now)",
+    )
+
     args = parser.parse_args(argv)
-    
+
     if args.subcommand == "final":
         return run_bootstrap_final(
             run_dir=args.run_dir,

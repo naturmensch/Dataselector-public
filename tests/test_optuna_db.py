@@ -14,7 +14,16 @@ class DummySelector:
     def __init__(self, n_samples, use_multi_criteria=True):
         self.n_samples = n_samples
 
-    def select(self, features, metadata, spatial_constraint, min_distance_km, alpha_visual, beta_spatial, gamma_temporal):
+    def select(
+        self,
+        features,
+        metadata,
+        spatial_constraint,
+        min_distance_km,
+        alpha_visual,
+        beta_spatial,
+        gamma_temporal,
+    ):
         n = min(self.n_samples, len(features))
         return list(range(n))
 
@@ -25,7 +34,9 @@ class DummySelector:
 
 def test_optuna_creates_sqlite_db(tmp_path, monkeypatch):
     # If real DiversitySelector is available, we still prefer to inject a dummy for speed
-    monkeypatch.setattr("scripts.optuna_optimize.DiversitySelector", DummySelector, raising=False)
+    monkeypatch.setattr(
+        "scripts.optuna_optimize.DiversitySelector", DummySelector, raising=False
+    )
 
     out_dir = tmp_path / "outputs"
     study_db = tmp_path / "optuna_study.db"
@@ -34,13 +45,19 @@ def test_optuna_creates_sqlite_db(tmp_path, monkeypatch):
     features = np.random.RandomState(1).randn(20, 16).astype("float32")
     import pandas as _pd
 
-    metadata = _pd.DataFrame({
-        "N": np.random.uniform(48, 55, 20),
-        "left": np.random.uniform(6, 15, 20),
-        "year": np.random.randint(1880, 1945, 20),
-    })
+    metadata = _pd.DataFrame(
+        {
+            "N": np.random.uniform(48, 55, 20),
+            "left": np.random.uniform(6, 15, 20),
+            "year": np.random.randint(1880, 1945, 20),
+        }
+    )
 
-    monkeypatch.setattr("scripts.optuna_optimize.load_or_create_data", lambda n, dim, seed: (features, metadata), raising=False)
+    monkeypatch.setattr(
+        "scripts.optuna_optimize.load_or_create_data",
+        lambda n, dim, seed: (features, metadata),
+        raising=False,
+    )
 
     study = run_optuna(
         n_trials=2,

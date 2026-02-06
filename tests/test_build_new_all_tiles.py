@@ -26,9 +26,17 @@ def test_build_new_all_tiles_tmpdir(tmp_path: Path):
 
     # run script
     import sys
+
     env = os.environ.copy()
-    env['PYTHONPATH'] = str(Path.cwd())
-    cmd = [sys.executable, "scripts/build_new_all_tiles.py", "--image-dir", str(images), "--out", str(out_csv)]
+    env["PYTHONPATH"] = str(Path.cwd())
+    cmd = [
+        sys.executable,
+        "scripts/build_new_all_tiles.py",
+        "--image-dir",
+        str(images),
+        "--out",
+        str(out_csv),
+    ]
     res = subprocess.run(cmd, capture_output=True, text=True, env=env)
     assert res.returncode == 0, res.stdout + "\n" + res.stderr
 
@@ -52,17 +60,24 @@ def test_build_new_all_tiles_tmpdir(tmp_path: Path):
 def test_build_new_all_tiles_with_base_merge(tmp_path: Path):
     # Create base CSV in tmp_path and copy to data/ for the script to find it
     base_csv = tmp_path / "KDR100_foliage_with_files_epsg3857.csv"
-    base_df = pd.DataFrame({
-        "longName": ["KDR_001_Someplace_1901.png", "KDR_002_Other_1950.jpg", "KDR_003_New_2000.png"],
-        "top": [5800000.0, 5900000.0, None],  # EPSG:3857 coords (meters)
-        "left": [1400000.0, 1500000.0, None],
-        "shortName": ["KDR_001", "KDR_002", "KDR_003"],
-        "year": [1901, 1950, 2000]
-    })
+    base_df = pd.DataFrame(
+        {
+            "longName": [
+                "KDR_001_Someplace_1901.png",
+                "KDR_002_Other_1950.jpg",
+                "KDR_003_New_2000.png",
+            ],
+            "top": [5800000.0, 5900000.0, None],  # EPSG:3857 coords (meters)
+            "left": [1400000.0, 1500000.0, None],
+            "shortName": ["KDR_001", "KDR_002", "KDR_003"],
+            "year": [1901, 1950, 2000],
+        }
+    )
     base_df.to_csv(base_csv, index=False)
 
     # Copy to data/ so script finds it
     import shutil
+
     data_base = Path("data") / "KDR100_foliage_with_files_epsg3857.csv"
     shutil.copy(base_csv, data_base)
 
@@ -90,9 +105,17 @@ def test_build_new_all_tiles_with_base_merge(tmp_path: Path):
 
         # Run script
         import sys
+
         env = os.environ.copy()
-        env['PYTHONPATH'] = str(Path.cwd())
-        cmd = [sys.executable, "scripts/build_new_all_tiles.py", "--image-dir", str(images), "--out", str(out_csv)]
+        env["PYTHONPATH"] = str(Path.cwd())
+        cmd = [
+            sys.executable,
+            "scripts/build_new_all_tiles.py",
+            "--image-dir",
+            str(images),
+            "--out",
+            str(out_csv),
+        ]
         res = subprocess.run(cmd, capture_output=True, text=True, env=env)
         assert res.returncode == 0, res.stdout + "\n" + res.stderr
 

@@ -21,7 +21,9 @@ def compute_meta_hash(csv_path: str, params: Optional[Dict[str, Any]] = None) ->
             h.update(chunk)
 
     if params:
-        params_bytes = json.dumps(params, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        params_bytes = json.dumps(params, sort_keys=True, separators=(",", ":")).encode(
+            "utf-8"
+        )
         h.update(params_bytes)
 
     return h.hexdigest()
@@ -80,7 +82,9 @@ def list_all_feature_caches(out_dir: str | Path) -> list[Path]:
     return sorted(out_dir.glob("features-*.npy"))
 
 
-def create_meta_info(csv_path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def create_meta_info(
+    csv_path: str, params: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     return {
         "metadata_csv": str(Path(csv_path).resolve()),
         "params": params or {},

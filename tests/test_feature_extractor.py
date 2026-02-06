@@ -30,7 +30,9 @@ def test_dinov2_mocked_extract(monkeypatch, tmp_path):
     Image.new("RGB", (512, 512), color=(128, 128, 128)).save(p)
 
     ext = FeatureExtractor(model_name="dinov2")
-    feats = ext.extract_features_batch([str(p)], data_dir=tmp_path, batch_size=1, crop_size=(512, 512))
+    feats = ext.extract_features_batch(
+        [str(p)], data_dir=tmp_path, batch_size=1, crop_size=(512, 512)
+    )
 
     assert feats.shape[0] == 1
     assert feats.shape[1] == ext.get_feature_dimension()
