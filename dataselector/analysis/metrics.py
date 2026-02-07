@@ -23,11 +23,13 @@ def compute_metrics(
         else np.array([], dtype=int)
     )
     selected = metadata.iloc[sel_idx_arr]
-    temporal_std = float(selected["year"].std()) if len(selected) > 1 else 0.0
-    temporal_range = (
-        int(selected["year"].max() - selected["year"].min()) if len(selected) > 1 else 0
-    )
-    wwi_frac = float((selected["year"].between(1914, 1918)).mean() * 100)
+    if "year" in selected.columns:
+        years = pd.to_numeric(selected["year"], errors="coerce").dropna()
+    else:
+        years = pd.Series(dtype=float)
+    temporal_std = float(years.std()) if len(years) > 1 else 0.0
+    temporal_range = int(years.max() - years.min()) if len(years) > 1 else 0
+    wwi_frac = float(years.between(1914, 1918).mean() * 100) if len(years) > 0 else 0.0
 
     # Spatial mean/min distance
     gdf_metric = None
