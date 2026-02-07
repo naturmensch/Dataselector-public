@@ -372,7 +372,12 @@ class MetadataProcessor:
         if self.df is None:
             raise ValueError("CSV muss zuerst geladen werden (load_csv)")
 
-        self.df["year"] = self.df["longName"].apply(self.extract_year)
+        extracted_years = self.df["longName"].apply(self.extract_year)
+        if "year" in self.df.columns:
+            existing = pd.to_numeric(self.df["year"], errors="coerce")
+            self.df["year"] = existing.fillna(extracted_years)
+        else:
+            self.df["year"] = extracted_years
         return self.df
 
     @staticmethod
