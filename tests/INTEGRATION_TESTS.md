@@ -30,6 +30,14 @@ If it prints errors about NumPy/Numba versions, recreate the environment from `e
    export RUN_FULL_INTEGRATION=1
    pytest -q -m integration
 
+Real-image strategy (local only)
+- CI is metadata-compatible and must not depend on private image folders.
+- For local real-image runs, point the loader to your private image directory:
+
+   export DATASELECTOR_IMAGE_DIR=/abs/path/to/private/images
+
+- This keeps private image assets out of the repository while allowing strict local feature extraction.
+
 Notes for CI
 - `.github/workflows/integration.yml` contains a gated `e2e-integration` job that runs on `workflow_dispatch` or nightly schedule.
 - For reliable runs, prefer a self-hosted runner or a runner with the same conda stack (the official GitHub runners may require time to install native deps).

@@ -286,7 +286,10 @@ class MetadataProcessor:
         return output_path
 
     def resolve_image_paths(
-        self, image_dir: str | Path, prefer_shortname: bool = True
+        self,
+        image_dir: str | Path,
+        prefer_shortname: bool = True,
+        strict: bool = False,
     ) -> pd.DataFrame:
         """
         Erzeugt eine neue Spalte `image_path` mit dem aufgelösten Pfad zur Bilddatei.
@@ -295,6 +298,7 @@ class MetadataProcessor:
         Args:
             image_dir: Verzeichnis mit Bildern (z.B. 'data/images')
             prefer_shortname: ob shortName bevorzugt wird
+            strict: wenn True, wird ein fehlendes Bildverzeichnis als Fehler behandelt
 
         Returns:
             DataFrame mit neuer Spalte `image_path` (Pfad oder None)
@@ -302,6 +306,26 @@ class MetadataProcessor:
         if self.df is None:
             raise ValueError("CSV muss zuerst geladen werden (load_csv)")
         image_dir = Path(image_dir)
+        image_dir_exists = image_dir.exists() and image_dir.is_dir()
+
+        if strict and not image_dir_exists:
+            raise FileNotFoundError(
+                f"Image directory does not exist: {image_dir}. "
+                "Feature extraction requires real images."
+            )
+
+        if not image_dir_exists:
+            # Metadata-only mode: preserve existing image_path values when available.
+            if "image_path" in self.df.columns:
+                self.df["image_path"] = self.df["image_path"].where(
+                    self.df["image_path"].notna(), None
+                )
+            else:
+                self.df["image_path"] = [None] * len(self.df)
+            self.df["image_filename"] = [
+                Path(p).name if p is not None else None for p in self.df["image_path"]
+            ]
+            return self.df
 
         def _find_file(name: str):
             if not name or pd.isna(name):

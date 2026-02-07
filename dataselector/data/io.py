@@ -1,4 +1,6 @@
+import os
 import time
+from inspect import signature
 from pathlib import Path
 
 import numpy as np
@@ -8,11 +10,42 @@ import yaml
 from dataselector.data.metadata_processor import MetadataProcessor
 
 
-def load_metadata(csv_path: str) -> pd.DataFrame:
+def load_metadata(
+    csv_path: str | Path,
+    image_dir: str | Path | None = None,
+    resolve_images: bool = True,
+    strict_image_resolution: bool = False,
+) -> pd.DataFrame:
     mp = MetadataProcessor(str(csv_path))
     df = mp.load_csv()
     df = mp.add_temporal_metadata()
-    df = mp.resolve_image_paths("data/images")
+
+    if resolve_images:
+        resolved_image_dir = Path(
+            image_dir
+            if image_dir is not None
+            else os.getenv("DATASELECTOR_IMAGE_DIR", "data/images")
+        )
+        has_image_path = "image_path" in df.columns
+        has_any_path = (
+            has_image_path
+            and df["image_path"].notna().any()
+            and (df["image_path"].astype(str).str.strip() != "").any()
+        )
+
+        # Resolve paths only when needed or when strict mode is explicitly requested.
+        if strict_image_resolution or not has_any_path:
+            resolve_sig = signature(mp.resolve_image_paths)
+            kwargs = {}
+            if "prefer_shortname" in resolve_sig.parameters:
+                kwargs["prefer_shortname"] = True
+            if "strict" in resolve_sig.parameters:
+                kwargs["strict"] = strict_image_resolution
+            df = mp.resolve_image_paths(resolved_image_dir, **kwargs)
+        elif "image_filename" not in df.columns:
+            df["image_filename"] = df["image_path"].apply(
+                lambda p: Path(str(p)).name if pd.notna(p) and str(p).strip() else None
+            )
 
     # Ensure metric CRS (UTM) is available for precise spatial calculations
     # Attach into DataFrame.attrs to avoid fragile attribute access and to persist through copies
@@ -20,6 +53,8 @@ def load_metadata(csv_path: str) -> pd.DataFrame:
     attach_metric_gdf(df, gdf_metric)
 
     # ensure placeholder for missing images
+    if "image_path" not in df.columns:
+        df["image_path"] = None
     df["image_path"] = df["image_path"].fillna("missing_placeholder.png")
     return df
 
@@ -59,6 +94,24 @@ def get_metric_gdf(df):
 def extract_features(metadata: pd.DataFrame, batch_size: int = 16) -> np.ndarray:
     # Lazy import: keep basic I/O paths independent from torch.
     from dataselector.features.feature_extractor import FeatureExtractor
+
+    missing_paths = []
+    for raw_path in metadata["image_path"].tolist():
+        if pd.isna(raw_path) or str(raw_path).strip() == "":
+            missing_paths.append(str(raw_path))
+            continue
+        p = Path(str(raw_path))
+        if not p.is_absolute():
+            p = Path(".") / p
+        if not p.exists():
+            missing_paths.append(str(raw_path))
+
+    if missing_paths:
+        sample = ", ".join(missing_paths[:5])
+        raise FileNotFoundError(
+            "Feature extraction requires real images. "
+            f"Missing image files (sample): {sample}"
+        )
 
     # Lade Modell-Konfiguration aus pipeline_config.yaml
     config_path = Path("config/pipeline_config.yaml")
