@@ -404,13 +404,27 @@ class DiversitySelector:
         else:
             candidate_pool = list(indices)
 
+        required = min(self.n_samples, len(candidate_pool))
+        if min_distance_km is None:
+            # Explicit "no hard constraint" mode.
+            return np.array(candidate_pool[:required])
+
         # Guard: falls metadata keine notwendigen Spalten hat
         if "N" not in metadata.columns or "left" not in metadata.columns:
             raise ValueError(
                 "metadata muss 'N' und 'left' Spalten enthalten für räumliche Constraints"
             )
 
-        required = min(self.n_samples, len(candidate_pool))
+        # Resolve projected geometry once; fallback uses scalar processor.
+        try:
+            from dataselector.data.io import get_metric_gdf
+
+            gdf_metric = get_metric_gdf(metadata)
+        except Exception:
+            gdf_metric = getattr(metadata, "gdf_metric", None)
+
+        from dataselector.selection.spatial_facility_location import haversine_distance
+
         valid_indices: list = []
 
         # 1) First pass: nur solche wählen, die den min_distance Constraint einhalten
@@ -433,15 +447,7 @@ class DiversitySelector:
                     )
                     distance = float(((a - b) ** 2).sum() ** 0.5) / 1000.0
                 else:
-                    if processor is None:
-                        from dataselector.data.metadata_processor import (
-                            MetadataProcessor,
-                        )
-
-                        processor = MetadataProcessor("")
-                    distance = processor.calculate_spatial_distance(
-                        lat, lon, lat2, lon2
-                    )
+                    distance = haversine_distance(lat, lon, lat2, lon2)
 
                 if distance < min_distance_km:
                     is_valid = False

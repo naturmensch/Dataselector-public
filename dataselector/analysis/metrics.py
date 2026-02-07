@@ -3,6 +3,8 @@ from typing import Dict
 import numpy as np
 import pandas as pd
 
+from dataselector.data.io import get_metric_gdf
+
 
 def compute_metrics(
     selected_idx,
@@ -23,16 +25,17 @@ def compute_metrics(
     )
     wwi_frac = float((selected["year"].between(1914, 1918)).mean() * 100)
 
-    # spatial mean & min distance
+    # Spatial mean/min distance
+    gdf_metric = None
     try:
         gdf_metric = get_metric_gdf(metadata)
     except Exception:
         gdf_metric = getattr(metadata, "gdf_metric", None)
+
     if gdf_metric is not None:
-        # select projected coords that correspond to selected rows
+        # Prefer projected metric coordinates if available.
         proj = gdf_metric.loc[selected.index, ["_proj_x", "_proj_y"]].values
         if len(proj) > 1:
-            # compute pairwise euclidean distances (meters)
             diffs = proj[:, None, :] - proj[None, :, :]
             dmat = np.sqrt((diffs**2).sum(axis=2))
             i, j = np.triu_indices(len(proj), k=1)
@@ -43,8 +46,13 @@ def compute_metrics(
             spatial_mean = 0.0
             spatial_min = 0.0
     else:
-        # fallback to legacy Haversine-based per-pair computation
+        # Fallback to Haversine distance on N/left columns.
         from dataselector.data.metadata_processor import MetadataProcessor
+
+        if "N" in selected.columns and "left" in selected.columns:
+            coords = selected[["N", "left"]].to_numpy(dtype=float)
+        else:
+            coords = np.empty((0, 2), dtype=float)
 
         mp = MetadataProcessor("")
         if len(coords) > 1:
@@ -68,16 +76,6 @@ def compute_metrics(
 
     return {
         "n_selected": int(sel_idx_arr.size),
-        "temporal_std": temporal_std,
-        "temporal_range": temporal_range,
-        "wwi_percent": wwi_frac,
-        "spatial_mean_km": spatial_mean,
-        "spatial_min_km": spatial_min,
-        "clusters_covered": clusters_covered,
-    }
-
-    return {
-        "n_selected": len(selected_idx),
         "temporal_std": temporal_std,
         "temporal_range": temporal_range,
         "wwi_percent": wwi_frac,

@@ -276,6 +276,11 @@ def test_feature_cache_write_permission_error(tmp_dirs, repo_root, monkeypatch):
         "io_mod", repo_root / "dataselector" / "data" / "io.py"
     )
     monkeypatch.setattr(
+        io_mod,
+        "extract_features",
+        lambda metadata, batch_size=16: np.zeros((len(metadata), 8), dtype=np.float32),
+    )
+    monkeypatch.setattr(
         "numpy.save",
         lambda *a, **k: (_ for _ in ()).throw(PermissionError("Disk full (simulated)")),
     )

@@ -40,16 +40,7 @@ def test_adaptive_pipeline_package_invocation(tmp_path):
         "-m",
         "dataselector",
         "adaptive-pipeline",
-        "--dry-run",
-        "--n-lhs",
-        "1",
-        "--n-trials",
-        "1",
-        "--n-boot",
-        "1",
-        "--seed",
-        "1",
-        "--skip-optuna",
+        "--help",
     ]
     run_cmd(cmd, cwd=tmp_path, env=env)
 

@@ -189,6 +189,8 @@ class MultiCriteriaFacilityLocation:
         self, candidate_idx: int, selected_indices: np.ndarray
     ) -> bool:
         """Prüft hard spatial constraint (min_distance_km)."""
+        if self.min_distance_km is None:
+            return False
         if len(selected_indices) == 0:
             return False
 
