@@ -5,7 +5,6 @@ ALLOWED_NONBLOCKING_WORKFLOWS = {
     ".github/workflows/docs-link-check.yml",
     ".github/workflows/verify-env-usage.yml",
     ".github/workflows/verify-archive.yml",
-    ".github/workflows/geo-integration.yml",
     ".github/workflows/smoke-tests.yml",
     ".github/workflows/regenerate-lockfile.yml",
 }
