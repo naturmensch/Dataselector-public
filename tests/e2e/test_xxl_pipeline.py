@@ -11,7 +11,6 @@ Uses abbreviated dataset (Hamburg subset) for speed in testing.
 """
 
 import json
-import sys
 from pathlib import Path
 
 import pytest
@@ -117,7 +116,7 @@ def test_xxl_pipeline_5_phases(
 
     # Check for finalization artifacts
     summary = output_dir / "thesis_finalization_summary.json"
-    assert summary.exists(), f"Finalization summary not created"
+    assert summary.exists(), "Finalization summary not created"
 
 
 @pytest.mark.error

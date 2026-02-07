@@ -16,7 +16,6 @@ This script:
 5. Outputs migration report
 """
 
-import ast
 import re
 import sys
 from pathlib import Path
@@ -102,10 +101,10 @@ def generate_decorator(
 ) -> str:
     """Generate @cli_command decorator string."""
     decorator_lines = [
-        f"@cli_command(",
+        "@cli_command(",
         f'    "{command_name}",',
         f'    help="{help_text or "TODO: Add help text"}",',
-        f"    args={{",
+        "    args={",
     ]
 
     for arg in args_list:
@@ -122,10 +121,10 @@ def generate_decorator(
             decorator_lines.append(
                 f'            "help": "{arg["help"].replace('"', '\\"')}",'
             )
-        decorator_lines.append(f"        }},")
+        decorator_lines.append("        },")
 
-    decorator_lines.append(f"    }},")
-    decorator_lines.append(f")")
+    decorator_lines.append("    },")
+    decorator_lines.append(")")
 
     return "\n".join(decorator_lines)
 

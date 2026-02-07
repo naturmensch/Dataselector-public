@@ -19,7 +19,6 @@ from dataselector.data.spatial_schema import (
 try:
     import matplotlib.pyplot as plt
     from pyproj import Transformer
-    from shapely.geometry import Point
 except ImportError:  # pragma: no cover
     raise ImportError(
         "This tool requires geopandas, shapely, pyproj and matplotlib. "
@@ -301,7 +300,7 @@ def align_audit(
             print(f"Saved plot: {out_plot_path}")
 
     # Print summary
-    print(f"\nAlignment Audit Summary:")
+    print("\nAlignment Audit Summary:")
     print(f"  Total tiles: {report['total_tiles']}")
     print(f"  Audited: {report['audited']}")
     print(f"  Outliers (>{max_offset_m}m): {report['outliers']}")

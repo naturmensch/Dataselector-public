@@ -4,7 +4,6 @@ Tests that quantile estimates are reproducible when using same seed.
 """
 
 import json
-import sys
 from pathlib import Path
 
 import pytest

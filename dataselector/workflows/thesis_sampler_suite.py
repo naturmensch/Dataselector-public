@@ -19,11 +19,15 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from dataselector.cli_decorators import cli_command
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 
 def run_cmd(cmd: str, cwd: Path | None = None) -> None:
@@ -297,7 +301,6 @@ def run_thesis_sampler_suite(
 
     # 3) Launch full adaptive runs with best sampler: Hamburg and KDR100
     # Hamburg full run
-    run_name_h = f"suite_full_{best}_hamburg_{timestamp}"
     cmd_h = (
         f"env PYTHONPATH=. python -m dataselector adaptive-pipeline "
         f"--n-trials {n_trials_full} --n-candidates {n_candidates} "
@@ -307,7 +310,6 @@ def run_thesis_sampler_suite(
     run_cmd(cmd_h)
 
     # KDR100 full run (no preselection)
-    run_name_k = f"suite_full_{best}_kdr100_{timestamp}"
     cmd_k = (
         f"env PYTHONPATH=. python -m dataselector adaptive-pipeline "
         f"--n-trials {n_trials_full} --n-candidates {n_candidates} "

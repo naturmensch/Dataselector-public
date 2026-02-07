@@ -1,5 +1,6 @@
 import importlib.util
 import sys
+import types
 from pathlib import Path
 
 import numpy as np
@@ -11,7 +12,6 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 # Inject a lightweight fake `src` package into sys.modules early to avoid importing
 # the real package `src` (which triggers heavy imports like umap/numba during test import).
 # Individual tests will override submodules as needed.
-import types
 
 if "src" not in sys.modules:
     mod = types.ModuleType("src")

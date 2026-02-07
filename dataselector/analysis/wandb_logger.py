@@ -16,7 +16,6 @@ Usage:
     logger.finish()
 """
 
-import json
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -216,7 +215,7 @@ class WandBLogger:
             return
         try:
             self.run.finish()
-            print(f"✅ wandb run finished")
+            print("✅ wandb run finished")
         except Exception as e:
             print(f"⚠️  wandb finish failed: {e}")
 

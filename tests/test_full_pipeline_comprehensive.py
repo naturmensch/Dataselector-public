@@ -1,20 +1,12 @@
-import importlib.util
-import os
-import shutil
-import subprocess
 import sys
-import time
 import types
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from tests.utils import (
     FakeFeatureExtractor,
-    FakeMetadataProcessor,
-    create_dummy_script,
     load_module_from_path,
 )
 
@@ -199,7 +191,7 @@ def test_full_pipeline_simulation(tmp_dirs, repo_root, inject_src_stub, monkeypa
     # 8) Run the sweep with small params to exercise many branches (disable spatial constraint by min_distance_km=0)
     runner = experiments.ExperimentRunner(output_dir=str(outputs / "tuning_fast"))
 
-    df = runner.run_weight_sweep(
+    runner.run_weight_sweep(
         csv_meta=str(csv_meta),
         n_samples=3,
         weight_combinations=[(0.7, 0.2, 0.1), (0.6, 0.3, 0.1), (0.5, 0.25, 0.25)],

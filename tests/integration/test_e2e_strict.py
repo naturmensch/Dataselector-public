@@ -1,6 +1,4 @@
 import json
-import os
-from pathlib import Path
 
 import dataselector.workflows.xxl as mod
 from tests.helpers.create_minimal_autoscale import create_minimal_autoscale

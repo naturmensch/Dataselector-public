@@ -1,8 +1,5 @@
 """Tests for dataselector/workflows/optuna_autoscale.py"""
 
-import sys
-from pathlib import Path
-
 
 def test_optuna_autoscale_importable():
     """Module should import without heavy dependencies at import-time."""

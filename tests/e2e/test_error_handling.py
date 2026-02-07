@@ -1,6 +1,5 @@
 """Error handling tests for edge cases and failure modes."""
 
-import sys
 from pathlib import Path
 
 import pytest

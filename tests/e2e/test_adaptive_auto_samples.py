@@ -4,7 +4,6 @@ Tests the adaptive-auto sampling command for progressive sampling.
 NOTE: adaptive-auto command doesn't exist in current CLI. Skipping.
 """
 
-import sys
 from pathlib import Path
 
 import pytest

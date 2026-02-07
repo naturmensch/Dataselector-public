@@ -3,7 +3,6 @@
 Tests the new direct function implementations (non-subprocess).
 """
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -95,9 +94,6 @@ def test_bootstrap_module_no_subprocess():
     import inspect
 
     from dataselector.workflows import bootstrap
-
-    # Read the source code
-    source = inspect.getsource(bootstrap)
 
     # Check that run_bootstrap_final and run_bootstrap_pareto don't use subprocess
     run_bootstrap_final_source = inspect.getsource(bootstrap.run_bootstrap_final)

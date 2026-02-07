@@ -1,7 +1,5 @@
 import sys
 
-import pytest
-
 
 def _numba_status():
     if "numba" not in sys.modules:

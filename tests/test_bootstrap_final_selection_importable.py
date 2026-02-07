@@ -1,7 +1,5 @@
 """Tests for bootstrap final selection - now using dataselector.workflows.bootstrap module."""
 
-import pytest
-
 
 def test_bootstrap_final_selection_module_exists():
     """Test that bootstrap module exists and has required functions."""

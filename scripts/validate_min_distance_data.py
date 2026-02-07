@@ -168,7 +168,7 @@ def analyze_coordinates(csv_path):
     print(f"Mean:     {mean_nn:.4f} km")
     print(f"Std Dev:  {std_nn:.4f} km")
 
-    print(f"\nPercentiles:")
+    print("\nPercentiles:")
     for pct in [10, 25, 50, 75, 90]:
         val = np.percentile(nn_distances, pct)
         print(f"  {pct}th: {val:.4f} km")
@@ -187,7 +187,7 @@ def analyze_coordinates(csv_path):
     if zero_count > 0:
         issues.append(f"⚠️  FOUND {zero_count} tiles with 0.0 km NN-distance")
         if len(zero_distance_tiles) <= 10:
-            print(f"\nTiles with 0.0 km NN-distance:")
+            print("\nTiles with 0.0 km NN-distance:")
             for tile_idx, tile_name, dist in zero_distance_tiles:
                 print(f"  • {tile_name} (index {tile_idx})")
     else:
@@ -216,22 +216,22 @@ def analyze_coordinates(csv_path):
 
     if not issues:
         min_dist_km = round(median_nn * 2) / 2
-        print(f"\n✅ Data is CLEAN. Recommended min_distance_km:")
+        print("\n✅ Data is CLEAN. Recommended min_distance_km:")
         print(f"\n   min_distance_km = {min_dist_km} km")
         print(f"   (rounded from median {median_nn:.1f} km)")
-        print(f"\nRationale:")
+        print("\nRationale:")
         print(f"  • Median NN-distance is {median_nn:.1f} km")
-        print(f"  • This represents 'typical' spacing in dataset")
-        print(f"  • Using this as constraint prevents clustering bias")
+        print("  • This represents 'typical' spacing in dataset")
+        print("  • Using this as constraint prevents clustering bias")
         return True
     else:
-        print(f"\n❌ Data has ISSUES:")
+        print("\n❌ Data has ISSUES:")
         for issue in issues:
             print(f"  {issue}")
-        print(f"\nBefore using min_distance_km calculation:")
-        print(f"  1. Investigate and resolve these issues")
-        print(f"  2. Re-run this validation")
-        print(f"  3. Then compute final min_distance_km")
+        print("\nBefore using min_distance_km calculation:")
+        print("  1. Investigate and resolve these issues")
+        print("  2. Re-run this validation")
+        print("  3. Then compute final min_distance_km")
         return False
 
 

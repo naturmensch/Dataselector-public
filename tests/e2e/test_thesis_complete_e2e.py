@@ -1,4 +1,3 @@
-import sys
 from pathlib import Path
 
 import pytest
@@ -7,7 +6,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.e2e
-def test_thesis_pipeline_smoke(tmp_path):
+def test_thesis_pipeline_smoke(tmp_path, run_dataselector_cli):
     """Run thesis-pipeline CLI in smoke mode and ensure it completes and writes outputs."""
     # Create a minimal workspace layout that uses real test data
     ws = tmp_path / "workspace"
@@ -39,7 +38,7 @@ def test_thesis_pipeline_smoke(tmp_path):
 
 
 @pytest.mark.e2e
-def test_optuna_optimize_smoke(tmp_path):
+def test_optuna_optimize_smoke(tmp_path, run_dataselector_cli):
     ws = tmp_path / "workspace2"
     data = ws / "data"
     out = ws / "outputs"

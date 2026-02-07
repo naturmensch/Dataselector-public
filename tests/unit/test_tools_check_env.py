@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from dataselector.cli_decorators import _CLI_COMMANDS
 from dataselector.tools import check
 
@@ -28,7 +26,7 @@ def test_check_env_args():
     cmd_def = _CLI_COMMANDS["check-env"]
 
     paths_arg = cmd_def.args["paths"]
-    assert paths_arg.type == str
+    assert paths_arg.type is str
     assert paths_arg.nargs == "*"
     assert paths_arg.help is not None
 
@@ -69,15 +67,15 @@ def test_check_protected_args():
     cmd_def = _CLI_COMMANDS["check-protected"]
 
     list_arg = cmd_def.args["list"]
-    assert list_arg.type == bool
+    assert list_arg.type is bool
     assert list_arg.action == "store_true"
 
     all_arg = cmd_def.args["all"]
-    assert all_arg.type == bool
+    assert all_arg.type is bool
     assert all_arg.action == "store_true"
 
     protect_arg = cmd_def.args["protect"]
-    assert protect_arg.type == str
+    assert protect_arg.type is str
     assert protect_arg.nargs == "*"
 
 

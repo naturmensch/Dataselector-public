@@ -4,8 +4,6 @@ Tests checkpoint and resume functionality for long-running pipelines
 like XXL, simulating interruption and recovery.
 """
 
-import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -36,12 +34,8 @@ def test_resume_recovery_checkpoint_creation(
     ]
 
     # Run with timeout to simulate interruption
-    result = run_dataselector_cli(
-        cmd, cwd=str(tmp_workspace), capture_output=True, timeout=120
-    )
+    run_dataselector_cli(cmd, cwd=str(tmp_workspace), capture_output=True, timeout=120)
 
-    # Check if checkpoint file was created
-    checkpoint = output_dir / "checkpoint.json"
     # Checkpoint may or may not exist depending on timing
     # This test just verifies structure is there for resume capability
 

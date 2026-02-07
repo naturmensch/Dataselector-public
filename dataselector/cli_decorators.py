@@ -22,7 +22,7 @@ from __future__ import annotations
 import argparse
 import copy
 import inspect
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable, TypeVar
 
 # Type for command functions
@@ -208,7 +208,7 @@ def build_parser_from_decorators() -> argparse.ArgumentParser:
                 kwargs["required"] = True
 
             # Handle boolean flags specially
-            if arg_def.type == bool:
+            if arg_def.type is bool:
                 if arg_def.action == "store_true":
                     kwargs["action"] = "store_true"
                 elif arg_def.action == "store_false":

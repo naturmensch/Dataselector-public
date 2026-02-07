@@ -158,7 +158,7 @@ class TestNearestNeighborDistances:
         mean_nn = np.mean(nn_distances)
 
         print(f"\n{'='*70}")
-        print(f"NN-Distance Statistics (centroid-to-centroid):")
+        print("NN-Distance Statistics (centroid-to-centroid):")
         print(f"  Count:    {len(nn_distances)}")
         print(f"  Min:      {np.min(nn_distances):.4f} km")
         print(f"  Q1:       {np.percentile(nn_distances, 25):.4f} km")
@@ -172,7 +172,7 @@ class TestNearestNeighborDistances:
         # Sanity check: median should be >= mean (if there are 0.0 values, mean << median)
         if median_nn < mean_nn - 5:
             print(f"\n⚠️  Median ({median_nn:.1f}) < Mean ({mean_nn:.1f})")
-            print(f"    This is unusual! Check for outliers or 0.0 values.")
+            print("    This is unusual! Check for outliers or 0.0 values.")
 
         # For grid-like spacing, expect median in reasonable range
         # For KDR100: expect 25-60 km

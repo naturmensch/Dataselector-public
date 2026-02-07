@@ -1,6 +1,4 @@
-import pytest
-
-from dataselector.workflows.recovery import RecoveryPlanner, Task
+from dataselector.workflows.recovery import RecoveryPlanner
 
 
 def test_planner_basic_optuna_repro_finalize():

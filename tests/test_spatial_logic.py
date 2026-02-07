@@ -2,10 +2,10 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pytest
+
+from tests.utils import load_module_from_path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-from tests.utils import load_module_from_path
 
 
 def _with_bounds(meta: pd.DataFrame, half_extent: float = 0.05) -> pd.DataFrame:
@@ -290,9 +290,7 @@ def test_soft_penalty_allows_selection_when_hard_would_block():
         }
     )
 
-    X = np.zeros((3, 4))
-
-    m = MultiCriteriaFacilityLocation(
+    MultiCriteriaFacilityLocation(
         n_samples=1,
         metadata=meta,
         alpha_visual=0.9,

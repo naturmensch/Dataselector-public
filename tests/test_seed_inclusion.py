@@ -4,7 +4,6 @@ import types
 
 import numpy as np
 import pandas as pd
-import pytest
 
 
 def _install_apricot_stub(monkeypatch):

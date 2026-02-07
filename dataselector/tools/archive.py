@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import argparse
 import re
 import shutil
-import sys
 import tarfile
 from datetime import datetime
 from pathlib import Path

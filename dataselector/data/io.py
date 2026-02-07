@@ -93,7 +93,6 @@ def load_or_extract_features(
         compute_meta_hash,
         create_meta_info,
         features_path_for_hash,
-        find_cache_by_hash,
         load_features_by_hash,
     )
 

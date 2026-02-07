@@ -1,4 +1,3 @@
-import importlib
 import sys
 from types import SimpleNamespace
 
@@ -61,7 +60,6 @@ def test_validate_environment_full_pass(monkeypatch):
 @pytest.mark.unit
 def test_validate_environment_full_numpy_mismatch(monkeypatch):
     _patch_modules(monkeypatch, numpy_version="2.4.0")
-    import importlib
 
     import dataselector.compat as compat
 

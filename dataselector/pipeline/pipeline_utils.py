@@ -140,7 +140,7 @@ def compute_min_distance_km(
 
     if len(xs) < 2:
         print(
-            f"⚠️  Dataset too small for statistical analysis. "
+            "⚠️  Dataset too small for statistical analysis. "
             "Returning default 28.0 km"
         )
         return 28.0

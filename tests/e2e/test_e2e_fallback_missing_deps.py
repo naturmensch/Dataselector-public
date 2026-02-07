@@ -1,4 +1,3 @@
-import sys
 from pathlib import Path
 
 import pytest
@@ -7,7 +6,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.e2e
-def test_thesis_pipeline_graceful_fallback(tmp_path):
+def test_thesis_pipeline_graceful_fallback(tmp_path, run_dataselector_cli):
     """Test that thesis-pipeline CLI handles missing dependencies gracefully.
 
     If the full native deps are present, fallback won't happen and test is skipped.

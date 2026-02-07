@@ -19,7 +19,6 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from dataselector.cli_decorators import cli_command
 
@@ -190,7 +189,6 @@ def run_adaptive_pipeline(
 
     # INTEGRATION: Check for ExplorationPlan from benchmark-sampling
     # If benchmark was run, use its recommended sampler and n_initial settings
-    exploration_plan = None
     plan_env = os.environ.get("DATASELECTOR_EXPLORATION_PLAN")
     if plan_env:
         try:
@@ -200,7 +198,6 @@ def run_adaptive_pipeline(
             if plan_path.exists():
                 with open(plan_path) as f:
                     plan_data = json.load(f)
-                exploration_plan = plan_data
                 print(
                     f"\n🎯 BENCHMARK INTEGRATION: Loaded exploration plan from {plan_env}"
                 )
@@ -220,7 +217,6 @@ def run_adaptive_pipeline(
                     print(f"   ✅ Using benchmark n_initial: {n_lhs}")
         except Exception as e:
             print(f"⚠️  Could not load exploration plan: {e}")
-            exploration_plan = None
 
     # Enforce: sampler must be from benchmark OR CLI - NO FALLBACK
     if sampler is None:
@@ -305,8 +301,8 @@ def run_adaptive_pipeline(
 
     print("=== Computing Initial Spatial Constraint ===")
     try:
-        initial_min_distance = compute_min_distance_km(
-            str(csv_path or DATA_CSV),
+        _initial_min_distance = compute_min_distance_km(
+            str(csv_path),
             strategy="median_nn",
             safety_margin=1.0,
         )
@@ -315,7 +311,7 @@ def run_adaptive_pipeline(
             f"⚠️  Could not compute min_distance from data ({e}). "
             f"Using conservative default: 28.0 km"
         )
-        initial_min_distance = 28.0
+        _initial_min_distance = 28.0
 
     # ========================================================================
     # PHASE 1: EXPLORATION (LHS/Sobol)

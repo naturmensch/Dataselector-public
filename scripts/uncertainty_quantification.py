@@ -4,7 +4,7 @@ This module provides functions for fitting ensemble models on bootstrap data
 and predicting with uncertainty estimates.
 """
 
-from typing import Dict, List, Tuple
+from typing import List, Tuple
 
 import numpy as np
 import pandas as pd

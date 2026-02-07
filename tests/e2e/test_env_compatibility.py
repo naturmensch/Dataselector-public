@@ -7,7 +7,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 @pytest.mark.e2e
-def test_env_compatibility_exits_zero():
+def test_env_compatibility_exits_zero(run_dataselector_cli):
     """Run the environment checker and assert it exits 0 (compatible).
 
     This test should run in gated/full E2E environments where native deps are installed.

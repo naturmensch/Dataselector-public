@@ -10,16 +10,12 @@ This module provides pytest fixtures for E2E testing, including:
 from __future__ import annotations
 
 import csv
-import os
 import shutil
 import subprocess
 import sys
-import tempfile
-import time
 from pathlib import Path
 from typing import Generator
 
-import psutil
 import pytest
 
 

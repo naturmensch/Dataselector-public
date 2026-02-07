@@ -54,7 +54,6 @@ def test_optuna_storage_creation(tmp_path):
     res = subprocess.run(cmd, cwd=tmp_path, env=env, capture_output=True, text=True)
     assert res.returncode == 0, f"Run failed: {res.stderr}"
 
-    db_path = tmp_path / "outputs" / "optuna_study.db"
     # study_db can be optional; ensure the main results artifact exists.
     assert (tmp_path / "outputs" / "optuna_results.csv").exists()
 

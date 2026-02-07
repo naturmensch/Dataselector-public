@@ -1,7 +1,10 @@
 import sys
+import types
 from pathlib import Path
 
 import numpy as np
+import pytest
+from _pytest.config import Config
 
 # --- PFAD-SETUP: MUSS GANZ OBEN STEHEN ---
 # Ermittelt den absoluten Pfad zum Projekt-Root (ein Level über 'tests')
@@ -12,17 +15,11 @@ if str(root_dir) not in sys.path:
 # Versuche, das Paket früh zu importieren, damit `from src.xxx import ...`
 # beim Sammeln (collect) funktioniert.
 try:
-    import src  # type: ignore
+    pass  # type: ignore
 except Exception:
     # Falls Import trotzdem scheitert, lassen wir pytest die eigentliche Fehlermeldung anzeigen
     pass
 # -----------------------------------------
-
-import types
-from pathlib import Path
-
-import pytest
-from _pytest.config import Config
 
 REPO_ROOT_PATH = Path(root_dir)
 
@@ -33,28 +30,30 @@ REPO_ROOT_PATH = Path(root_dir)
 def _register_all_cli_commands():
     """Import all CLI modules to populate _CLI_COMMANDS registry."""
     try:
-        # Import all workflow modules
-        # Import data module
-        import dataselector.data.build_tiles
-        import dataselector.tools.archive
-        import dataselector.tools.audit
+        import importlib
 
-        # Import all tools modules
-        import dataselector.tools.check
-        import dataselector.tools.clean
-        import dataselector.tools.docs_link
-        import dataselector.workflows.adaptive_pipeline
-        import dataselector.workflows.autoscale
-        import dataselector.workflows.benchmark_sampling
-        import dataselector.workflows.bootstrap
-        import dataselector.workflows.compare_samplers
-        import dataselector.workflows.final_selection
-        import dataselector.workflows.generate_reports
-        import dataselector.workflows.optuna_optimize
-        import dataselector.workflows.sampler_suite
-        import dataselector.workflows.thesis_pipeline
-        import dataselector.workflows.thesis_sampler_suite
-        import dataselector.workflows.xxl
+        modules = [
+            "dataselector.data.build_tiles",
+            "dataselector.tools.archive",
+            "dataselector.tools.audit",
+            "dataselector.tools.check",
+            "dataselector.tools.clean",
+            "dataselector.tools.docs_link",
+            "dataselector.workflows.adaptive_pipeline",
+            "dataselector.workflows.autoscale",
+            "dataselector.workflows.benchmark_sampling",
+            "dataselector.workflows.bootstrap",
+            "dataselector.workflows.compare_samplers",
+            "dataselector.workflows.final_selection",
+            "dataselector.workflows.generate_reports",
+            "dataselector.workflows.optuna_optimize",
+            "dataselector.workflows.sampler_suite",
+            "dataselector.workflows.thesis_pipeline",
+            "dataselector.workflows.thesis_sampler_suite",
+            "dataselector.workflows.xxl",
+        ]
+        for module_name in modules:
+            importlib.import_module(module_name)
     except ImportError:
         pass  # Let pytest show the actual error
 
@@ -215,8 +214,6 @@ def pytest_configure(config):
     E2E tests are automatically skipped when environment checks fail.
     """
     import subprocess
-
-    from _pytest.config import Config
 
     # Run environment audit via canonical package command.
     try:

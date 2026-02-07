@@ -2,7 +2,6 @@
 
 import argparse
 import logging
-import sys
 import time
 from pathlib import Path
 from typing import Optional
@@ -120,7 +119,7 @@ def run_final_selection(
         else min_distance_km
     )
 
-    print(f"\nFinal selection parameters:")
+    print("\nFinal selection parameters:")
     print(f"  n_samples: {n_samples}")
     print(f"  α={alpha:.3f}, β={beta:.3f}, γ={gamma:.3f}")
     print(f"  min_distance_km: {min_distance_km}")
@@ -196,7 +195,7 @@ def run_final_selection(
         print(f"Using pre-selected indices: {pre_selected_indices}")
 
     # Run selection
-    print(f"\nRunning selection...")
+    print("\nRunning selection...")
     start_time = time.time()
 
     selected_idx = selector.select(

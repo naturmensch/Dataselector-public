@@ -1,7 +1,6 @@
 import importlib.util
 import sys
 import textwrap
-import types
 from pathlib import Path
 
 import numpy as np

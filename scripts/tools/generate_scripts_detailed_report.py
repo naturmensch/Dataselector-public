@@ -9,7 +9,6 @@ Outputs Markdown to docs/all_scripts_overview_detailed.md
 """
 
 import ast
-import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -28,7 +27,6 @@ py_files = sorted(ROOT.glob("**/*.py"))
 
 
 def is_excluded(p: Path):
-    parts = set(p.parts)
     if "tests" in p.parts or any(
         str(p).startswith(str(ROOT / d)) for d in ["archive", "archive_local"]
     ):

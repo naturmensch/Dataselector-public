@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from dataselector.cli_decorators import cli_command
 from dataselector.data.spatial_schema import (
@@ -27,6 +28,9 @@ from dataselector.data.spatial_schema import spatial_spread as compute_spatial_s
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+
+if TYPE_CHECKING:
+    import optuna
 
 
 def get_optuna_sampler(sampler_name: str = "tpe", seed: int = 42, **sampler_kwargs):
@@ -161,10 +165,9 @@ def objective_factory(
     callable
         Optuna objective function
     """
-    import optuna
 
     # Lazy import to avoid sklearn dependency at module import time
-    def objective(trial: optuna.trial.Trial):
+    def objective(trial: "optuna.trial.Trial"):
         try:
             from dataselector.selection.diversity_selector import DiversitySelector
 

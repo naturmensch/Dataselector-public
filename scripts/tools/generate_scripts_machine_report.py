@@ -12,6 +12,7 @@ Heuristics used for suggestions:
 
 import json
 import re
+from collections import Counter, defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -125,9 +126,6 @@ for sec in sections:
 
     entries.append(data)
 
-# group related files by token heuristics for suggestions
-from collections import defaultdict
-
 groups = defaultdict(list)
 for e in entries:
     n = Path(e["path"]).name
@@ -205,9 +203,6 @@ lines = [
     "# All Scripts Cleanup Plan\n",
     "This plan groups files with suggested actions to consolidate, archive, or refactor.\n",
 ]
-
-# summary counts
-from collections import Counter
 
 cats = Counter([e["category"] for e in entries])
 lines.append(f"- Total files scanned: {len(entries)}\n")

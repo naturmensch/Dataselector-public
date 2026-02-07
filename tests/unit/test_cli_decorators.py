@@ -9,7 +9,6 @@ import pytest
 from dataselector.cli_decorators import (
     _CLI_COMMANDS,
     ArgDef,
-    CommandDef,
     build_parser_from_decorators,
     cli_command,
     dispatch_from_decorators,
@@ -39,7 +38,7 @@ class TestArgDef:
             required=True,
         )
         assert arg.name == "csv"
-        assert arg.type == str
+        assert arg.type is str
         assert arg.help == "CSV path"
         assert arg.required is True
         assert arg.default is None
@@ -92,8 +91,8 @@ class TestCliCommandDecorator:
 
         cmd_def = _CLI_COMMANDS["autoscale"]
         assert len(cmd_def.args) == 3
-        assert cmd_def.args["csv"].type == str
-        assert cmd_def.args["n_trials"].type == int
+        assert cmd_def.args["csv"].type is str
+        assert cmd_def.args["n_trials"].type is int
         assert cmd_def.args["n_trials"].nargs == "+"
         assert cmd_def.args["smoke"].action == "store_true"
 

@@ -3,7 +3,6 @@
 Tests that Optuna study is properly saved and can be resumed.
 """
 
-import sys
 from pathlib import Path
 
 import pytest
@@ -33,6 +32,4 @@ def test_optuna_persistence_study_created(
     )
     assert result.returncode == 0
 
-    # Look for Optuna database files
-    optuna_files = list(output_dir.glob("*.db")) + list(output_dir.glob("optuna*"))
-    # May or may not exist depending on implementation
+    # Persistence implementation is allowed to vary across adapters.

@@ -17,7 +17,6 @@ import argparse
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -86,7 +85,6 @@ def make_objective(
 
     def objective(trial):
         # Lazy import to avoid module-level side effects
-        import optuna
 
         from dataselector.selection.diversity_selector import DiversitySelector
 
