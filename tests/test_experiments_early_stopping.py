@@ -7,8 +7,10 @@ from dataselector.pipeline.experiments import ExperimentRunner
 def _fake_meta():
     return pd.DataFrame(
         {
-            "N": [50.0, 51.0, 52.0],
-            "left": [10.0, 11.0, 12.0],
+            "ul_x": [9.95, 10.95, 11.95],
+            "ul_y": [50.05, 51.05, 52.05],
+            "lr_x": [10.05, 11.05, 12.05],
+            "lr_y": [49.95, 50.95, 51.95],
             "year": [1900, 1914, 1918],
             "image_path": ["a", "b", "c"],
         }

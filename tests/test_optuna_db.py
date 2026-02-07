@@ -15,8 +15,10 @@ def test_optuna_creates_sqlite_db(tmp_path, monkeypatch):
 
     metadata = pd.DataFrame(
         {
-            "N": np.linspace(48.0, 55.0, 20),
-            "left": np.linspace(6.0, 15.0, 20),
+            "ul_x": np.linspace(6.0, 15.0, 20) - 0.05,
+            "ul_y": np.linspace(48.0, 55.0, 20) + 0.05,
+            "lr_x": np.linspace(6.0, 15.0, 20) + 0.05,
+            "lr_y": np.linspace(48.0, 55.0, 20) - 0.05,
             "year": np.arange(1900, 1920),
         }
     )

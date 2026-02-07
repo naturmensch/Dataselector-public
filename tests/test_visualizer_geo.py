@@ -4,8 +4,15 @@ from dataselector.analysis.visualizer import Visualizer
 
 
 def test_plot_spatial_distribution_without_geo(tmp_path):
-    # Simple lat/lon DataFrame
-    df = pd.DataFrame({"N": [52.0, 48.0], "left": [13.0, 11.5]})
+    # Simple bounds-based DataFrame (degree coordinates).
+    df = pd.DataFrame(
+        {
+            "ul_x": [12.9, 11.4],
+            "ul_y": [52.1, 48.1],
+            "lr_x": [13.1, 11.6],
+            "lr_y": [51.9, 47.9],
+        }
+    )
     viz = Visualizer(output_dir=str(tmp_path))
     out = tmp_path / "spatial_no_geo.png"
     fig = viz.plot_spatial_distribution(df, selected_indices=None, save_path=str(out))

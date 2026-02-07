@@ -79,10 +79,16 @@ def make_dummy_metadata():
 
     def _make(n, seed: int = 0):
         rng = _np.random.RandomState(seed)
+        center_x = rng.uniform(450000, 650000, n)
+        center_y = rng.uniform(5800000, 6100000, n)
+        half_w = rng.uniform(40, 80, n)
+        half_h = rng.uniform(40, 80, n)
         return _pd.DataFrame(
             {
-                "N": rng.uniform(48, 55, n),
-                "left": rng.uniform(6, 15, n),
+                "ul_x": center_x - half_w,
+                "ul_y": center_y + half_h,
+                "lr_x": center_x + half_w,
+                "lr_y": center_y - half_h,
                 "year": rng.randint(1880, 1945, n),
             }
         )
@@ -115,9 +121,15 @@ def tmp_workspace(tmp_path):
 def create_minimal_new_all_tiles_csv():
     def _fn(path, n=5):
         path.parent.mkdir(parents=True, exist_ok=True)
-        lines = ["longName,shortName,N,left,image_path,image_filename,year"]
+        lines = [
+            "longName,shortName,ul_x,ul_y,lr_x,lr_y,image_path,image_filename,year"
+        ]
         for i in range(n):
-            lines.append(f"A{i},a{i},{50.0 + i*0.1},{10 + i*0.1},,,{1900+i}")
+            cx = 500000.0 + i * 100.0
+            cy = 5900000.0 + i * 100.0
+            lines.append(
+                f"A{i},a{i},{cx-50},{cy+50},{cx+50},{cy-50},,,{1900+i}"
+            )
         path.write_text("\n".join(lines) + "\n")
         return path
 

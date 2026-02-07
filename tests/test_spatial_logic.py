@@ -8,6 +8,22 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 from tests.utils import load_module_from_path
 
 
+def _with_bounds(meta: pd.DataFrame, half_extent: float = 0.05) -> pd.DataFrame:
+    out = meta.copy()
+    if all(c in out.columns for c in ("ul_x", "ul_y", "lr_x", "lr_y")):
+        return out
+    if "center_x" in out.columns and "center_y" in out.columns:
+        cx = out["center_x"].astype(float)
+        cy = out["center_y"].astype(float)
+    else:
+        raise ValueError("Test metadata requires ul/lr bounds or center coordinates")
+    out["ul_x"] = cx - half_extent
+    out["ul_y"] = cy + half_extent
+    out["lr_x"] = cx + half_extent
+    out["lr_y"] = cy - half_extent
+    return out
+
+
 def _install_apricot_stub(monkeypatch):
     import sys
     import types
@@ -40,7 +56,7 @@ def test_spatial_constraint_preserves_count(
 
     selector = DiversitySelector(n_samples=10, use_multi_criteria=False)
     features = make_features(100, dim=64, seed=0)
-    metadata = make_dummy_metadata(100, seed=0)
+    metadata = _with_bounds(make_dummy_metadata(100, seed=0))
 
     result = selector.select(
         features, metadata, spatial_constraint=True, min_distance_km=1.0
@@ -65,7 +81,7 @@ def test_spatial_constraint_respects_distance(
 
     selector = DiversitySelector(n_samples=5, use_multi_criteria=False)
     features = make_features(50, dim=64, seed=1)
-    metadata = make_dummy_metadata(50, seed=1)
+    metadata = _with_bounds(make_dummy_metadata(50, seed=1))
 
     min_dist = 100.0
     result = selector.select(
@@ -75,9 +91,11 @@ def test_spatial_constraint_respects_distance(
     processor = MetadataProcessor("")
     for i, idx1 in enumerate(result):
         for idx2 in result[i + 1 :]:
-            lat1, lon1 = metadata.loc[idx1, "N"], metadata.loc[idx1, "left"]
-            lat2, lon2 = metadata.loc[idx2, "N"], metadata.loc[idx2, "left"]
-            dist = processor.calculate_spatial_distance(lat1, lon1, lat2, lon2)
+            y1 = (metadata.loc[idx1, "ul_y"] + metadata.loc[idx1, "lr_y"]) / 2
+            x1 = (metadata.loc[idx1, "ul_x"] + metadata.loc[idx1, "lr_x"]) / 2
+            y2 = (metadata.loc[idx2, "ul_y"] + metadata.loc[idx2, "lr_y"]) / 2
+            x2 = (metadata.loc[idx2, "ul_x"] + metadata.loc[idx2, "lr_x"]) / 2
+            dist = processor.calculate_spatial_distance(y1, x1, y2, x2)
             assert dist >= min_dist or len(result) == selector.n_samples
 
 
@@ -93,8 +111,10 @@ def test_spatial_constraint_with_insufficient_samples(make_features, monkeypatch
     # create small metadata
     metadata = pd.DataFrame(
         {
-            "N": np.linspace(48.0, 49.0, 10),
-            "left": np.linspace(6.0, 7.0, 10),
+            "ul_x": np.linspace(6.0, 7.0, 10) - 0.05,
+            "ul_y": np.linspace(48.0, 49.0, 10) + 0.05,
+            "lr_x": np.linspace(6.0, 7.0, 10) + 0.05,
+            "lr_y": np.linspace(48.0, 49.0, 10) - 0.05,
             "year": np.arange(2000, 2010),
         }
     )
@@ -121,7 +141,13 @@ def test_adaptive_min_distance_reaches_n_samples(monkeypatch):
     lons = [6.0 + i * 0.28 for i in range(10)]
     lats = [50.0 for _ in range(10)]
     metadata = pd.DataFrame(
-        {"N": lats, "left": lons, "year": np.random.randint(1880, 1945, 10)}
+        {
+            "ul_x": np.array(lons) - 0.05,
+            "ul_y": np.array(lats) + 0.05,
+            "lr_x": np.array(lons) + 0.05,
+            "lr_y": np.array(lats) - 0.05,
+            "year": np.random.randint(1880, 1945, 10),
+        }
     )
 
     result = selector.select(
@@ -146,9 +172,10 @@ def test_adaptive_fallback_allows_duplicates(monkeypatch):
     )
     DiversitySelector = selector_mod.DiversitySelector
 
-    coords = [(52.52, 13.405), (52.52, 13.405)]
+    coords = [(13.405, 52.52), (13.405, 52.52)]
     features = np.zeros((2, 1))
-    meta = pd.DataFrame(coords, columns=["N", "left"])
+    meta = pd.DataFrame(coords, columns=["center_x", "center_y"])
+    meta = _with_bounds(meta)
     meta["year"] = 2000
     sel = DiversitySelector(n_samples=2, use_multi_criteria=False)
     idx = sel.select(
@@ -203,10 +230,16 @@ def test_spatial_penalty_increases_nearby_distances(monkeypatch):
     )
     MultiCriteriaFacilityLocation = mc_mod.MultiCriteriaFacilityLocation
 
-    latlon = [(0.0, 0.0), (0.01, 0.01), (1.0, 1.0)]
+    latlon = [(0.0, 0.0), (0.01, 0.01), (1.0, 1.0)]  # (lat, lon)
     years = [1900, 1900, 1950]
     meta = pd.DataFrame(
-        {"N": [p[0] for p in latlon], "left": [p[1] for p in latlon], "year": years}
+        {
+            "ul_x": np.array([p[1] for p in latlon]) - 0.05,
+            "ul_y": np.array([p[0] for p in latlon]) + 0.05,
+            "lr_x": np.array([p[1] for p in latlon]) + 0.05,
+            "lr_y": np.array([p[0] for p in latlon]) - 0.05,
+            "year": years,
+        }
     )
 
     X = np.zeros((3, 4))
@@ -248,7 +281,13 @@ def test_soft_penalty_allows_selection_when_hard_would_block():
     latlon = [(0.0, 0.0), (0.01, 0.01), (1.0, 1.0)]
     years = [1900, 1900, 1950]
     meta = pd.DataFrame(
-        {"N": [p[0] for p in latlon], "left": [p[1] for p in latlon], "year": years}
+        {
+            "ul_x": np.array([p[1] for p in latlon]) - 0.05,
+            "ul_y": np.array([p[0] for p in latlon]) + 0.05,
+            "lr_x": np.array([p[1] for p in latlon]) + 0.05,
+            "lr_y": np.array([p[0] for p in latlon]) - 0.05,
+            "year": years,
+        }
     )
 
     X = np.zeros((3, 4))

@@ -33,8 +33,10 @@ def test_load_or_create_data_synthetic(tmp_path):
 
     assert features.shape == (100, 64)
     assert len(metadata) == 100
-    assert "N" in metadata.columns
-    assert "left" in metadata.columns
+    assert "ul_x" in metadata.columns
+    assert "ul_y" in metadata.columns
+    assert "lr_x" in metadata.columns
+    assert "lr_y" in metadata.columns
     assert "year" in metadata.columns
 
 

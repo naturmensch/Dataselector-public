@@ -9,7 +9,15 @@ from dataselector.selection.multi_criteria_facility_location import (
 
 def test_multi_criteria_weight_validation():
     # Create minimal metadata
-    meta = pd.DataFrame({"N": [0.0, 1.0], "left": [0.0, 1.0], "year": [1900, 1901]})
+    meta = pd.DataFrame(
+        {
+            "ul_x": [-0.05, 0.95],
+            "ul_y": [0.05, 1.05],
+            "lr_x": [0.05, 1.05],
+            "lr_y": [-0.05, 0.95],
+            "year": [1900, 1901],
+        }
+    )
 
     # Weights do not sum to 1.0 -> ValueError
     with pytest.raises(ValueError):
@@ -26,8 +34,10 @@ def test_greedy_selection_spatial_constraint():
     # Three points: 0 and 1 are at same coordinates (distance 0), 2 is far away
     meta = pd.DataFrame(
         {
-            "N": [0.0, 0.0, 50.0],
-            "left": [0.0, 0.0, 50.0],
+            "ul_x": [-0.05, -0.05, 49.95],
+            "ul_y": [0.05, 0.05, 50.05],
+            "lr_x": [0.05, 0.05, 50.05],
+            "lr_y": [-0.05, -0.05, 49.95],
             "year": [1900, 1900, 1950],
         }
     )

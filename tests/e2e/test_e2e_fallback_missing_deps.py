@@ -18,7 +18,9 @@ def test_thesis_pipeline_graceful_fallback(tmp_path):
     data.mkdir(parents=True)
     # minimal csv so any downstream code that checks it can find it
     (data / "new_all_tiles.csv").write_text(
-        "longName,shortName,N,left\nA,a,50,10\nB,b,51,11\n"
+        "longName,shortName,ul_x,ul_y,lr_x,lr_y\n"
+        "A,a,499950,5900050,500050,5899950\n"
+        "B,b,500950,5901050,501050,5900950\n"
     )
 
     # Use thesis-pipeline CLI with dry-run to test import paths

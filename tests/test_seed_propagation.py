@@ -19,13 +19,20 @@ def test_run_adaptive_pipeline_seed_propagation(tmp_path, monkeypatch):
     # Isolate workflow root
     monkeypatch.setattr(adaptive_pipeline, "ROOT", tmp_path)
 
-    # Minimal metadata CSV (missing N/left is fine: workflow falls back to default distance)
+    # Minimal metadata CSV with canonical ul/lr bounds.
     data_dir = tmp_path / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
     csv_path = data_dir / "new_all_tiles.csv"
-    pd.DataFrame({"longName": ["A.png", "B.png"], "year": [1900, 1910]}).to_csv(
-        csv_path, index=False
-    )
+    pd.DataFrame(
+        {
+            "longName": ["A.png", "B.png"],
+            "ul_x": [499950.0, 500950.0],
+            "ul_y": [5900050.0, 5901050.0],
+            "lr_x": [500050.0, 501050.0],
+            "lr_y": [5899950.0, 5900950.0],
+            "year": [1900, 1910],
+        }
+    ).to_csv(csv_path, index=False)
 
     # Provide a pareto file expected by skip-fine path
     pareto_dir = tmp_path / "outputs" / "experiments" / "fine_sweep"

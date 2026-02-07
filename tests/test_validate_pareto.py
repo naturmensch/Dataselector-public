@@ -24,8 +24,10 @@ def _make_pareto_csv(tmp_path):
     pd.DataFrame(
         {
             "longName": ["a.png", "b.png", "c.png"],
-            "N": [50, 51, 52],
-            "left": [10, 11, 12],
+            "ul_x": [9.9, 10.9, 11.9],
+            "ul_y": [50.1, 51.1, 52.1],
+            "lr_x": [10.1, 11.1, 12.1],
+            "lr_y": [49.9, 50.9, 51.9],
             "year": [1900, 1914, 1918],
             "image_path": ["a", "b", "c"],
         }

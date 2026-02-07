@@ -42,8 +42,10 @@ def test_feature_cache_validation(tmp_path, monkeypatch):
     # create a metadata.csv with 4 rows
     meta = tmp_out / "metadata.csv"
     meta.write_text(
-        "longName,shortName,N,left,image_path,image_filename,year\n"
-        + "\n".join([f"A,i,{i},10,,," for i in range(4)])
+        "longName,shortName,ul_x,ul_y,lr_x,lr_y,image_path,image_filename,year\n"
+        + "\n".join(
+            [f"A,i,{9.95+i*0.1},{50.05+i*0.1},{10.05+i*0.1},{49.95+i*0.1},,," for i in range(4)]
+        )
     )
 
     # Before loading src/io.py, inject lightweight stubs for src submodules to avoid heavy imports
@@ -144,7 +146,13 @@ def test_multicriteria_fit_guard_raises_on_mismatch(monkeypatch):
 
     # Create metadata with 5 rows
     metadata = pd.DataFrame(
-        {"N": np.arange(5.0), "left": np.arange(5.0), "year": np.arange(1900, 1905)}
+        {
+            "ul_x": np.arange(5.0) - 0.05,
+            "ul_y": np.arange(5.0) + 0.05,
+            "lr_x": np.arange(5.0) + 0.05,
+            "lr_y": np.arange(5.0) - 0.05,
+            "year": np.arange(1900, 1905),
+        }
     )
 
     # instantiate with n_samples small

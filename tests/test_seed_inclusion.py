@@ -37,8 +37,10 @@ def test_seed_included_by_index(monkeypatch):
     meta = pd.DataFrame(
         {
             "longName": ["SEED_001", "other"],
-            "N": [50.0, 51.0],
-            "left": [7.0, 8.0],
+            "ul_x": [6.95, 7.95],
+            "ul_y": [50.05, 51.05],
+            "lr_x": [7.05, 8.05],
+            "lr_y": [49.95, 50.95],
             "year": [1900, 1901],
         }
     )
@@ -94,8 +96,10 @@ def test_seed_included_by_name(monkeypatch):
     meta = pd.DataFrame(
         {
             "longName": ["SEED_001", "other"],
-            "N": [50.0, 51.0],
-            "left": [7.0, 8.0],
+            "ul_x": [6.95, 7.95],
+            "ul_y": [50.05, 51.05],
+            "lr_x": [7.05, 8.05],
+            "lr_y": [49.95, 50.95],
             "year": [1900, 1901],
         }
     )
@@ -153,8 +157,10 @@ def test_seed_included_by_substring_case_insensitive(monkeypatch):
     meta = pd.DataFrame(
         {
             "longName": ["KDR_001.png", "other"],
-            "N": [50.0, 51.0],
-            "left": [7.0, 8.0],
+            "ul_x": [6.95, 7.95],
+            "ul_y": [50.05, 51.05],
+            "lr_x": [7.05, 8.05],
+            "lr_y": [49.95, 50.95],
             "year": [1900, 1901],
         }
     )

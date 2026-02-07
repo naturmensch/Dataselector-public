@@ -9,7 +9,9 @@ from dataselector.data.metadata_processor import MetadataProcessor
 def _make_csv(tmp_path):
     p = tmp_path / "test.csv"
     p.write_text(
-        "longName,N,left\nKDR_1_1901.png,52.52,13.405\nKDR_2_1910.png,48.1351,11.5820\n"
+        "longName,ul_x,ul_y,lr_x,lr_y\n"
+        "KDR_1_1901.png,13.305,52.62,13.505,52.42\n"
+        "KDR_2_1910.png,11.482,48.2351,11.682,48.0351\n"
     )
     return str(p)
 

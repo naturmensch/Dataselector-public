@@ -20,17 +20,17 @@ def write_csv(tmp_path, content: str) -> str:
 
 
 def test_load_and_standardize_csv(tmp_path):
-    csv = """File,N,left\nKDR_001_Someplace_1901.png,52,13.4\nKDR_002_Other_1950.png,52.1,13.5\n"""
+    csv = """File,ul_x,ul_y,lr_x,lr_y\nKDR_001_Someplace_1901.png,13.3,52.1,13.5,51.9\nKDR_002_Other_1950.png,13.4,52.2,13.6,52.0\n"""
     path = write_csv(tmp_path, csv)
     proc = MetadataProcessor(path)
     df = proc.load_csv()
     assert "longName" in df.columns
     assert df["longName"].iloc[0] == "KDR_001_Someplace_1901.png"
-    assert isinstance(df["N"].iloc[0], float)
+    assert isinstance(df["center_y"].iloc[0], float)
 
 
 def test_extract_year_and_temporal(tmp_path):
-    csv = """File,N,left\nKDR_001_Someplace_1901.png,52,13.4\nKDR_002_Other_1950.png,52.1,13.5\n"""
+    csv = """File,ul_x,ul_y,lr_x,lr_y\nKDR_001_Someplace_1901.png,13.3,52.1,13.5,51.9\nKDR_002_Other_1950.png,13.4,52.2,13.6,52.0\n"""
     path = write_csv(tmp_path, csv)
     proc = MetadataProcessor(path)
     proc.load_csv()
@@ -41,7 +41,7 @@ def test_extract_year_and_temporal(tmp_path):
 
 
 def test_spatial_distance_and_filter(tmp_path):
-    csv = """File,N,left\nA.png,0,0\nB.png,0,1\nC.png,50,50\n"""
+    csv = """File,ul_x,ul_y,lr_x,lr_y\nA.png,-0.1,0.1,0.1,-0.1\nB.png,0.9,0.1,1.1,-0.1\nC.png,49.9,50.1,50.1,49.9\n"""
     path = write_csv(tmp_path, csv)
     proc = MetadataProcessor(path)
     proc.load_csv()
@@ -56,9 +56,9 @@ def test_spatial_distance_and_filter(tmp_path):
 
 def test_resolve_image_paths_prefers_shortname(tmp_path):
     csv_lines = [
-        "shortName,longName,N,left",
-        "IMG1,KDR_001_IMG1_1901.png,52,13",
-        ",KDR_002_IMG2_1950.png,52,14",
+        "shortName,longName,ul_x,ul_y,lr_x,lr_y",
+        "IMG1,KDR_001_IMG1_1901.png,13,52.1,13.2,51.9",
+        ",KDR_002_IMG2_1950.png,14,52.1,14.2,51.9",
     ]
     csv = "\n".join(csv_lines) + "\n"
     p = tmp_path / "imgdir"
@@ -77,7 +77,7 @@ def test_resolve_image_paths_prefers_shortname(tmp_path):
 
 
 def test_convert_dbf_to_csv_raises_for_non_dbf(tmp_path):
-    csv = "File,N,left\nA.png,0,0\n"
+    csv = "File,ul_x,ul_y,lr_x,lr_y\nA.png,-0.1,0.1,0.1,-0.1\n"
     path = write_csv(tmp_path, csv)
     proc = MetadataProcessor(path)
     proc.load_csv()
@@ -87,9 +87,9 @@ def test_convert_dbf_to_csv_raises_for_non_dbf(tmp_path):
 
 def test_metadata_standard_flow_equivalent(tmp_path):
     # From previous 'new' test suite: ensure standard flow and temporal metadata behavior
-    csv = """File,N,left
-KDR_001_Someplace_1901.png,52,13.4
-KDR_002_Other_1950.png,52.1,13.5
+    csv = """File,ul_x,ul_y,lr_x,lr_y
+KDR_001_Someplace_1901.png,13.3,52.1,13.5,51.9
+KDR_002_Other_1950.png,13.4,52.2,13.6,52.0
 """
     path = write_csv(tmp_path, csv)
     proc = MetadataProcessor(path)
@@ -100,9 +100,9 @@ KDR_002_Other_1950.png,52.1,13.5
 
 
 def test_resolve_image_paths_equivalent(tmp_path):
-    csv = """shortName,longName,N,left
-IMG1,KDR_001_IMG1_1901.png,52,13
-,KDR_002_IMG2_1950.png,52,14
+    csv = """shortName,longName,ul_x,ul_y,lr_x,lr_y
+IMG1,KDR_001_IMG1_1901.png,13,52.1,13.2,51.9
+,KDR_002_IMG2_1950.png,14,52.1,14.2,51.9
 """
     imgdir = tmp_path / "imgdir"
     imgdir.mkdir()

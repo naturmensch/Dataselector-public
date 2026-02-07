@@ -24,10 +24,15 @@ def MetadataProcessor():
 
 
 def make_metadata(n):
+    center_x = np.random.uniform(400000, 700000, n)
+    center_y = np.random.uniform(5600000, 6100000, n)
+    half = np.full(n, 50.0)
     return pd.DataFrame(
         {
-            "N": np.random.uniform(48, 55, n),
-            "left": np.random.uniform(6, 15, n),
+            "ul_x": center_x - half,
+            "ul_y": center_y + half,
+            "lr_x": center_x + half,
+            "lr_y": center_y - half,
             "year": np.random.randint(1880, 1945, n),
         }
     )
@@ -59,9 +64,11 @@ def test_spatial_constraint_respects_distance(DiversitySelector, MetadataProcess
     processor = MetadataProcessor("")
     for i, idx1 in enumerate(result):
         for idx2 in result[i + 1 :]:
-            lat1, lon1 = metadata.loc[idx1, "N"], metadata.loc[idx1, "left"]
-            lat2, lon2 = metadata.loc[idx2, "N"], metadata.loc[idx2, "left"]
-            dist = processor.calculate_spatial_distance(lat1, lon1, lat2, lon2)
+            y1 = (metadata.loc[idx1, "ul_y"] + metadata.loc[idx1, "lr_y"]) / 2
+            x1 = (metadata.loc[idx1, "ul_x"] + metadata.loc[idx1, "lr_x"]) / 2
+            y2 = (metadata.loc[idx2, "ul_y"] + metadata.loc[idx2, "lr_y"]) / 2
+            x2 = (metadata.loc[idx2, "ul_x"] + metadata.loc[idx2, "lr_x"]) / 2
+            dist = processor.calculate_spatial_distance(y1, x1, y2, x2)
             assert dist >= min_dist or len(result) == selector.n_samples
 
 

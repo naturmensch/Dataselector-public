@@ -24,8 +24,10 @@ def test_optuna_storage_creation(tmp_path):
     metadata_csv = tmp_path / "metadata.csv"
     pd.DataFrame(
         {
-            "N": [50.0, 50.1, 50.2, 50.3],
-            "left": [10.0, 10.1, 10.2, 10.3],
+            "ul_x": [9.95, 10.05, 10.15, 10.25],
+            "ul_y": [50.05, 50.15, 50.25, 50.35],
+            "lr_x": [10.05, 10.15, 10.25, 10.35],
+            "lr_y": [49.95, 50.05, 50.15, 50.25],
             "year": [1900, 1901, 1902, 1903],
         }
     ).to_csv(metadata_csv, index=False)

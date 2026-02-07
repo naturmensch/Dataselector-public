@@ -11,8 +11,10 @@ def test_meta_provenance_includes_versions(tmp_path, monkeypatch):
     meta_df = pd.DataFrame(
         {
             "longName": ["a", "b"],
-            "N": [0.0, 1.0],
-            "left": [0.0, 1.0],
+            "ul_x": [-0.05, 0.95],
+            "ul_y": [0.05, 1.05],
+            "lr_x": [0.05, 1.05],
+            "lr_y": [-0.05, 0.95],
             "year": [1900, 1901],
             "image_path": ["a.png", "b.png"],
         }

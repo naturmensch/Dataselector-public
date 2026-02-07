@@ -40,10 +40,14 @@ def test_selection_completes_on_moderate_size(monkeypatch):
     n = 200
     dim = 64
     features = np.random.randn(n, dim)
+    cx = np.linspace(6.0, 10.0, n)
+    cy = np.linspace(48.0, 52.0, n)
     meta = pd.DataFrame(
         {
-            "N": np.linspace(48.0, 52.0, n),
-            "left": np.linspace(6.0, 10.0, n),
+            "ul_x": cx - 0.05,
+            "ul_y": cy + 0.05,
+            "lr_x": cx + 0.05,
+            "lr_y": cy - 0.05,
             "year": np.linspace(1890, 1930, n),
         }
     )

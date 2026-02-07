@@ -54,8 +54,13 @@ def test_feature_cache_validation_reextracts(tmp_path, monkeypatch):
 
     csv = out / "metadata.csv"
     csv.write_text(
-        "longName,shortName,N,left,image_path,image_filename,year\n"
-        + "\n".join([f"A,i,{i},10,a.png,a.png,190{i}" for i in range(4)]),
+        "longName,shortName,ul_x,ul_y,lr_x,lr_y,image_path,image_filename,year\n"
+        + "\n".join(
+            [
+                f"A,i,{499950 + i*100},{5900050 + i*100},{500050 + i*100},{5899950 + i*100},a.png,a.png,190{i}"
+                for i in range(4)
+            ]
+        ),
         encoding="utf-8",
     )
 
@@ -88,12 +93,14 @@ def test_pipeline_smoke_small(tmp_path, monkeypatch):
     outputs.mkdir()
 
     csv_meta = data_dir / "new_all_tiles.csv"
-    rows = ["longName,shortName,N,left,image_path,image_filename,year"]
+    rows = ["longName,shortName,ul_x,ul_y,lr_x,lr_y,image_path,image_filename,year"]
     for i in range(4):
         img = data_dir / "images" / f"KDR_{i:03d}.png"
         img.write_bytes(b"png")
+        cx = 500000.0 + i * 100.0
+        cy = 5900000.0 + i * 100.0
         rows.append(
-            f"KDR_{i:03d}.png,KDR_{i:03d},{50.0+i},{8.0+i},{img},{img.name},{1890+i}"
+            f"KDR_{i:03d}.png,KDR_{i:03d},{cx-50},{cy+50},{cx+50},{cy-50},{img},{img.name},{1890+i}"
         )
     csv_meta.write_text("\n".join(rows), encoding="utf-8")
     metadata = pd.read_csv(csv_meta)

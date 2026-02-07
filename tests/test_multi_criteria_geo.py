@@ -11,13 +11,22 @@ from dataselector.selection.spatial_facility_location import (
 
 class DummyMetadata:
     def __init__(self, latitudes, longitudes, years, proj_x=None, proj_y=None):
-        self._df = pd.DataFrame({"N": latitudes, "left": longitudes, "year": years})
+        self._df = pd.DataFrame(
+            {
+                "ul_x": np.array(longitudes) - 0.05,
+                "ul_y": np.array(latitudes) + 0.05,
+                "lr_x": np.array(longitudes) + 0.05,
+                "lr_y": np.array(latitudes) - 0.05,
+                "year": years,
+            }
+        )
         self.gdf_metric = None
         if proj_x is not None and proj_y is not None:
             self.gdf_metric = pd.DataFrame({"_proj_x": proj_x, "_proj_y": proj_y})
+            self._df.attrs["gdf_metric"] = self.gdf_metric
 
-    def __getitem__(self, key):
-        return self._df[key]
+    def to_df(self):
+        return self._df.copy()
 
 
 def test_multi_criteria_uses_projected_coords():
@@ -29,7 +38,7 @@ def test_multi_criteria_uses_projected_coords():
     proj_x = [0.0, 0.0, 0.0]
     proj_y = [0.0, 100000.0, 200000.0]
 
-    meta = DummyMetadata(latitudes, longitudes, years, proj_x=proj_x, proj_y=proj_y)
+    meta = DummyMetadata(latitudes, longitudes, years, proj_x=proj_x, proj_y=proj_y).to_df()
     m = MultiCriteriaFacilityLocation(
         n_samples=2,
         metadata=meta,
@@ -57,7 +66,7 @@ def test_spatial_selector_respects_min_distance():
     proj_x = [0.0, 0.0, 50000.0]
     proj_y = [0.0, 40000.0, 0.0]
 
-    meta = DummyMetadata(latitudes, longitudes, years, proj_x=proj_x, proj_y=proj_y)
+    meta = DummyMetadata(latitudes, longitudes, years, proj_x=proj_x, proj_y=proj_y).to_df()
 
     sel = SpatialConstrainedFacilityLocation(
         n_samples=2, metadata=meta, min_distance_km=50.0

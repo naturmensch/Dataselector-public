@@ -44,7 +44,9 @@ def test_full_pipeline_simulation(tmp_dirs, repo_root, inject_src_stub, monkeypa
 
     # CSV with 6 records
     csv_meta = data_dir / "new_all_tiles.csv"
-    rows = ["longName,shortName,N,left,image_path,image_filename,year"]
+    rows = [
+        "longName,shortName,ul_x,ul_y,lr_x,lr_y,image_path,image_filename,year"
+    ]
     for i in range(6):
         # create tiny placeholder PNG
         img = image_dir / f"KDR_{i:03d}.png"
@@ -52,8 +54,10 @@ def test_full_pipeline_simulation(tmp_dirs, repo_root, inject_src_stub, monkeypa
         img.write_bytes(
             b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0bIDAT\x08\xd7c``\x00\x00\x00\x05\x00\x01\x0d\n\x2dB\x00\x00\x00\x00IEND\xaeB`\x82"
         )
+        cx = 500000.0 + i * 100.0
+        cy = 5900000.0 + i * 100.0
         rows.append(
-            f"KDR_{i:03d}.png,KDR_{i:03d},{50.0+i},{8.0+i},{img},{img.name},{1890+i}"
+            f"KDR_{i:03d}.png,KDR_{i:03d},{cx-50},{cy+50},{cx+50},{cy-50},{img},{img.name},{1890+i}"
         )
     csv_meta.write_text("\n".join(rows))
 
@@ -248,14 +252,17 @@ def test_corrupt_metadata_fails_fast(tmp_dirs, repo_root, monkeypatch):
     monkeypatch.chdir(root)
 
     csv_meta = data_dir / "new_all_tiles.csv"
-    # write a CSV missing required columns (no N/left)
+    # write a CSV missing required spatial columns (no ul/lr bounds)
     csv_meta.write_text("longName,shortName,image_path,year\nA,a,,1910\nB,b,,1912\n")
 
     # Load metadata processor directly and assert it raises on missing columns
     mp = load_module_from_path(
         "mp_mod", repo_root / "dataselector" / "data" / "metadata_processor.py"
     )
-    with pytest.raises(ValueError, match=r"Fehlende Spalten in Metadaten"):
+    with pytest.raises(
+        ValueError,
+        match=r"(Fehlende Spalten in Metadaten|Spatial schema requires ul_x/ul_y/lr_x/lr_y columns)",
+    ):
         mp.MetadataProcessor(str(csv_meta)).load_csv()
 
 
@@ -268,7 +275,9 @@ def test_feature_cache_write_permission_error(tmp_dirs, repo_root, monkeypatch):
 
     csv_meta = data_dir / "new_all_tiles.csv"
     csv_meta.write_text(
-        "longName,shortName,N,left,image_path,image_filename,year\nA,a,50,10,,imageA,1910\nB,b,51,11,,imageB,1912\n"
+        "longName,shortName,ul_x,ul_y,lr_x,lr_y,image_path,image_filename,year\n"
+        "A,a,499950,5900050,500050,5899950,,imageA,1910\n"
+        "B,b,500950,5901050,501050,5900950,,imageB,1912\n"
     )
 
     # Load io module and monkeypatch np.save to raise PermissionError
