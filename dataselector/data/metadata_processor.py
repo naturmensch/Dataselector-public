@@ -381,9 +381,7 @@ class MetadataProcessor:
         return self.df
 
     @staticmethod
-    def calculate_spatial_distance(
-        y1: float, x1: float, y2: float, x2: float
-    ) -> float:
+    def calculate_spatial_distance(y1: float, x1: float, y2: float, x2: float) -> float:
         """
         Berechnet die räumliche Distanz zwischen zwei Punkten.
 

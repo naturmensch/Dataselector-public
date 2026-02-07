@@ -12,8 +12,12 @@ def test_bootstrap_contract_migrated(run_dataselector_cli):
     legacy_err = (legacy.stderr or b"").decode().lower()
     assert "invalid choice" in legacy_err or "unrecognized" in legacy_err
 
-    result_final = run_dataselector_cli(["bootstrap-final", "--help"], capture_output=True)
+    result_final = run_dataselector_cli(
+        ["bootstrap-final", "--help"], capture_output=True
+    )
     assert result_final.returncode == 0
 
-    result_pareto = run_dataselector_cli(["bootstrap-pareto", "--help"], capture_output=True)
+    result_pareto = run_dataselector_cli(
+        ["bootstrap-pareto", "--help"], capture_output=True
+    )
     assert result_pareto.returncode == 0

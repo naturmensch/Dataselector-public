@@ -22,8 +22,8 @@ from pathlib import Path
 from dataselector.cli_decorators import cli_command
 from dataselector.data.spatial_schema import (
     normalize_spatial_schema,
-    spatial_spread as compute_spatial_spread,
 )
+from dataselector.data.spatial_schema import spatial_spread as compute_spatial_spread
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))

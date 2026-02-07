@@ -17,11 +17,12 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 from apricot import FacilityLocationSelection
+
+from dataselector.data.io import get_metric_gdf
 from dataselector.data.spatial_schema import (
     coordinates_look_projected,
     normalize_spatial_schema,
 )
-from dataselector.data.io import get_metric_gdf
 
 
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -113,7 +114,9 @@ class SpatialConstrainedFacilityLocation(FacilityLocationSelection):
         """
         super().__init__(n_samples=n_samples, metric=metric, random_state=random_state)
 
-        self.metadata = normalize_spatial_schema(metadata, require_bounds=True, copy=True)
+        self.metadata = normalize_spatial_schema(
+            metadata, require_bounds=True, copy=True
+        )
         self.min_distance_km = min_distance_km
         self._precompute_coordinates()
 

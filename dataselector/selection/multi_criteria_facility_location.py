@@ -16,11 +16,11 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
 
+from dataselector.data.io import get_metric_gdf
 from dataselector.data.spatial_schema import (
     coordinates_look_projected,
     normalize_spatial_schema,
 )
-from dataselector.data.io import get_metric_gdf
 from dataselector.selection.spatial_facility_location import (
     haversine_distance,
     haversine_matrix,
@@ -75,7 +75,9 @@ class MultiCriteriaFacilityLocation:
             explizit normierte Gewichte angeben.
         """
         self.n_samples = n_samples
-        self.metadata = normalize_spatial_schema(metadata, require_bounds=True, copy=True)
+        self.metadata = normalize_spatial_schema(
+            metadata, require_bounds=True, copy=True
+        )
         self.min_distance_km = min_distance_km
         self.metric = metric
         self.random_state = random_state

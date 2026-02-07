@@ -55,9 +55,7 @@ def test_skip_optuna_and_skip_flags_dryrun(tmp_path, monkeypatch, capsys, run_pi
 
     _prepare_pipeline_fs(tmp_path)
     monkeypatch.setattr(run_pipe, "ROOT", tmp_path)
-    monkeypatch.setattr(
-        bootstrap, "run_bootstrap_pareto", lambda *args, **kwargs: None
-    )
+    monkeypatch.setattr(bootstrap, "run_bootstrap_pareto", lambda *args, **kwargs: None)
 
     # Ensure skip-optuna is honored by adaptive-pipeline workflow
     assert (

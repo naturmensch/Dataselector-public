@@ -44,9 +44,7 @@ def test_full_pipeline_simulation(tmp_dirs, repo_root, inject_src_stub, monkeypa
 
     # CSV with 6 records
     csv_meta = data_dir / "new_all_tiles.csv"
-    rows = [
-        "longName,shortName,ul_x,ul_y,lr_x,lr_y,image_path,image_filename,year"
-    ]
+    rows = ["longName,shortName,ul_x,ul_y,lr_x,lr_y,image_path,image_filename,year"]
     for i in range(6):
         # create tiny placeholder PNG
         img = image_dir / f"KDR_{i:03d}.png"

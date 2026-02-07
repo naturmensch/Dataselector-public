@@ -19,12 +19,12 @@ from typing import Optional
 
 def check_monitor_config(pattern: Optional[str] = None) -> int:
     """Check monitor meta files for configuration issues.
-    
+
     Parameters
     ----------
     pattern : str, optional
         Glob pattern for monitor meta files. If None, uses default locations.
-    
+
     Returns
     -------
     int
@@ -35,34 +35,36 @@ def check_monitor_config(pattern: Optional[str] = None) -> int:
         files = [Path("outputs/monitor_reports/monitor_meta.json")]
         # Also search in run directories
         import glob
+
         files.extend(
-            Path(f) 
+            Path(f)
             for f in glob.glob("outputs/runs/*/monitor_reports/monitor_meta.json")
         )
     else:
         import glob
+
         files = [Path(f) for f in glob.glob(pattern)]
-    
+
     if not files:
         print("⚠️  No monitor meta files found.")
         return 0
-    
+
     issue_count = 0
-    
+
     for filepath in files:
         try:
             if not filepath.exists():
                 continue
-                
+
             with filepath.open() as f:
                 data = json.load(f)
-            
+
             issues = data.get("config_issues", [])
             if issues:
                 issue_count += len(issues)
                 print(f"\n❌ Monitor config issues in {filepath}:")
                 print(json.dumps(data, indent=2))
-        
+
         except FileNotFoundError:
             # File was deleted between glob and read, skip
             continue
@@ -72,7 +74,7 @@ def check_monitor_config(pattern: Optional[str] = None) -> int:
         except Exception as e:
             print(f"❌ Unexpected error reading {filepath}: {e}", file=sys.stderr)
             return 2
-    
+
     if issue_count == 0:
         print("✅ No monitor config issues found")
         return 0
@@ -84,7 +86,7 @@ def check_monitor_config(pattern: Optional[str] = None) -> int:
 def main() -> int:
     """Entry point for CLI."""
     import argparse
-    
+
     parser = argparse.ArgumentParser(
         description="Check monitor meta files for configuration issues."
     )
@@ -94,7 +96,7 @@ def main() -> int:
         default=None,
         help="Glob pattern for monitor meta files (default: outputs/monitor_reports/**)",
     )
-    
+
     try:
         args = parser.parse_args()
         return check_monitor_config(pattern=args.pattern)

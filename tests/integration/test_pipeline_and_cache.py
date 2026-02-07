@@ -109,7 +109,9 @@ def test_pipeline_smoke_small(tmp_path, monkeypatch):
     monkeypatch.setattr(
         io_mod,
         "extract_features",
-        lambda _metadata, batch_size=16: np.zeros((len(_metadata), 16), dtype=np.float32),
+        lambda _metadata, batch_size=16: np.zeros(
+            (len(_metadata), 16), dtype=np.float32
+        ),
     )
 
     io_mod.load_or_extract_features(
@@ -121,7 +123,9 @@ def test_pipeline_smoke_small(tmp_path, monkeypatch):
     monkeypatch.setattr(
         experiments_mod,
         "extract_features",
-        lambda _metadata, batch_size=16: np.zeros((len(_metadata), 16), dtype=np.float32),
+        lambda _metadata, batch_size=16: np.zeros(
+            (len(_metadata), 16), dtype=np.float32
+        ),
     )
 
     class FakeKMeans:

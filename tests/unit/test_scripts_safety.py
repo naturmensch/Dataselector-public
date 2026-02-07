@@ -54,7 +54,16 @@ def test_check_all_tracked(tmp_path, monkeypatch):
     subprocess.check_call(["git", "init"], cwd=str(tmp_path))
     subprocess.check_call(["git", "add", "."], cwd=str(tmp_path))
     subprocess.check_call(
-        ["git", "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "-m", "init"],
+        [
+            "git",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-m",
+            "init",
+        ],
         cwd=str(tmp_path),
     )
 

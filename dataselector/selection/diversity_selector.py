@@ -14,6 +14,7 @@ from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
+
 from dataselector.data.spatial_schema import (
     coordinates_look_projected,
     normalize_spatial_schema,

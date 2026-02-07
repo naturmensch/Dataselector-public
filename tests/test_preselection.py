@@ -19,8 +19,8 @@ from dataselector.selection.diversity_selector import DiversitySelector
     ],
 )
 def test_preselection(tmp_path, test_case, stub_feature_extraction):
-    meta = src.io.load_metadata("data/new_all_tiles.csv")
-    features = src.io.load_or_extract_features(
+    meta = dataselector.data.io.load_metadata("data/new_all_tiles.csv")
+    features = dataselector.data.io.load_or_extract_features(
         tmp_path, csv_meta=str("data/new_all_tiles.csv"), cache=True
     )
 

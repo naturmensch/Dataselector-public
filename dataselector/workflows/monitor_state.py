@@ -57,9 +57,7 @@ class ExperimentStateAnalyzer:
                 cur = conn.cursor()
                 integrity = cur.execute("PRAGMA integrity_check;").fetchone()
                 if (
-                    integrity
-                    and isinstance(integrity, tuple)
-                    and integrity[0] == "ok"
+                    integrity and isinstance(integrity, tuple) and integrity[0] == "ok"
                 ) or integrity == "ok":
                     out["db_integrity_ok"] = True
                 try:

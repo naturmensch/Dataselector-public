@@ -40,7 +40,9 @@ def extract_params_from_trial(df: pd.DataFrame, best_row: pd.Series) -> dict:
             "a",
         ],
     )
-    beta_col = find_col(df, ["user_attrs_beta", "user_attrs_b", "params_beta", "beta", "b"])
+    beta_col = find_col(
+        df, ["user_attrs_beta", "user_attrs_b", "params_beta", "beta", "b"]
+    )
     gamma_col = find_col(
         df,
         ["user_attrs_gamma", "user_attrs_c", "params_gamma", "gamma", "c"],
@@ -107,7 +109,9 @@ def _apply_selection(cfg: dict, params: dict) -> dict:
     return cfg
 
 
-def inject_into_config(cfg_path: Path, params: dict, backup: bool = True) -> Path | None:
+def inject_into_config(
+    cfg_path: Path, params: dict, backup: bool = True
+) -> Path | None:
     """Inject params into an existing YAML config file."""
     bak = cfg_path.with_suffix(cfg_path.suffix + ".optuna_bak")
     if backup:

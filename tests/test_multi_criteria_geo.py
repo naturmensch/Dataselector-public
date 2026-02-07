@@ -38,7 +38,9 @@ def test_multi_criteria_uses_projected_coords():
     proj_x = [0.0, 0.0, 0.0]
     proj_y = [0.0, 100000.0, 200000.0]
 
-    meta = DummyMetadata(latitudes, longitudes, years, proj_x=proj_x, proj_y=proj_y).to_df()
+    meta = DummyMetadata(
+        latitudes, longitudes, years, proj_x=proj_x, proj_y=proj_y
+    ).to_df()
     m = MultiCriteriaFacilityLocation(
         n_samples=2,
         metadata=meta,
@@ -66,7 +68,9 @@ def test_spatial_selector_respects_min_distance():
     proj_x = [0.0, 0.0, 50000.0]
     proj_y = [0.0, 40000.0, 0.0]
 
-    meta = DummyMetadata(latitudes, longitudes, years, proj_x=proj_x, proj_y=proj_y).to_df()
+    meta = DummyMetadata(
+        latitudes, longitudes, years, proj_x=proj_x, proj_y=proj_y
+    ).to_df()
 
     sel = SpatialConstrainedFacilityLocation(
         n_samples=2, metadata=meta, min_distance_km=50.0

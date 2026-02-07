@@ -127,9 +127,7 @@ def create_minimal_new_all_tiles_csv():
         for i in range(n):
             cx = 500000.0 + i * 100.0
             cy = 5900000.0 + i * 100.0
-            lines.append(
-                f"A{i},a{i},{cx-50},{cy+50},{cx+50},{cy-50},,,{1900+i}"
-            )
+            lines.append(f"A{i},a{i},{cx-50},{cy+50},{cx+50},{cy-50},,,{1900+i}")
         path.write_text("\n".join(lines) + "\n")
         return path
 

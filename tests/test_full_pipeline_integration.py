@@ -44,7 +44,10 @@ def test_feature_cache_validation(tmp_path, monkeypatch):
     meta.write_text(
         "longName,shortName,ul_x,ul_y,lr_x,lr_y,image_path,image_filename,year\n"
         + "\n".join(
-            [f"A,i,{9.95+i*0.1},{50.05+i*0.1},{10.05+i*0.1},{49.95+i*0.1},,," for i in range(4)]
+            [
+                f"A,i,{9.95+i*0.1},{50.05+i*0.1},{10.05+i*0.1},{49.95+i*0.1},,,"
+                for i in range(4)
+            ]
         )
     )
 

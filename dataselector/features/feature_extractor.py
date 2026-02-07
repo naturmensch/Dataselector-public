@@ -58,9 +58,10 @@ class FeatureExtractor:
         self.input_size = int(input_size)
         self.default_crop_size = tuple(default_crop_size)
 
-        # If DINOv2 is selected and the user did not override input_size, use 384 (ViT-Small default)
+        # If DINOv2 is selected and the user did not override input_size, use
+        # a patch-compatible size (multiple of 14).
         if self.model_name.lower() == "dinov2" and int(input_size) == 224:
-            self.input_size = 384
+            self.input_size = 392
 
         self.model = self._load_model()
         self.transform = self._get_transforms(self.input_size)
@@ -77,9 +78,20 @@ class FeatureExtractor:
     def _load_model(self) -> nn.Module:
         print(f"Lade Modell: {self.model_name} auf {self.device}...")
 
-        if self.model_name == "resnet50":
+        model_key = self.model_name.lower()
+
+        if model_key == "resnet50":
             model = models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
             model = nn.Sequential(*list(model.children())[:-1])
+        elif model_key == "dinov2":
+            try:
+                # Canonical DINOv2 entrypoint; explicit and no implicit model switch.
+                model = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14")
+            except Exception as exc:
+                raise RuntimeError(
+                    "Failed to load 'dinov2' via torch.hub "
+                    "('facebookresearch/dinov2', 'dinov2_vits14')."
+                ) from exc
         else:
             raise ValueError(f"Unbekanntes Modell: {self.model_name}")
 
@@ -87,9 +99,10 @@ class FeatureExtractor:
         return model
 
     def _get_transforms(self, input_size: int = 224) -> transforms.Compose:
+        resize_size = max(256, int(input_size))
         return transforms.Compose(
             [
-                transforms.Resize(256),
+                transforms.Resize(resize_size),
                 transforms.CenterCrop(input_size),
                 transforms.ToTensor(),
                 transforms.Normalize(
@@ -198,6 +211,9 @@ class FeatureExtractor:
         return np.vstack(all_features)
 
     def get_feature_dimension(self) -> int:
-        if self.model_name == "resnet50":
+        model_key = self.model_name.lower()
+        if model_key == "resnet50":
             return 2048
+        if model_key == "dinov2":
+            return 384
         return 0

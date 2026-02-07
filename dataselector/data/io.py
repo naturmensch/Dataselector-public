@@ -6,7 +6,6 @@ import pandas as pd
 import yaml
 
 from dataselector.data.metadata_processor import MetadataProcessor
-from dataselector.features.feature_extractor import FeatureExtractor
 
 
 def load_metadata(csv_path: str) -> pd.DataFrame:
@@ -58,6 +57,9 @@ def get_metric_gdf(df):
 
 
 def extract_features(metadata: pd.DataFrame, batch_size: int = 16) -> np.ndarray:
+    # Lazy import: keep basic I/O paths independent from torch.
+    from dataselector.features.feature_extractor import FeatureExtractor
+
     # Lade Modell-Konfiguration aus pipeline_config.yaml
     config_path = Path("config/pipeline_config.yaml")
     model_name = "dinov2"  # Fallback auf neuen Standard

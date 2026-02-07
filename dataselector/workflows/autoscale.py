@@ -24,8 +24,8 @@ import pandas as pd
 from dataselector.cli_decorators import cli_command
 from dataselector.data.spatial_schema import (
     normalize_spatial_schema,
-    spatial_spread as compute_spatial_spread,
 )
+from dataselector.data.spatial_schema import spatial_spread as compute_spatial_spread
 
 
 def clamp(v, lo, hi):
@@ -137,7 +137,9 @@ def make_objective(
             return 0.0
 
         diversity = selector._calculate_diversity_score(features[selected])
-        spatial_meta = normalize_spatial_schema(metadata, require_bounds=True, copy=True)
+        spatial_meta = normalize_spatial_schema(
+            metadata, require_bounds=True, copy=True
+        )
         spread = compute_spatial_spread(spatial_meta, selected)
         score = diversity * spread
 

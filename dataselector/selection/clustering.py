@@ -97,7 +97,9 @@ class ClusteringPipeline:
         if self.embeddings_2d is None:
             # PCA fallback is deterministic and keeps tests stable across envs.
             n_components = min(
-                self.umap_n_components, features_scaled.shape[0], features_scaled.shape[1]
+                self.umap_n_components,
+                features_scaled.shape[0],
+                features_scaled.shape[1],
             )
             n_components = max(1, int(n_components))
             self.umap_reducer = PCA(

@@ -80,9 +80,7 @@ def validate_pareto_candidates(
         )
 
     # Load data once (reuse across all validation runs)
-    metadata_path_default = (
-        root / "outputs" / "metadata.csv"
-    )
+    metadata_path_default = root / "outputs" / "metadata.csv"
     metadata_path = (
         output_dir / "metadata.csv"
         if (output_dir / "metadata.csv").exists()

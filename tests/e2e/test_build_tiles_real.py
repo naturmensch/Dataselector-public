@@ -52,9 +52,9 @@ def test_build_tiles_from_real_images(tmp_workspace: Path, run_dataselector_cli)
         columns = [c.strip() for c in header.strip().split(",") if c.strip()]
         required_columns = {"image_path", "image_filename", "year"}
         missing_columns = required_columns - set(columns)
-        assert not missing_columns, (
-            f"CSV missing required columns: {sorted(missing_columns)}; got {columns}"
-        )
+        assert (
+            not missing_columns
+        ), f"CSV missing required columns: {sorted(missing_columns)}; got {columns}"
 
         lines = f.readlines()
         # Should have at least 5 tiles (from KDR_001-005)

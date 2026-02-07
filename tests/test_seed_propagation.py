@@ -50,9 +50,7 @@ def test_run_adaptive_pipeline_seed_propagation(tmp_path, monkeypatch):
     monkeypatch.setattr(
         pipeline_utils, "compute_fine_search_bounds", lambda *_args, **_kwargs: [10, 20]
     )
-    monkeypatch.setattr(
-        bootstrap, "run_bootstrap_pareto", lambda *_args, **_kwargs: 0
-    )
+    monkeypatch.setattr(bootstrap, "run_bootstrap_pareto", lambda *_args, **_kwargs: 0)
 
     run_dir = adaptive_pipeline.run_adaptive_pipeline(
         experiment_name="seed_propagation_test",

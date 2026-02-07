@@ -24,7 +24,9 @@ REPO_SCRIPT_PATH_PATTERNS = [
     re.compile(
         r"Path\(__file__\)\.resolve\(\)\.parents\[\d+\]\s*/\s*['\"]scripts['\"]\s*/\s*['\"][^'\"]+\.py['\"]"
     ),
-    re.compile(r"\b(?:REPO_ROOT|ROOT|repo_root)\s*/\s*['\"]scripts['\"]\s*/\s*['\"][^'\"]+\.py['\"]"),
+    re.compile(
+        r"\b(?:REPO_ROOT|ROOT|repo_root)\s*/\s*['\"]scripts['\"]\s*/\s*['\"][^'\"]+\.py['\"]"
+    ),
 ]
 
 LEGACY_SPATIAL_SCHEMA_PATTERNS = [
@@ -55,7 +57,11 @@ def _scan_dynamic_repo_script_paths(path: Path) -> list[str]:
     for lineno, line in enumerate(text.splitlines(), start=1):
         for pat in REPO_SCRIPT_PATH_PATTERNS:
             if pat.search(line):
-                prefix = "dynamic loader + repo scripts path" if has_loader else "repo scripts path"
+                prefix = (
+                    "dynamic loader + repo scripts path"
+                    if has_loader
+                    else "repo scripts path"
+                )
                 hits.append(
                     f"{path.relative_to(ROOT)}:{lineno}: {prefix}: {line.strip()}"
                 )
@@ -89,7 +95,9 @@ def test_no_legacy_script_references_in_ci_or_makefile():
         for wf in sorted(workflows_dir.glob("*.y*ml")):
             offenders.extend(_scan_file(wf, CI_PATTERNS))
 
-    assert not offenders, "Found legacy CI/Makefile references:\n" + "\n".join(offenders)
+    assert not offenders, "Found legacy CI/Makefile references:\n" + "\n".join(
+        offenders
+    )
 
 
 def test_no_hardcoded_legacy_spatial_schema_in_production_code():
