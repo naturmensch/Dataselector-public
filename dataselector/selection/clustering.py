@@ -71,6 +71,44 @@ class ClusteringPipeline:
         # 1. Standardisierung
         features_scaled = self.scaler.fit_transform(features)
 
+        # 2. Dimensionsreduktion (UMAP primär, PCA fallback)
+        self.embeddings_2d = None
+        if UMAP_AVAILABLE:
+            try:
+                n_neighbors = self.umap_n_neighbors
+                if n_neighbors is None:
+                    n_neighbors = max(2, min(15, features_scaled.shape[0] - 1))
+                n_jobs = self.umap_n_jobs if self.umap_random_state is None else 1
+                self.umap_reducer = umap.UMAP(
+                    n_components=self.umap_n_components,
+                    random_state=self.umap_random_state,
+                    n_jobs=n_jobs,
+                    n_neighbors=n_neighbors,
+                )
+                emb = self.umap_reducer.fit_transform(features_scaled)
+                if np.ndim(emb) != 2 or not np.isfinite(emb).all():
+                    raise ValueError("UMAP produced invalid embeddings")
+                self.embeddings_2d = emb
+            except Exception as exc:
+                print(
+                    f"UMAP failed ({exc}); falling back to PCA for deterministic embeddings."
+                )
+
+        if self.embeddings_2d is None:
+            # PCA fallback is deterministic and keeps tests stable across envs.
+            n_components = min(
+                self.umap_n_components, features_scaled.shape[0], features_scaled.shape[1]
+            )
+            n_components = max(1, int(n_components))
+            self.umap_reducer = PCA(
+                n_components=n_components, random_state=self.random_state
+            )
+            emb = self.umap_reducer.fit_transform(features_scaled)
+            if emb.shape[1] < self.umap_n_components:
+                pad = self.umap_n_components - emb.shape[1]
+                emb = np.pad(emb, ((0, 0), (0, pad)), mode="constant")
+            self.embeddings_2d = emb
+
         # 3. K-Means Clustering
         print(f"Führe K-Means Clustering durch ({self.n_clusters} Cluster)...")
         self.kmeans = KMeans(
@@ -130,6 +168,12 @@ class ClusteringPipeline:
         # Skaliere und transformiere
         features_scaled = self.scaler.transform(features)
         embeddings = self.umap_reducer.transform(features_scaled)
+        expected_dim = int(getattr(self.kmeans, "n_features_in_", embeddings.shape[1]))
+        if embeddings.shape[1] < expected_dim:
+            pad = expected_dim - embeddings.shape[1]
+            embeddings = np.pad(embeddings, ((0, 0), (0, pad)), mode="constant")
+        elif embeddings.shape[1] > expected_dim:
+            embeddings = embeddings[:, :expected_dim]
         labels = self.kmeans.predict(embeddings)
 
         return labels

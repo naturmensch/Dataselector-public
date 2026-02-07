@@ -6,6 +6,9 @@ with a helpful message.
 
 from __future__ import annotations
 
+import importlib
+import sys
+
 from packaging.version import Version, parse
 
 
@@ -43,3 +46,64 @@ def check_numba_numpy_compatibility(raise_on_error: bool = True) -> bool:
         return False
 
     return True
+
+
+def validate_environment_full(raise_on_error: bool = True) -> dict[str, bool]:
+    """Validate runtime environment contracts used by tests/CI."""
+    result: dict[str, bool] = {
+        "numpy": False,
+        "numba": False,
+        "umap": False,
+        "apricot": False,
+        "env_name": False,
+    }
+    errors: list[str] = []
+
+    # NumPy
+    try:
+        import numpy as np  # type: ignore
+
+        npv = parse(np.__version__)
+        if npv >= Version("2.4"):
+            errors.append(
+                f"NumPy version mismatch: expected <2.4 for current numba policy, got {np.__version__}"
+            )
+            result["numpy"] = False
+        else:
+            result["numpy"] = True
+    except Exception as exc:
+        errors.append(f"NumPy import failed: {exc}")
+        result["numpy"] = False
+
+    # Numba
+    try:
+        import numba  # type: ignore  # noqa: F401
+
+        result["numba"] = True
+    except Exception as exc:
+        errors.append(f"Numba import failed: {exc}")
+        result["numba"] = False
+
+    # Optional deps
+    try:
+        result["umap"] = importlib.import_module("umap") is not None
+    except Exception:
+        result["umap"] = False
+
+    try:
+        result["apricot"] = importlib.import_module("apricot") is not None
+    except Exception:
+        result["apricot"] = False
+
+    # Expected conda env name
+    prefix = str(getattr(sys, "prefix", ""))
+    result["env_name"] = "/envs/dataselector" in prefix.replace("\\", "/")
+    if not result["env_name"]:
+        errors.append(
+            f"Not running in required conda env 'dataselector' (sys.prefix={prefix})"
+        )
+
+    if errors and raise_on_error:
+        raise RuntimeError("\n".join(errors))
+
+    return result
