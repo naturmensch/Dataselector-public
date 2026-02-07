@@ -1,52 +1,84 @@
-# Running Full Integration / E2E Tests
+# Running Integration and Real-Image Test Profiles
 
-This document describes how to run the heavy/full E2E tests locally or in CI.
+This document defines the authoritative test profiles after Phase 4 dependency
+partitioning. It keeps CI deterministic while preserving strict local real-image
+validation.
 
-Purpose
-- Ensure the real pipeline (feature extraction, UMAP, Optuna, Weight Sweep, Monitor) works end-to-end.
-- These tests can take a long time and require native dependencies (Numba/UMAP, possibly GPU).
+## Authoritative Runtime
 
-Local run (recommended pre-conditions)
-- Use the `dataselector` conda environment described in `environment.yml` or `requirements.txt`.
-- Ensure `numba` and `umap-learn` are compatible with your NumPy version.
+Use the project environment (micromamba/conda env `dataselector`), not system Python.
 
-Run a full E2E test locally (manual)
+```bash
+micromamba run -n dataselector python -m dataselector --help
+```
 
-1) Activate env (example) with conda/mamba:
+## Profile Matrix
 
-   conda env create -f environment.yml -n dataselector
-   conda activate dataselector
+| Profile | Markers/Selector | Requires | Intended Use |
+|---|---|---|---|
+| CI parity default | `-k "not real_images"` | project env only | Matches default CI expectations without private image data |
+| Full E2E (gated) | `-m e2e` | `RUN_FULL_INTEGRATION=1` | Long-running end-to-end validation |
+| Real images (local only) | `-m real_images` | `DATASELECTOR_IMAGE_DIR` | Strict local tests with private image assets |
+| Integration-heavy subset | `-m integration` | native deps (optuna/numba/umap etc.) | Focused dependency-sensitive integration runs |
 
-# Quick compatibility check
+`real_tiles` is maintained as a legacy alias marker and is normalized to `real_images`
+in collection hooks.
 
-Run the environment compatibility check which prints versions and exits non-zero when an incompatibility is detected:
+## Contract Gates
 
-   python -m dataselector check-env
+1. E2E tests are opt-in and skipped unless:
 
-If it prints errors about NumPy/Numba versions, recreate the environment from `environment.yml` and re-check.
+```bash
+export RUN_FULL_INTEGRATION=1
+```
 
-2) Run the full integration tests (explicit marker):
+2. Real-image tests are opt-in and skipped unless:
 
-   export RUN_FULL_INTEGRATION=1
-   pytest -q -m integration
+```bash
+export DATASELECTOR_IMAGE_DIR=/abs/path/to/private/images
+```
 
-Real-image strategy (local only)
-- CI is metadata-compatible and must not depend on private image folders.
-- Real-image tests are marked with `real_images` (legacy marker `real_tiles` is treated as alias).
-- For local real-image runs, point the loader to your private image directory:
+3. CI must not require private image assets.
 
-   export DATASELECTOR_IMAGE_DIR=/abs/path/to/private/images
+## Canonical Commands
 
-- Then run:
+### 1) CI-parity local run (default)
 
-   micromamba run -n dataselector python -m pytest -q -m real_images
+```bash
+micromamba run -n dataselector python -m pytest -q tests -k "not real_images"
+```
 
-- This keeps private image assets out of the repository while allowing strict local feature extraction.
+### 2) Guard checks (always)
 
-Notes for CI
-- `.github/workflows/integration.yml` contains a gated `e2e-integration` job that runs on `workflow_dispatch` or nightly schedule.
-- For reliable runs, prefer a self-hosted runner or a runner with the same conda stack (the official GitHub runners may require time to install native deps).
+```bash
+micromamba run -n dataselector python -m pytest -q tests/unit/test_no_legacy_script_references.py
+micromamba run -n dataselector python -m pytest -q tests/unit/test_ci_nonblocking_allowlist.py
+```
 
-Debugging
-- If the E2E job fails with Numba/NumPy incompatibilities, ensure the environment uses a NumPy version supported by the installed Numba.
-- Use `pytest -q tests/test_full_pipeline_comprehensive.py::test_full_pipeline_simulation` as a fast debug ground-truth (this test is lightweight and uses stubs).
+### 3) Full E2E gate (explicit)
+
+```bash
+export RUN_FULL_INTEGRATION=1
+micromamba run -n dataselector python -m pytest -q -m e2e
+```
+
+### 4) Real-image run (local only)
+
+```bash
+export DATASELECTOR_IMAGE_DIR=/abs/path/to/private/images
+micromamba run -n dataselector python -m pytest -q -m real_images
+```
+
+### 5) Real-image gate behavior check (without env var)
+
+```bash
+micromamba run -n dataselector python -m pytest -q tests/e2e/test_build_tiles_real.py -m real_images -rs
+```
+
+Expected: skipped with explicit `DATASELECTOR_IMAGE_DIR` requirement.
+
+## Notes
+
+- No private image assets are stored in the repository.
+- If E2E tests skip unexpectedly, verify `RUN_FULL_INTEGRATION`.
+- If real-image tests skip unexpectedly, verify `DATASELECTOR_IMAGE_DIR` exists.
