@@ -8,8 +8,8 @@ Validates:
 - CLI integration
 """
 
-import sys
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -28,11 +28,11 @@ def test_get_optuna_sampler():
     """Test sampler factory for all supported types."""
     pytest = sys.modules.get("pytest")
     if pytest:
-        optuna = pytest.importorskip("optuna")
+        pytest.importorskip("optuna")
     else:
-        try:
-            import optuna
-        except ModuleNotFoundError:
+        from importlib.util import find_spec
+
+        if find_spec("optuna") is None:
             return  # Skip test if optuna not available
 
     from dataselector.workflows.optuna_optimize import get_optuna_sampler

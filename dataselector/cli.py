@@ -17,10 +17,10 @@ import dataselector.tools.check
 import dataselector.tools.clean
 import dataselector.tools.docs_link
 import dataselector.workflows.adaptive_pipeline
+import dataselector.workflows.apply_optuna_best
 
 # Import ALL workflow modules to trigger @cli_command decorator execution
 import dataselector.workflows.autoscale
-import dataselector.workflows.apply_optuna_best
 import dataselector.workflows.benchmark_sampling
 import dataselector.workflows.bootstrap
 import dataselector.workflows.compare_samplers
@@ -35,7 +35,7 @@ import dataselector.workflows.thesis_pipeline
 import dataselector.workflows.thesis_sampler_suite
 import dataselector.workflows.tune_weights
 import dataselector.workflows.validation
-import dataselector.workflows.xxl
+import dataselector.workflows.xxl  # noqa: F401  # import registers CLI command
 
 # Import decorator infrastructure
 from dataselector.cli_decorators import (

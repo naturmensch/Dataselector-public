@@ -62,8 +62,7 @@ def _raise_optuna_error(**kwargs):
 
 
 def test_optuna_failure_aborts(monkeypatch, run_pipe, tmp_path):
-    from dataselector.workflows import bootstrap
-    from dataselector.workflows import optuna_optimize
+    from dataselector.workflows import bootstrap, optuna_optimize
 
     _prepare_pipeline_fs(tmp_path)
     monkeypatch.setattr(run_pipe, "ROOT", tmp_path)
@@ -71,9 +70,7 @@ def test_optuna_failure_aborts(monkeypatch, run_pipe, tmp_path):
         "importlib.util.find_spec",
         lambda name: object() if name == "optuna" else None,
     )
-    monkeypatch.setattr(
-        bootstrap, "run_bootstrap_pareto", lambda *args, **kwargs: None
-    )
+    monkeypatch.setattr(bootstrap, "run_bootstrap_pareto", lambda *args, **kwargs: None)
     monkeypatch.setattr(optuna_optimize, "run_optuna", _raise_optuna_error)
     with pytest.raises(SystemExit) as excinfo:
         run_pipe.main(
@@ -86,8 +83,7 @@ def test_optuna_failure_aborts(monkeypatch, run_pipe, tmp_path):
 
 
 def test_optuna_continue_on_failure(monkeypatch, run_pipe, tmp_path):
-    from dataselector.workflows import bootstrap
-    from dataselector.workflows import optuna_optimize
+    from dataselector.workflows import bootstrap, optuna_optimize
 
     _prepare_pipeline_fs(tmp_path)
     monkeypatch.setattr(run_pipe, "ROOT", tmp_path)
@@ -95,9 +91,7 @@ def test_optuna_continue_on_failure(monkeypatch, run_pipe, tmp_path):
         "importlib.util.find_spec",
         lambda name: object() if name == "optuna" else None,
     )
-    monkeypatch.setattr(
-        bootstrap, "run_bootstrap_pareto", lambda *args, **kwargs: None
-    )
+    monkeypatch.setattr(bootstrap, "run_bootstrap_pareto", lambda *args, **kwargs: None)
     monkeypatch.setattr(optuna_optimize, "run_optuna", _raise_optuna_error)
     assert (
         run_pipe.main(
