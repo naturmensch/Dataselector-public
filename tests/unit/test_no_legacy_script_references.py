@@ -27,6 +27,14 @@ REPO_SCRIPT_PATH_PATTERNS = [
     re.compile(r"\b(?:REPO_ROOT|ROOT|repo_root)\s*/\s*['\"]scripts['\"]\s*/\s*['\"][^'\"]+\.py['\"]"),
 ]
 
+LEGACY_SPATIAL_SCHEMA_PATTERNS = [
+    re.compile(
+        r"required_columns\s*=\s*\[[^\]]*['\"]N['\"][^\]]*['\"]left['\"][^\]]*\]"
+    ),
+    re.compile(r"\[\s*['\"]N['\"]\s*,\s*['\"]left['\"]\s*\]"),
+    re.compile(r"['\"]N['\"]\s*\)\s*and\s*\(\s*['\"]left['\"]"),
+]
+
 
 def _scan_file(path: Path, patterns: list[re.Pattern[str]]) -> list[str]:
     text = path.read_text(encoding="utf-8", errors="ignore")
@@ -82,3 +90,15 @@ def test_no_legacy_script_references_in_ci_or_makefile():
             offenders.extend(_scan_file(wf, CI_PATTERNS))
 
     assert not offenders, "Found legacy CI/Makefile references:\n" + "\n".join(offenders)
+
+
+def test_no_hardcoded_legacy_spatial_schema_in_production_code():
+    offenders: list[str] = []
+
+    for py_file in sorted((ROOT / "dataselector").rglob("*.py")):
+        offenders.extend(_scan_file(py_file, LEGACY_SPATIAL_SCHEMA_PATTERNS))
+
+    assert not offenders, (
+        "Found hardcoded legacy spatial schema expectations (N/left) "
+        "in production code:\n" + "\n".join(offenders)
+    )
