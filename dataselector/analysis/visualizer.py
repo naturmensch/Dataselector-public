@@ -10,6 +10,11 @@ import pandas as pd
 import seaborn as sns
 from matplotlib.figure import Figure
 
+from dataselector.data.spatial_schema import (
+    coordinates_look_projected,
+    normalize_spatial_schema,
+)
+
 
 class Visualizer:
     """Erstellt Visualisierungen der Pipeline-Ergebnisse."""
@@ -264,11 +269,12 @@ class Visualizer:
             except Exception:
                 plotted = False
 
-        # Fallback: plain pandas lat/lon scatter
+        # Fallback: plain pandas scatter on normalized center coordinates.
         if not plotted:
+            meta = normalize_spatial_schema(metadata, require_bounds=True, copy=True)
             ax.scatter(
-                metadata["left"],
-                metadata["N"],
+                meta["center_x"],
+                meta["center_y"],
                 alpha=0.4,
                 s=50,
                 label="Alle Kacheln",
@@ -278,8 +284,8 @@ class Visualizer:
             # Ausgewählte Kacheln
             if selected_indices is not None and len(selected_indices) > 0:
                 ax.scatter(
-                    metadata.loc[selected_indices, "left"],
-                    metadata.loc[selected_indices, "N"],
+                    meta.loc[selected_indices, "center_x"],
+                    meta.loc[selected_indices, "center_y"],
                     alpha=0.8,
                     s=200,
                     label="Ausgewählte Kacheln",
@@ -289,8 +295,13 @@ class Visualizer:
                     linewidths=1.5,
                 )
 
-            ax.set_xlabel("Longitude", fontsize=12)
-            ax.set_ylabel("Latitude", fontsize=12)
+            if coordinates_look_projected(meta):
+                ax.set_xlabel("X (meters)", fontsize=12)
+                ax.set_ylabel("Y (meters)", fontsize=12)
+                ax.set_aspect("equal", adjustable="box")
+            else:
+                ax.set_xlabel("Longitude", fontsize=12)
+                ax.set_ylabel("Latitude", fontsize=12)
 
         ax.set_title(
             "Räumliche Verteilung der KDR100 Kacheln", fontsize=14, fontweight="bold"

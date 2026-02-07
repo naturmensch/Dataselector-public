@@ -16,6 +16,11 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
 
+from dataselector.data.spatial_schema import (
+    coordinates_look_projected,
+    normalize_spatial_schema,
+)
+from dataselector.data.io import get_metric_gdf
 from dataselector.selection.spatial_facility_location import (
     haversine_distance,
     haversine_matrix,
@@ -56,7 +61,7 @@ class MultiCriteriaFacilityLocation:
 
         Args:
             n_samples: Anzahl zu selektierender Samples
-            metadata: DataFrame mit ['N', 'left', 'year']
+            metadata: DataFrame mit ['ul_x', 'ul_y', 'lr_x', 'lr_y', 'year']
             alpha_visual: Gewicht für visuelle Ähnlichkeit [0,1]
             beta_spatial: Gewicht für räumliche Diversität [0,1]
             gamma_temporal: Gewicht für zeitliche Diversität [0,1]
@@ -70,7 +75,7 @@ class MultiCriteriaFacilityLocation:
             explizit normierte Gewichte angeben.
         """
         self.n_samples = n_samples
-        self.metadata = metadata
+        self.metadata = normalize_spatial_schema(metadata, require_bounds=True, copy=True)
         self.min_distance_km = min_distance_km
         self.metric = metric
         self.random_state = random_state
@@ -99,9 +104,10 @@ class MultiCriteriaFacilityLocation:
         )
 
         # Cache coordinates
-        self.latitudes = metadata["N"].values
-        self.longitudes = metadata["left"].values
-        self.years = metadata["year"].fillna(metadata["year"].median()).values
+        self.y_coords = self.metadata["center_y"].values
+        self.x_coords = self.metadata["center_x"].values
+        self._coords_are_projected = coordinates_look_projected(self.metadata)
+        self.years = self.metadata["year"].fillna(self.metadata["year"].median()).values
 
     def _compute_pairwise_distances(self, X: np.ndarray) -> np.ndarray:
         """
@@ -131,7 +137,7 @@ class MultiCriteriaFacilityLocation:
         d_spatial_km = None
 
         # Prefer projected metric coordinates if available via metadata.gdf_metric
-        gdf_metric = getattr(self.metadata, "gdf_metric", None)
+        gdf_metric = get_metric_gdf(self.metadata)
         if gdf_metric is not None:
             try:
                 xs = gdf_metric["_proj_x"].values.astype(float)
@@ -147,18 +153,27 @@ class MultiCriteriaFacilityLocation:
 
         if d_spatial_km is None:
             try:
-                d_spatial_km = haversine_matrix(self.latitudes, self.longitudes)
+                if self._coords_are_projected:
+                    coords = np.stack([self.x_coords, self.y_coords], axis=1)
+                    d_spatial_km = euclidean_distances(coords) / 1000.0
+                else:
+                    d_spatial_km = haversine_matrix(self.y_coords, self.x_coords)
             except Exception:
                 # Fallback (should rarely happen) — compute with loops
                 d_spatial_km = np.zeros((n, n))
                 for i in range(n):
                     for j in range(i + 1, n):
-                        dist_km = haversine_distance(
-                            self.latitudes[i],
-                            self.longitudes[i],
-                            self.latitudes[j],
-                            self.longitudes[j],
-                        )
+                        if self._coords_are_projected:
+                            dx = self.x_coords[i] - self.x_coords[j]
+                            dy = self.y_coords[i] - self.y_coords[j]
+                            dist_km = float((dx * dx + dy * dy) ** 0.5 / 1000.0)
+                        else:
+                            dist_km = haversine_distance(
+                                self.y_coords[i],
+                                self.x_coords[i],
+                                self.y_coords[j],
+                                self.x_coords[j],
+                            )
                         d_spatial_km[i, j] = dist_km
                         d_spatial_km[j, i] = dist_km
 
@@ -194,8 +209,8 @@ class MultiCriteriaFacilityLocation:
         if len(selected_indices) == 0:
             return False
 
-        cand_lat = self.latitudes[candidate_idx]
-        cand_lon = self.longitudes[candidate_idx]
+        cand_y = self.y_coords[candidate_idx]
+        cand_x = self.x_coords[candidate_idx]
 
         # Use precomputed spatial km matrix if available for O(1) checks
         if hasattr(self, "_spatial_km") and self._spatial_km is not None:
@@ -205,10 +220,15 @@ class MultiCriteriaFacilityLocation:
 
         # Fallback to scalar haversine if no precomputed matrix
         for sel_idx in selected_indices:
-            sel_lat = self.latitudes[sel_idx]
-            sel_lon = self.longitudes[sel_idx]
+            sel_y = self.y_coords[sel_idx]
+            sel_x = self.x_coords[sel_idx]
 
-            distance = haversine_distance(cand_lat, cand_lon, sel_lat, sel_lon)
+            if self._coords_are_projected:
+                dx = cand_x - sel_x
+                dy = cand_y - sel_y
+                distance = float((dx * dx + dy * dy) ** 0.5 / 1000.0)
+            else:
+                distance = haversine_distance(cand_y, cand_x, sel_y, sel_x)
 
             if distance < self.min_distance_km:
                 return True
@@ -302,7 +322,7 @@ class MultiCriteriaFacilityLocation:
         )
 
         # Guard: features must align with metadata length
-        if X.shape[0] != len(self.latitudes):
+        if X.shape[0] != len(self.y_coords):
             # Versuche, Hash-Infos für bessere Fehlermeldung zu laden
             meta_hash = None
             meta_path = None
@@ -329,7 +349,7 @@ class MultiCriteriaFacilityLocation:
             except Exception:
                 pass
             msg = (
-                f"Feature rows ({X.shape[0]}) != metadata rows ({len(self.latitudes)}). "
+                f"Feature rows ({X.shape[0]}) != metadata rows ({len(self.y_coords)}). "
                 "This will cause broadcasting errors (visual vs spatial matrices). "
                 "Bitte stelle sicher, dass Feature-Cache und Metadaten exakt zusammengehören.\n"
             )

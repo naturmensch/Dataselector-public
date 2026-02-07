@@ -17,6 +17,11 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 from apricot import FacilityLocationSelection
+from dataselector.data.spatial_schema import (
+    coordinates_look_projected,
+    normalize_spatial_schema,
+)
+from dataselector.data.io import get_metric_gdf
 
 
 def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -101,14 +106,14 @@ class SpatialConstrainedFacilityLocation(FacilityLocationSelection):
 
         Args:
             n_samples: Anzahl zu selektierender Samples
-            metadata: DataFrame mit Spalten ['N', 'left'] für Koordinaten
+            metadata: DataFrame mit kanonischen Spatial-Spalten (ul/lr)
             min_distance_km: Minimale Distanz zwischen Samples (km)
             metric: Distanzmetrik für Feature-Space
             random_state: Seed für Reproduzierbarkeit
         """
         super().__init__(n_samples=n_samples, metric=metric, random_state=random_state)
 
-        self.metadata = metadata
+        self.metadata = normalize_spatial_schema(metadata, require_bounds=True, copy=True)
         self.min_distance_km = min_distance_km
         self._precompute_coordinates()
 
@@ -119,12 +124,13 @@ class SpatialConstrainedFacilityLocation(FacilityLocationSelection):
         (columns `_proj_x` and `_proj_y`), we cache those projected
         coordinates for fast Euclidean distance computations.
         """
-        self.latitudes = self.metadata["N"].values
-        self.longitudes = self.metadata["left"].values
+        self.y_coords = self.metadata["center_y"].values
+        self.x_coords = self.metadata["center_x"].values
+        self._coords_are_projected = coordinates_look_projected(self.metadata)
 
         # If metadata provides a cached metric GeoDataFrame, use that
         self._has_proj = False
-        gdf_metric = getattr(self.metadata, "gdf_metric", None)
+        gdf_metric = get_metric_gdf(self.metadata)
         if gdf_metric is not None:
             try:
                 self._proj_x = gdf_metric["_proj_x"].values
@@ -164,14 +170,19 @@ class SpatialConstrainedFacilityLocation(FacilityLocationSelection):
             return False
 
         # fallback to Haversine distance
-        cand_lat = self.latitudes[candidate_idx]
-        cand_lon = self.longitudes[candidate_idx]
+        cand_y = self.y_coords[candidate_idx]
+        cand_x = self.x_coords[candidate_idx]
 
         for sel_idx in selected_indices:
-            sel_lat = self.latitudes[sel_idx]
-            sel_lon = self.longitudes[sel_idx]
+            sel_y = self.y_coords[sel_idx]
+            sel_x = self.x_coords[sel_idx]
 
-            distance = haversine_distance(cand_lat, cand_lon, sel_lat, sel_lon)
+            if self._coords_are_projected:
+                dx = cand_x - sel_x
+                dy = cand_y - sel_y
+                distance = float((dx * dx + dy * dy) ** 0.5 / 1000.0)
+            else:
+                distance = haversine_distance(cand_y, cand_x, sel_y, sel_x)
 
             if distance < self.min_distance_km:
                 return True

@@ -95,9 +95,9 @@ def compute_min_distance_km(
     ----------
     metadata_csv : str
         Path to tile metadata CSV with coordinate columns
-        Accepts either:
-        - WGS84: 'N' (latitude) and 'left' (longitude)
-        - UTM EPSG:3857: 'ul_x', 'ul_y' (upper-left) or 'lr_x', 'lr_y' (lower-right)
+        Requires canonical schema:
+        - Bounds: 'ul_x', 'ul_y', 'lr_x', 'lr_y'
+        - (optional) precomputed 'center_x', 'center_y'
     strategy : str
         'median_nn' (default): Use median of nearest-neighbor distances
         'percentile_nn': Use given percentile of nearest-neighbor distances
@@ -124,29 +124,21 @@ def compute_min_distance_km(
 
     df = pd.read_csv(p)
 
-    # Extract coordinates (try different coordinate systems)
-    if "N" in df.columns and "left" in df.columns:
-        # WGS84 lat/lon
-        lats = df["N"].values
-        lons = df["left"].values
-        is_utm = False
-    elif "ul_x" in df.columns and "ul_y" in df.columns:
-        # UTM EPSG:3857 (upper-left corner as tile center proxy)
-        xs = df["ul_x"].values
-        ys = df["ul_y"].values
-        is_utm = True
-    elif "lr_x" in df.columns and "lr_y" in df.columns:
-        # UTM EPSG:3857 (lower-right corner as tile center proxy)
-        xs = df["lr_x"].values
-        ys = df["lr_y"].values
-        is_utm = True
+    # Extract canonical center coordinates from ul/lr bounds.
+    if all(c in df.columns for c in ("ul_x", "ul_y", "lr_x", "lr_y")):
+        xs = ((df["ul_x"].values + df["lr_x"].values) / 2.0).astype(float)
+        ys = ((df["ul_y"].values + df["lr_y"].values) / 2.0).astype(float)
+    elif all(c in df.columns for c in ("center_x", "center_y")):
+        xs = df["center_x"].values.astype(float)
+        ys = df["center_y"].values.astype(float)
     else:
         raise ValueError(
-            f"CSV must contain either 'N'/'left' (WGS84) or 'ul_x'/'ul_y' (UTM) columns. "
-            f"Found: {list(df.columns)}"
+            "CSV must contain canonical spatial schema columns "
+            "('ul_x','ul_y','lr_x','lr_y')."
         )
+    is_utm = bool(np.nanmax(np.abs(xs)) > 180 or np.nanmax(np.abs(ys)) > 90)
 
-    if (is_utm and len(xs) < 2) or (not is_utm and len(lats) < 2):
+    if len(xs) < 2:
         print(
             f"⚠️  Dataset too small for statistical analysis. "
             "Returning default 28.0 km"
@@ -172,12 +164,12 @@ def compute_min_distance_km(
                 nn_distances.append(nn_distance)
     else:
         # WGS84: Haversine distance
-        for i in range(len(lats)):
-            lat1, lon1 = lats[i], lons[i]
+        for i in range(len(xs)):
+            lat1, lon1 = ys[i], xs[i]
             distances = []
-            for j in range(len(lats)):
+            for j in range(len(xs)):
                 if i != j:
-                    lat2, lon2 = lats[j], lons[j]
+                    lat2, lon2 = ys[j], xs[j]
                     # Approximate km per degree (ignoring spheroid for speed)
                     dlat_km = (lat2 - lat1) * 111.0
                     dlon_km = (

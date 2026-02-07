@@ -20,6 +20,10 @@ import sys
 from pathlib import Path
 
 from dataselector.cli_decorators import cli_command
+from dataselector.data.spatial_schema import (
+    normalize_spatial_schema,
+    spatial_spread as compute_spatial_spread,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -103,15 +107,23 @@ def load_or_create_data(out_dir: Path, n: int = 500, dim: int = 512, seed: int =
         features = load_or_extract_features(
             out_dir=out_dir, csv_meta=str(metadata_path), batch_size=16, cache=False
         )
-        metadata = pd.read_csv(metadata_path)
+        from dataselector.data.io import load_metadata
+
+        metadata = load_metadata(str(metadata_path))
     else:
         rng = np.random.RandomState(seed)
         features = rng.randn(n, dim).astype("float32")
+        center_x = rng.uniform(450000, 650000, n)
+        center_y = rng.uniform(5800000, 6100000, n)
+        half_w = rng.uniform(40, 80, n)
+        half_h = rng.uniform(40, 80, n)
         metadata = pd.DataFrame(
             {
-                "N": np.random.uniform(48, 55, n),
-                "left": np.random.uniform(6, 15, n),
-                "year": np.random.randint(1880, 1945, n),
+                "ul_x": center_x - half_w,
+                "ul_y": center_y + half_h,
+                "lr_x": center_x + half_w,
+                "lr_y": center_y - half_h,
+                "year": rng.randint(1880, 1945, n),
             }
         )
 
@@ -216,10 +228,13 @@ def objective_factory(
                 return 0.0
 
             diversity = selector._calculate_diversity_score(features[selected])
-            spatial_spread = metadata.loc[selected, ["N", "left"]].std().mean()
+            spatial_meta = normalize_spatial_schema(
+                metadata, require_bounds=True, copy=True
+            )
+            spread = compute_spatial_spread(spatial_meta, selected)
 
             # Composite objective (maximize)
-            score = diversity * spatial_spread
+            score = diversity * spread
 
             # Log intermediate values
             trial.set_user_attr("alpha", float(alpha))
@@ -229,7 +244,7 @@ def objective_factory(
             trial.set_user_attr("n_selected", int(n_selected))
             trial.set_user_attr("n_samples", int(n_samp))
             trial.set_user_attr("diversity", float(diversity))
-            trial.set_user_attr("spatial_spread", float(spatial_spread))
+            trial.set_user_attr("spatial_spread", float(spread))
 
             return float(score)
         except Exception as e:

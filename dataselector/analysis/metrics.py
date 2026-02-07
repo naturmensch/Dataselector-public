@@ -4,6 +4,10 @@ import numpy as np
 import pandas as pd
 
 from dataselector.data.io import get_metric_gdf
+from dataselector.data.spatial_schema import (
+    coordinates_look_projected,
+    normalize_spatial_schema,
+)
 
 
 def compute_metrics(
@@ -46,24 +50,27 @@ def compute_metrics(
             spatial_mean = 0.0
             spatial_min = 0.0
     else:
-        # Fallback to Haversine distance on N/left columns.
+        # Fallback to center coordinates from canonical spatial schema.
         from dataselector.data.metadata_processor import MetadataProcessor
 
-        if "N" in selected.columns and "left" in selected.columns:
-            coords = selected[["N", "left"]].to_numpy(dtype=float)
-        else:
-            coords = np.empty((0, 2), dtype=float)
+        selected = normalize_spatial_schema(selected, require_bounds=True, copy=True)
+        coords = selected[["center_y", "center_x"]].to_numpy(dtype=float)
+        is_projected = coordinates_look_projected(selected)
 
-        mp = MetadataProcessor("")
         if len(coords) > 1:
             dists = []
             for i in range(len(coords)):
                 for j in range(i + 1, len(coords)):
-                    dists.append(
-                        mp.calculate_spatial_distance(
-                            coords[i, 0], coords[i, 1], coords[j, 0], coords[j, 1]
+                    if is_projected:
+                        dx = coords[i, 1] - coords[j, 1]
+                        dy = coords[i, 0] - coords[j, 0]
+                        dists.append(float(np.sqrt(dx * dx + dy * dy) / 1000.0))
+                    else:
+                        dists.append(
+                            MetadataProcessor.calculate_spatial_distance(
+                                coords[i, 0], coords[i, 1], coords[j, 0], coords[j, 1]
+                            )
                         )
-                    )
             spatial_mean = float(np.mean(dists))
             spatial_min = float(np.min(dists))
         else:

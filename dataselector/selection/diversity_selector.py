@@ -14,6 +14,10 @@ from typing import Dict, Optional
 
 import numpy as np
 import pandas as pd
+from dataselector.data.spatial_schema import (
+    coordinates_look_projected,
+    normalize_spatial_schema,
+)
 
 try:
     from apricot import FacilityLocationSelection
@@ -95,7 +99,7 @@ class DiversitySelector:
 
         Args:
             features: Feature-Matrix (n_samples, n_features)
-            metadata: Optional DataFrame mit year, N, left Spalten
+            metadata: Optional DataFrame mit year und spatial Schema (ul/lr)
             temporal_weight: Gewichtung für zeitliche Diversität (Legacy/Constraint mode)
             spatial_constraint: Ob räumlicher Sperrfilter angewandt wird
             min_distance_km: Minimale Distanz zwischen Samples (km)
@@ -113,7 +117,7 @@ class DiversitySelector:
 
         Args:
             features: Feature-Matrix (n_samples, n_features)
-            metadata: Optional DataFrame mit year, N, left Spalten
+            metadata: Optional DataFrame mit year und spatial Schema (ul/lr)
             temporal_weight: Gewichtung für zeitliche Diversität (Legacy/Constraint mode)
             spatial_constraint: Ob räumlicher Sperrfilter angewandt wird
             min_distance_km: Minimale Distanz zwischen Samples (km)
@@ -387,7 +391,7 @@ class DiversitySelector:
 
         Args:
             indices: Ausgewählte Indizes (Top-K Ranking oder Kandidatenliste)
-            metadata: DataFrame mit 'N' (Lat) und 'left' (Lon) Spalten
+            metadata: DataFrame mit Spatial-Bounds (ul/lr)
             min_distance_km: Minimale Distanz zwischen Samples
 
         Returns:
@@ -409,11 +413,8 @@ class DiversitySelector:
             # Explicit "no hard constraint" mode.
             return np.array(candidate_pool[:required])
 
-        # Guard: falls metadata keine notwendigen Spalten hat
-        if "N" not in metadata.columns or "left" not in metadata.columns:
-            raise ValueError(
-                "metadata muss 'N' und 'left' Spalten enthalten für räumliche Constraints"
-            )
+        # Guard: normalize to canonical schema once.
+        metadata = normalize_spatial_schema(metadata, require_bounds=True, copy=True)
 
         # Resolve projected geometry once; fallback uses scalar processor.
         try:
@@ -425,6 +426,7 @@ class DiversitySelector:
 
         from dataselector.selection.spatial_facility_location import haversine_distance
 
+        is_projected = coordinates_look_projected(metadata)
         valid_indices: list = []
 
         # 1) First pass: nur solche wählen, die den min_distance Constraint einhalten
@@ -432,12 +434,12 @@ class DiversitySelector:
             if len(valid_indices) >= required:
                 break
 
-            lat, lon = metadata.loc[idx, "N"], metadata.loc[idx, "left"]
+            y, x = metadata.loc[idx, "center_y"], metadata.loc[idx, "center_x"]
             is_valid = True
 
             for valid_idx in valid_indices:
-                lat2 = metadata.loc[valid_idx, "N"]
-                lon2 = metadata.loc[valid_idx, "left"]
+                y2 = metadata.loc[valid_idx, "center_y"]
+                x2 = metadata.loc[valid_idx, "center_x"]
 
                 # If projected coordinates are available on metadata, compute Euclidean (metric) distance
                 if gdf_metric is not None:
@@ -446,8 +448,12 @@ class DiversitySelector:
                         float
                     )
                     distance = float(((a - b) ** 2).sum() ** 0.5) / 1000.0
+                elif is_projected:
+                    dx = x - x2
+                    dy = y - y2
+                    distance = float(((dx * dx + dy * dy) ** 0.5) / 1000.0)
                 else:
-                    distance = haversine_distance(lat, lon, lat2, lon2)
+                    distance = haversine_distance(y, x, y2, x2)
 
                 if distance < min_distance_km:
                     is_valid = False

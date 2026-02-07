@@ -11,6 +11,10 @@ import numpy as np
 import pandas as pd
 
 from dataselector.cli_decorators import cli_command
+from dataselector.data.spatial_schema import (
+    coordinates_look_projected,
+    normalize_spatial_schema,
+)
 
 try:
     import matplotlib.pyplot as plt
@@ -174,21 +178,25 @@ def align_audit(
         return 1
 
     df = pd.read_csv(csv_path)
-    required_cols = ["left", "top", "right", "bottom", "image_path"]
+    df = normalize_spatial_schema(df, require_bounds=True, copy=False)
+
+    required_cols = ["ul_x", "ul_y", "lr_x", "lr_y", "image_path"]
     if not all(col in df.columns for col in required_cols):
         print(f"ERROR: CSV missing required columns: {required_cols}")
         return 1
 
-    # Setup transformer
-    transformer = Transformer.from_crs("EPSG:4326", target_crs, always_xy=True)
+    csv_is_projected = coordinates_look_projected(df)
+    transformer = None
+    if not csv_is_projected:
+        transformer = Transformer.from_crs("EPSG:4326", target_crs, always_xy=True)
 
     results = []
     outliers = []
 
     for idx, row in df.iterrows():
         image_path = base_dir / row["image_path"]
-        csv_center_lon = (row["left"] + row["right"]) / 2
-        csv_center_lat = (row["top"] + row["bottom"]) / 2
+        csv_center_x = row["center_x"]
+        csv_center_y = row["center_y"]
 
         # Find aux.xml
         aux_path = find_aux_xml(image_path, aux_dir)
@@ -217,14 +225,18 @@ def align_audit(
             continue
 
         aux_left, aux_top, aux_right, aux_bottom = bounds
-        aux_center_lon = (aux_left + aux_right) / 2
-        aux_center_lat = (aux_top + aux_bottom) / 2
+        aux_center_x = (aux_left + aux_right) / 2
+        aux_center_y = (aux_top + aux_bottom) / 2
 
-        # Transform both centroids to target CRS
-        csv_x, csv_y = transformer.transform(csv_center_lon, csv_center_lat)
-        aux_x, aux_y = transformer.transform(aux_center_lon, aux_center_lat)
+        if csv_is_projected:
+            csv_x, csv_y = csv_center_x, csv_center_y
+            aux_x, aux_y = aux_center_x, aux_center_y
+        else:
+            # Transform both centroids to target CRS
+            csv_x, csv_y = transformer.transform(csv_center_x, csv_center_y)
+            aux_x, aux_y = transformer.transform(aux_center_x, aux_center_y)
 
-        # Compute offset
+        # Compute offset in meters
         offset_m = np.sqrt((csv_x - aux_x) ** 2 + (csv_y - aux_y) ** 2)
 
         result = {
@@ -232,8 +244,8 @@ def align_audit(
             "image_path": str(image_path),
             "status": "ok",
             "offset_m": float(offset_m),
-            "csv_center": [csv_center_lon, csv_center_lat],
-            "aux_center": [aux_center_lon, aux_center_lat],
+            "csv_center": [csv_center_x, csv_center_y],
+            "aux_center": [aux_center_x, aux_center_y],
         }
         results.append(result)
 

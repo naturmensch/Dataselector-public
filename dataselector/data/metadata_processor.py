@@ -3,7 +3,7 @@ Metadaten-Extraktion und CSV-Processing für KDR100 Kacheln.
 
 Dieses Modul liest die CSV-Datei ein und extrahiert kritische Metadaten:
 - Temporaler Stempel (Jahr aus longName)
-- Räumliche Koordinaten (N, left)
+- Räumliche Koordinaten (ul_x, ul_y, lr_x, lr_y -> center_x, center_y)
 - Dateiinformationen
 """
 
@@ -12,6 +12,11 @@ from pathlib import Path
 from typing import Dict, List, Literal, Tuple
 
 import pandas as pd
+
+from dataselector.data.spatial_schema import (
+    coordinates_look_projected,
+    normalize_spatial_schema,
+)
 
 
 class MetadataProcessor:
@@ -40,11 +45,6 @@ class MetadataProcessor:
         suffix = self.csv_path.suffix.lower()
         if suffix == ".csv":
             self.df = pd.read_csv(self.csv_path)
-            # Normalize column names for compatibility
-            if "lat" in self.df.columns and "N" not in self.df.columns:
-                self.df = self.df.rename(columns={"lat": "N"})
-            if "lon" in self.df.columns and "left" not in self.df.columns:
-                self.df = self.df.rename(columns={"lon": "left"})
         elif suffix == ".dbf":
             try:
                 from dbfread import DBF
@@ -98,7 +98,7 @@ class MetadataProcessor:
             )
         # Standardisiere/Mappe Spaltennamen auf erwartete Namen
         self.df = self._standardize_columns(self.df)
-        required_columns = ["longName", "N", "left"]
+        required_columns = ["longName", "center_x", "center_y"]
         missing = [col for col in required_columns if col not in self.df.columns]
         if missing:
             raise ValueError(f"Fehlende Spalten in Metadaten: {missing}")
@@ -111,11 +111,13 @@ class MetadataProcessor:
             import geopandas as gpd
             from shapely.geometry import Point
 
-            if "left" in self.df.columns and "N" in self.df.columns:
-                # Build Point geometries (lon, lat)
+            if "center_x" in self.df.columns and "center_y" in self.df.columns:
+                # Build Point geometries (x, y)
                 geometries = [
                     Point(float(x), float(y))
-                    for x, y in zip(self.df["left"].values, self.df["N"].values)
+                    for x, y in zip(
+                        self.df["center_x"].values, self.df["center_y"].values
+                    )
                 ]
                 # Construct GeoDataFrame (tolerant for minimal gpd-like APIs)
                 try:
@@ -144,7 +146,7 @@ class MetadataProcessor:
     def _standardize_columns(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Mappt unterschiedliche Feldnamen auf erwartete Standard-Spalten:
-        'longName', 'N', 'left'.
+        'longName', optionale 'shortName' und kanonische Spatial-Spalten.
         """
         col_map = {}
         cols = list(df.columns)
@@ -169,32 +171,16 @@ class MetadataProcessor:
         )
         # shortName candidates
         short_col = _find(["shortName", "shortname", "short_name", "short"])
-        lat_col = _find(["N", "n", "lat", "latitude", "y"])
-        lon_col = _find(["left", "lon", "longitude", "x", "long"])
 
         if long_col:
             col_map[long_col] = "longName"
         if short_col:
             col_map[short_col] = "shortName"
-        if lat_col:
-            col_map[lat_col] = "N"
-        if lon_col:
-            col_map[lon_col] = "left"
 
         df = df.rename(columns=col_map)
-        # Deriviere mittlere Koordinate, falls explizite Felder fehlen
-        # Latitude (N) aus TOP/BOTTOM
-        if "N" not in df.columns:
-            top_cols = [c for c in df.columns if c.lower() == "top"]
-            bot_cols = [c for c in df.columns if c.lower() == "bottom"]
-            if top_cols and bot_cols:
-                df["N"] = (df[top_cols[0]] + df[bot_cols[0]]) / 2
-        # Longitude (left) aus LEFT/RIGHT
-        if "left" not in df.columns:
-            left_cols = [c for c in df.columns if c.lower() == "left"]
-            right_cols = [c for c in df.columns if c.lower() == "right"]
-            if left_cols and right_cols:
-                df["left"] = (df[left_cols[0]] + df[right_cols[0]]) / 2
+
+        # Canonicalize spatial columns to ul/lr + center.
+        df = normalize_spatial_schema(df, require_bounds=True, copy=False)
 
         # Ensure shortName exists as trimmed string if present
         if "shortName" in df.columns:
@@ -211,14 +197,11 @@ class MetadataProcessor:
             else:
                 df["longName"] = df.index.astype(str).apply(lambda i: f"img_{i}.png")
 
-        # Normalize numeric coordinate strings (comma -> dot) and convert to float
-        # Use robust conversions to avoid errors from mixed types or unexpected objects
-        if "N" in df.columns:
-            df["N"] = df["N"].astype(str).str.replace(",", ".", regex=False)
-            df["N"] = pd.to_numeric(df["N"], errors="coerce")
-        if "left" in df.columns:
-            df["left"] = df["left"].astype(str).str.replace(",", ".", regex=False)
-            df["left"] = pd.to_numeric(df["left"], errors="coerce")
+        # Normalize numeric coordinate strings (comma -> dot) and convert to float.
+        for col in ("ul_x", "ul_y", "lr_x", "lr_y", "center_x", "center_y"):
+            if col in df.columns:
+                df[col] = df[col].astype(str).str.replace(",", ".", regex=False)
+                df[col] = pd.to_numeric(df[col], errors="coerce")
 
         return df
 
@@ -264,17 +247,17 @@ class MetadataProcessor:
         Prüft heuristisch, ob Koordinaten in Grad (Lat/Lon) oder Meter (Projected) vorliegen.
         Setzt self.crs_unit entsprechend.
         """
-        if self.df is None or "N" not in self.df.columns:
+        if self.df is None or "center_x" not in self.df.columns:
             return
 
-        lat_min, lat_max = self.df["N"].min(), self.df["N"].max()
-        lon_min, lon_max = self.df["left"].min(), self.df["left"].max()
+        x_min, x_max = self.df["center_x"].min(), self.df["center_x"].max()
+        y_min, y_max = self.df["center_y"].min(), self.df["center_y"].max()
 
-        # Heuristik: Wenn Werte außerhalb [-180, 180], sind es wahrscheinlich Meter
-        if (lat_min < -90 or lat_max > 90) or (lon_min < -180 or lon_max > 180):
+        if coordinates_look_projected(self.df):
             self.crs_unit = "meter"
             print(
-                f"[GIS-INFO] Koordinaten scheinen projiziert (Meter) zu sein. (Range: N={lat_min:.1f}..{lat_max:.1f})"
+                "[GIS-INFO] Koordinaten scheinen projiziert (Meter) zu sein. "
+                f"(Range x={x_min:.1f}..{x_max:.1f}, y={y_min:.1f}..{y_max:.1f})"
             )
             if "epsg3857" in str(self.csv_path).lower():
                 print("[GIS-INFO] Dateiname deutet auf EPSG:3857 (Web Mercator) hin.")
@@ -394,46 +377,34 @@ class MetadataProcessor:
 
     @staticmethod
     def calculate_spatial_distance(
-        lat1: float, lon1: float, lat2: float, lon2: float
+        y1: float, x1: float, y2: float, x2: float
     ) -> float:
         """
         Berechnet die räumliche Distanz zwischen zwei Punkten.
 
-        Wenn eine reprojektierte GeoDataFrame (`self.gdf_metric`) vorhanden ist,
-        wird die euklidische Distanz in Metern berechnet und in Kilometer
-        zurückgegeben. Ansonsten fällt die Methode auf die sphärische
-        Haversine-Distanz zurück (Grad).
+        Für projizierte Koordinaten (Meter) wird euklidische Distanz in km
+        berechnet. Für geographische Koordinaten (Grad) fällt die Methode auf
+        Haversine zurück.
 
         Args:
-            lat1, lon1: Koordinaten Punkt 1
-            lat2, lon2: Koordinaten Punkt 2
+            y1, x1: Koordinaten Punkt 1 (y/x oder lat/lon)
+            y2, x2: Koordinaten Punkt 2 (y/x oder lat/lon)
 
         Returns:
             Distanz in Kilometern
         """
-        # If we have projected coords available (meters), prefer them, but only if inputs
-        # look like metric coordinates (large magnitude). Otherwise fall back to Haversine.
-        if getattr(self, "gdf_metric", None) is not None:
-            try:
-                # Heuristic: if coordinates magnitude suggests meters (abs >= 1000)
-                # Use any() so a projected coordinate pair like (0,0) and (0,1000) is treated
-                # as metric rather than mistakenly falling back to Haversine.
-                if any(abs(v) >= 1000 for v in (lat1, lon1, lat2, lon2)):
-                    dx = lon1 - lon2
-                    dy = lat1 - lat2
-                    dist_meters = (dx * dx + dy * dy) ** 0.5
-                    return dist_meters / 1000.0
-                # else: inputs seem to be degrees → fall through to Haversine
-            except Exception:
-                # Fall back to Haversine if any error occurs
-                pass
+        if any(abs(v) >= 1000 for v in (y1, x1, y2, x2)):
+            dx = x1 - x2
+            dy = y1 - y2
+            dist_meters = (dx * dx + dy * dy) ** 0.5
+            return dist_meters / 1000.0
 
         # Standard Haversine für Grad-Koordinaten
         from math import atan2, cos, radians, sin, sqrt
 
         R = 6371  # Erdradius in km
 
-        lat1, lon1, lat2, lon2 = map(radians, [lat1, lon1, lat2, lon2])
+        lat1, lon1, lat2, lon2 = map(radians, [y1, x1, y2, x2])
         dlat = lat2 - lat1
         dlon = lon2 - lon1
 
@@ -456,14 +427,14 @@ class MetadataProcessor:
             raise ValueError("CSV muss zuerst geladen werden")
 
         valid_indices = []
-        coords = self.df[["N", "left"]].values
+        coords = self.df[["center_y", "center_x"]].values
 
-        for i, (lat, lon) in enumerate(coords):
+        for i, (y, x) in enumerate(coords):
             is_valid = True
             for j in valid_indices:
-                lat2, lon2 = coords[j]
+                y2, x2 = coords[j]
                 if (
-                    MetadataProcessor.calculate_spatial_distance(lat, lon, lat2, lon2)
+                    MetadataProcessor.calculate_spatial_distance(y, x, y2, x2)
                     < min_distance_km
                 ):
                     is_valid = False
@@ -503,10 +474,10 @@ class MetadataProcessor:
             "total_tiles": len(self.df),
             "temporal_range": self.get_temporal_range(),
             "spatial_extent": {
-                "lat_min": self.df["N"].min(),
-                "lat_max": self.df["N"].max(),
-                "lon_min": self.df["left"].min(),
-                "lon_max": self.df["left"].max(),
+                "x_min": self.df["center_x"].min(),
+                "x_max": self.df["center_x"].max(),
+                "y_min": self.df["center_y"].min(),
+                "y_max": self.df["center_y"].max(),
             },
             "years_distribution": self.df["year"].value_counts().to_dict(),
         }
