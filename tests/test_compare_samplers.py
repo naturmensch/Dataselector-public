@@ -4,11 +4,37 @@ import pandas as pd
 import pytest
 
 
+def _write_minimal_metadata_csv(repo_root):
+    data_dir = repo_root / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        {
+            "SheetNumber": [1],
+            "shortName": ["S1"],
+            "longName": ["tile_1"],
+            "city": ["test_city"],
+            "year": [1910],
+            "filename": ["tile_1.tif"],
+            "image_path": ["tile_1.png"],
+            "ul_x": [500000.0],
+            "ul_y": [5900000.0],
+            "lr_x": [500100.0],
+            "lr_y": [5899900.0],
+            "width_px": [1000],
+            "height_px": [1000],
+            "pixel_width": [0.1],
+            "pixel_height": [-0.1],
+            "data_quality": ["ok"],
+        }
+    ).to_csv(data_dir / "new_all_tiles.csv", index=False)
+
+
 def test_run_single_optuna_missing_run_dir(tmp_path, monkeypatch):
     from dataselector.workflows import compare_samplers
 
     # Patch repo root to tmp_path
     monkeypatch.setattr(compare_samplers, "_get_repo_root", lambda: tmp_path)
+    _write_minimal_metadata_csv(tmp_path)
 
     monkeypatch.setattr(
         compare_samplers, "_get_run_optuna", lambda: (lambda **kwargs: None)
@@ -30,6 +56,7 @@ def test_run_single_optuna_success(tmp_path, monkeypatch):
     from dataselector.workflows import compare_samplers
 
     monkeypatch.setattr(compare_samplers, "_get_repo_root", lambda: tmp_path)
+    _write_minimal_metadata_csv(tmp_path)
 
     monkeypatch.setattr(
         compare_samplers, "_get_run_optuna", lambda: (lambda **kwargs: None)

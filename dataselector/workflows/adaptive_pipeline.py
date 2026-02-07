@@ -658,7 +658,7 @@ def run_adaptive_pipeline(
         "n_samples": {
             "type": int,
             "default": None,
-            "help": "Fixed n_samples for Optuna",
+            "help": "Fixed n_samples for Optuna (overrides adaptive sizing)",
         },
         "n_samples_min": {
             "type": int,
