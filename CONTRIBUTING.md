@@ -44,4 +44,26 @@ python scripts/clean_workspace.py --delete-outputs --delete-venvs
 - **Before commit:** `pytest` (run the full test suite)
 - **CI Simulation:** `pytest --junitxml=test-results/junit.xml`
 
+## CI Parity Local Run (Authoritative)
+
+Use the `micromamba` environment `dataselector` for all authoritative local checks.
+Running with system Python may fail collection due to missing optional dependencies and
+is not considered a valid CI-parity signal.
+
+```bash
+micromamba run -n dataselector python -m pytest -q tests/unit/test_no_legacy_script_references.py
+micromamba run -n dataselector python -m pytest -q tests -k "not real_images"
+git ls-files '*.py' | xargs micromamba run -n dataselector ruff check
+git ls-files '*.py' | xargs micromamba run -n dataselector black --check
+git ls-files '*.py' | xargs micromamba run -n dataselector isort --check-only
+```
+
+### Local-only artifacts
+
+Some local analysis helpers and reports are intentionally not pushed. Current examples:
+- `docs/reports/`
+- `scripts/summarize_md.py`
+
+Treat these as workstation-local unless a dedicated PR explicitly promotes them.
+
 If you're unsure, open a draft PR and ask for a quick review before deleting anything important.

@@ -32,9 +32,14 @@ If it prints errors about NumPy/Numba versions, recreate the environment from `e
 
 Real-image strategy (local only)
 - CI is metadata-compatible and must not depend on private image folders.
+- Real-image tests are marked with `real_images` (legacy marker `real_tiles` is treated as alias).
 - For local real-image runs, point the loader to your private image directory:
 
    export DATASELECTOR_IMAGE_DIR=/abs/path/to/private/images
+
+- Then run:
+
+   micromamba run -n dataselector python -m pytest -q -m real_images
 
 - This keeps private image assets out of the repository while allowing strict local feature extraction.
 

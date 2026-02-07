@@ -213,6 +213,13 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "slow: slow test, use --runslow to include")
     config.addinivalue_line("markers", "requires_gis: requires GIS dependencies")
     config.addinivalue_line("markers", "requires_images: requires sample image files")
+    config.addinivalue_line(
+        "markers",
+        "real_images: requires DATASELECTOR_IMAGE_DIR with private/local real images",
+    )
+    config.addinivalue_line(
+        "markers", "real_tiles: legacy alias for real_images-based tests"
+    )
 
 
 @pytest.fixture(autouse=True)

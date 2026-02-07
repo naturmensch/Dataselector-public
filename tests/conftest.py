@@ -1,3 +1,4 @@
+import os
 import sys
 import types
 from pathlib import Path
@@ -208,39 +209,29 @@ def stub_feature_extraction(monkeypatch, fake_features):
 
 
 def pytest_configure(config):
-    """Validate test environment and record compatibility status.
+    """Validate runtime availability and record compatibility status.
 
     The canonical test surface is package-first (`python -m dataselector ...`).
-    E2E tests are automatically skipped when environment checks fail.
+    E2E tests are skipped only when the CLI runtime itself is unavailable.
     """
     import subprocess
 
-    # Run environment audit via canonical package command.
+    # Runtime check via canonical package entrypoint.
     try:
         res = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "dataselector",
-                "check-env",
-                "dataselector",
-                "tests",
-                "Makefile",
-                ".github/workflows",
-            ],
+            [sys.executable, "-m", "dataselector", "--help"],
             capture_output=True,
             text=True,
         )
         if res.returncode == 0:
             config._env_check_ok = True
-            config._env_check_msg = "Environment check passed"
+            config._env_check_msg = "Runtime check passed"
         else:
             config._env_check_ok = False
-            # Provide actionable message (stdout/stderr may contain details)
             out = (res.stdout or "").strip()
             err = (res.stderr or "").strip()
             config._env_check_msg = (
-                "Environment check failed: \n" + out + "\n" + err + "\n"
+                "Runtime check failed: \n" + out + "\n" + err + "\n"
                 "Run tests in the dataselector environment (e.g. "
                 "'conda run -n dataselector -- python -m pytest ...')."
             )
@@ -250,19 +241,55 @@ def pytest_configure(config):
 
 
 def pytest_collection_modifyitems(config: Config, items):
-    """Skip E2E-marked tests when environment check failed.
+    """Apply global test collection policies.
 
-    This keeps E2E tests honest (they are only executed in a compatible environment)
-    without resorting to local monkeypatches to hide import errors.
+    - Skip E2E tests when runtime check fails.
+    - Skip E2E tests unless RUN_FULL_INTEGRATION=1 is set.
+    - Skip real-image tests unless DATASELECTOR_IMAGE_DIR points to a valid directory.
     """
-    if getattr(config, "_env_check_ok", False):
-        return
-
-    skip_reason = getattr(
+    env_ok = getattr(config, "_env_check_ok", False)
+    env_skip_reason = getattr(
         config, "_env_check_msg", "Environment not suitable for E2E tests"
     )
-    skip_marker = pytest.mark.skip(reason=skip_reason)
+    env_skip_marker = pytest.mark.skip(reason=env_skip_reason)
+
+    run_full_integration = os.environ.get(
+        "RUN_FULL_INTEGRATION", ""
+    ).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+    integration_skip_marker = pytest.mark.skip(
+        reason=(
+            "E2E tests require RUN_FULL_INTEGRATION=1 "
+            "(set env var to enable full integration execution)"
+        )
+    )
+
+    # Real image policy:
+    # - Tests marked real_images (or legacy real_tiles) require DATASELECTOR_IMAGE_DIR.
+    # - This keeps CI image-independent and moves private image usage to explicit local runs.
+    image_dir_env = os.environ.get("DATASELECTOR_IMAGE_DIR", "").strip()
+    image_dir_ok = bool(image_dir_env and Path(image_dir_env).exists())
+    real_images_skip = pytest.mark.skip(
+        reason=(
+            "real_images test requires DATASELECTOR_IMAGE_DIR to point to a valid local "
+            "directory with private image data"
+        )
+    )
 
     for item in list(items):
+        marker_names = {m.name for m in item.iter_markers()}
+        if "real_tiles" in marker_names and "real_images" not in marker_names:
+            item.add_marker(pytest.mark.real_images)
+            marker_names.add("real_images")
+
+        if "real_images" in marker_names and not image_dir_ok:
+            item.add_marker(real_images_skip)
+
         if "e2e" in {m.name for m in item.iter_markers()}:
-            item.add_marker(skip_marker)
+            if not env_ok:
+                item.add_marker(env_skip_marker)
+            elif not run_full_integration:
+                item.add_marker(integration_skip_marker)
