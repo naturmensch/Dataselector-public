@@ -1,4 +1,3 @@
-import sys
 from pathlib import Path
 
 import pytest
@@ -14,10 +13,8 @@ def test_env_compatibility_exits_zero(run_dataselector_cli):
     In PR/normal dev runs, it's OK to skip if the check fails (we provide actionable output).
     """
     cmd = [
-        sys.executable,
-        "-m",
-        "dataselector",
         "check-env",
+        "--paths",
         "dataselector",
         "tests",
         "Makefile",

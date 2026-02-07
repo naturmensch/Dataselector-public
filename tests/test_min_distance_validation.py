@@ -18,7 +18,7 @@ import pytest
 @pytest.fixture
 def metadata_csv():
     """Load the KDR100 metadata."""
-    csv_path = Path(__file__).parents[2] / "data" / "new_all_tiles.csv"
+    csv_path = Path(__file__).parents[1] / "data" / "new_all_tiles.csv"
     if not csv_path.exists():
         pytest.skip(f"Metadata CSV not found: {csv_path}")
     return pd.read_csv(csv_path)
@@ -52,16 +52,16 @@ class TestDataIntegrity:
             assert np.isfinite(metadata_csv[col]).all(), f"Found inf in {col}"
 
     def test_coordinate_ranges_are_realistic(self, metadata_csv):
-        """Check if UTM EPSG:3857 coordinates are in expected range for Germany."""
-        # UTM Zone 32N/33N for Germany/Austria
-        # Expected ranges (approximately):
-        # X: 2,300,000 - 2,500,000 meters (East-West)
-        # Y: 5,200,000 - 6,400,000 meters (South-North)
+        """Check if EPSG:3857 coordinates are in a realistic Germany range."""
+        # Web Mercator (EPSG:3857) ranges in this dataset are expected roughly as:
+        # X: 0.6M - 2.6M
+        # Y: 5.9M - 7.6M
+        # Keep broad sanity bounds to catch corrupt coordinates without overfitting.
 
-        assert metadata_csv["ul_x"].min() > 2_000_000, "ul_x too far west"
+        assert metadata_csv["ul_x"].min() > 500_000, "ul_x too far west"
         assert metadata_csv["ul_x"].max() < 3_000_000, "ul_x too far east"
-        assert metadata_csv["ul_y"].min() > 5_000_000, "ul_y too far south"
-        assert metadata_csv["ul_y"].max() < 7_000_000, "ul_y too far north"
+        assert metadata_csv["ul_y"].min() > 5_500_000, "ul_y too far south"
+        assert metadata_csv["ul_y"].max() < 8_000_000, "ul_y too far north"
 
     def test_tiles_have_non_zero_extent(self, metadata_csv):
         """Check if tiles have reasonable size (not points)."""
