@@ -16,6 +16,7 @@ import dataselector.tools.audit
 import dataselector.tools.check
 import dataselector.tools.clean
 import dataselector.tools.docs_link
+import dataselector.workflows.adaptive_auto
 import dataselector.workflows.adaptive_pipeline
 import dataselector.workflows.apply_optuna_best
 

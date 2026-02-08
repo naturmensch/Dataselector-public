@@ -437,10 +437,9 @@ def run_bootstrap_pareto(
         Exit code (0 on success)
     """
     method = str(uq_method).strip().lower()
-    if method != "bootstrap":
+    if method not in {"bootstrap", "ensemble"}:
         print(
-            "Error: bootstrap-pareto supports only --uq-method bootstrap; "
-            f"got '{uq_method}'. Ensemble mode is not implemented yet."
+            "Error: invalid --uq-method value. " "Expected one of: bootstrap, ensemble."
         )
         return 2
 
@@ -529,6 +528,61 @@ def run_bootstrap_pareto(
             "jaccard_std": df_boot["jaccard_with_original"].std(),
             "method": method,
         }
+        if method == "ensemble":
+            try:
+                from dataselector.workflows.uncertainty_quantification import (
+                    fit_ensemble_on_bootstrap_df,
+                    predict_with_uncertainty,
+                )
+            except Exception as exc:
+                print(
+                    "Error: ensemble UQ requires uncertainty_quantification dependencies "
+                    f"(including torch): {exc}"
+                )
+                return 2
+
+            input_cols = [
+                c
+                for c in [
+                    "temporal_std",
+                    "spatial_mean_km",
+                    "wwi_percent",
+                    "clusters_covered",
+                    "n_selected",
+                ]
+                if c in df_boot.columns
+            ]
+            target_col = "jaccard_with_original"
+            if not input_cols or target_col not in df_boot.columns:
+                print(
+                    "Error: ensemble UQ could not run because bootstrap metrics are missing."
+                )
+                return 2
+            if len(df_boot) < 3:
+                print(
+                    "Error: ensemble UQ needs at least 3 bootstrap rows per candidate."
+                )
+                return 2
+
+            n_models = min(5, max(3, len(df_boot) // 20 + 2))
+            models = fit_ensemble_on_bootstrap_df(
+                df=df_boot,
+                input_cols=input_cols,
+                target_col=target_col,
+                n_models=n_models,
+                epochs=40,
+                lr=0.01,
+                random_seed=random_seed + int(idx),
+            )
+            pred_mean, pred_std = predict_with_uncertainty(
+                models, df_boot[input_cols].values
+            )
+            summary["ensemble_target"] = target_col
+            summary["ensemble_models"] = int(n_models)
+            summary["ensemble_pred_mean"] = float(np.mean(pred_mean))
+            summary["ensemble_uncertainty_mean"] = float(np.mean(pred_std))
+            summary["ensemble_uncertainty_p95"] = float(np.percentile(pred_std, 95))
+
         summary_rows.append(summary)
 
     if len(all_boot) > 0:
