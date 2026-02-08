@@ -4,10 +4,16 @@ This directory contains shared fixtures and helpers used across the test suite.
 
 ## Directories
 
-- **real_tiles/**: Contains 5 actual KDR tile images (PNG + aux.xml) for integration testing
-  - Total size: ~241 MB
-  - Includes tiles KDR_001 through KDR_005
-  - See `real_tiles_metadata.csv` for corresponding test data
+- **real_tiles/**: Public mini-fixture for CI and local integration sanity checks
+  - Contains 5 KDR tiles (`KDR_001` ... `KDR_005`) as PNG + aux.xml
+  - Current footprint: ~84 MB (Git LFS-managed)
+  - See `real_tiles_metadata.csv` for corresponding fixture metadata
+
+## Fixture Policy
+- `tests/fixtures/real_tiles/` is intentionally versioned as a reproducible, small baseline fixture.
+- It is **not** your full thesis dataset.
+- Private/full image corpora stay local-only and must be provided through `DATASELECTOR_IMAGE_DIR`.
+- Tests marked `real_images` must still honor the env-gate policy from `tests/INTEGRATION_TESTS.md`.
 
 ## Guidelines
 - Prefer using fixtures from `tests/conftest.py` for temporary directories and standard layouts.
@@ -28,4 +34,5 @@ This directory contains shared fixtures and helpers used across the test suite.
 ## Maintenance
 - Keep fixtures small and focused; if a fixture grows complex, consider moving it to `tests/utils.py` with tests.
 - Add a short docstring to each fixture in code to clarify intent.
-- Real tiles are version-controlled via Git LFS to manage size
+- Real tiles are version-controlled via Git LFS to manage size.
+- Do not add new large tiles here without updating fixture policy thresholds and justification.

@@ -15,6 +15,19 @@ def test_no_numba_installed(monkeypatch):
     assert compat.check_numba_numpy_compatibility() is True
 
 
+def test_no_numba_installed_ignores_numpy_version(monkeypatch):
+    # No numba: compatibility gate should be a no-op regardless of NumPy version
+    if "numba" in sys.modules:
+        del sys.modules["numba"]
+
+    class FakeNumpy:
+        __version__ = "2.4.0"
+
+    monkeypatch.setitem(sys.modules, "numpy", FakeNumpy)
+
+    assert compat.check_numba_numpy_compatibility() is True
+
+
 def test_numba_with_compatible_numpy(monkeypatch):
     # Simulate numba present and numpy version 2.3.1
     fake_numba = types.SimpleNamespace(__version__="0.63.1")

@@ -43,6 +43,15 @@ export DATASELECTOR_IMAGE_DIR=/abs/path/to/private/images
 
 3. CI must not require private image assets.
 
+## Real-Tiles Governance
+
+- `tests/fixtures/real_tiles/` is a **public, versioned mini-fixture** used for reproducible CI/local sanity checks.
+- Private thesis image corpora are **not** committed and must be injected via `DATASELECTOR_IMAGE_DIR`.
+- `real_tiles` marker is a legacy alias that is normalized to `real_images` during collection.
+- Treat fixture tests and private-data runs as two separate tiers:
+  - Tier 1: repo fixture (`tests/fixtures/real_tiles`) for deterministic smoke/integration.
+  - Tier 2: private local corpus via env var for thesis-quality runs.
+
 ## Canonical Commands
 
 ### 1) CI-parity local run (default)

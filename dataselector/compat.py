@@ -19,7 +19,7 @@ def check_numba_numpy_compatibility(raise_on_error: bool = True) -> bool:
     - If numba is installed, verifies NumPy is in a supported range (<2.4).
     """
     try:
-        pass  # type: ignore
+        import numba  # type: ignore  # noqa: F401
     except Exception:  # ImportError, etc.
         return True
 

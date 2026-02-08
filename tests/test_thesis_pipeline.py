@@ -106,6 +106,26 @@ def test_run_thesis_pipeline_passes_metadata_path_to_stages(tmp_path, monkeypatc
     assert calls["optuna_metadata_path"].endswith("data/new_all_tiles.csv")
 
 
+def test_run_thesis_pipeline_phase4_single_run_report(tmp_path):
+    """Phase 4 summary must work for single-run output_dir contract."""
+    from dataselector.workflows.thesis_pipeline import run_thesis_pipeline
+
+    success = run_thesis_pipeline(
+        n_lhs=5,
+        n_trials=2,
+        skip_exploration=True,
+        skip_optimization=True,
+        skip_validation=True,
+        dry_run=False,
+        output_dir=tmp_path / "outputs",
+        execution_profile="thesis_repro",
+        seed=42,
+    )
+
+    assert success is True
+    assert (tmp_path / "outputs" / "THESIS_PIPELINE_REPORT.md").exists()
+
+
 @pytest.mark.skipif(
     True, reason="Requires full pipeline setup (data, features, config)"
 )

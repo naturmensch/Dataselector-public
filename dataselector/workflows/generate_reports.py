@@ -503,10 +503,128 @@ def _load_and_analyze(run_dir: Path, name: str) -> dict:
     }
 
 
+def _generate_single_run_thesis_report(
+    output_dir: Path,
+    timestamp: Optional[str] = None,
+) -> Path:
+    """Generate a summary report for a single thesis-pipeline run directory."""
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    optuna_results_dir = output_dir / "optuna" / "results"
+    trials_csv = optuna_results_dir / "trials.csv"
+    best_trial_json = optuna_results_dir / "best_trial.json"
+    pareto_csv = output_dir / "tuning_weights" / "pareto" / "pareto_solutions.csv"
+    validation_csv = output_dir / "validation" / "validation_results.csv"
+
+    lines = []
+    lines.append("# Thesis Pipeline Summary Report")
+    lines.append("")
+    lines.append(f"**Generated**: {datetime.now(timezone.utc).isoformat()}Z")
+    if timestamp:
+        lines.append(f"**Pipeline Timestamp**: `{timestamp}`")
+    lines.append(f"**Run Directory**: `{output_dir}`")
+    lines.append("")
+
+    lines.append("## Artifacts")
+    lines.append("")
+
+    missing = []
+    for artifact in [trials_csv, best_trial_json, pareto_csv, validation_csv]:
+        if artifact.exists():
+            lines.append(f"- ✅ `{artifact.relative_to(output_dir)}`")
+        else:
+            missing.append(artifact)
+            lines.append(f"- ⚠️ Missing: `{artifact.relative_to(output_dir)}`")
+    lines.append("")
+
+    lines.append("## Exploration")
+    lines.append("")
+    if pareto_csv.exists():
+        df_pareto = pd.read_csv(pareto_csv)
+        lines.append(f"- Pareto candidates: **{len(df_pareto)}**")
+    else:
+        lines.append("- Pareto candidates: not available")
+    lines.append("")
+
+    lines.append("## Optuna")
+    lines.append("")
+    if trials_csv.exists():
+        df_trials = pd.read_csv(trials_csv)
+        df_complete = (
+            df_trials[df_trials["state"] == "TrialState.COMPLETE"]
+            if "state" in df_trials.columns
+            else df_trials
+        )
+
+        lines.append(f"- Trials (total): **{len(df_trials)}**")
+        lines.append(f"- Trials (complete): **{len(df_complete)}**")
+        if not df_complete.empty and "value" in df_complete.columns:
+            best_value = float(df_complete["value"].max())
+            lines.append(f"- Best value: **{best_value:.6f}**")
+            if "trial_number" in df_complete.columns:
+                best_trial = int(
+                    df_complete.loc[
+                        df_complete["value"] == best_value, "trial_number"
+                    ].iloc[0]
+                )
+                lines.append(f"- Best trial: **#{best_trial}**")
+            lines.append(f"- Mean value: **{float(df_complete['value'].mean()):.6f}**")
+            lines.append(f"- Std value: **{float(df_complete['value'].std()):.6f}**")
+        else:
+            lines.append("- No completed value column available")
+    else:
+        lines.append("- Optuna trials: not available")
+
+    if best_trial_json.exists():
+        try:
+            best_trial_data = json.loads(best_trial_json.read_text(encoding="utf-8"))
+            params = best_trial_data.get("params", {})
+            lines.append("- Best trial params:")
+            for key in sorted(params.keys()):
+                lines.append(f"  - `{key}`: `{params[key]}`")
+        except Exception as exc:
+            lines.append(f"- Could not parse best_trial.json: `{exc}`")
+    lines.append("")
+
+    lines.append("## Validation")
+    lines.append("")
+    if validation_csv.exists():
+        df_validation = pd.read_csv(validation_csv)
+        lines.append(f"- Configurations validated: **{len(df_validation)}**")
+        if "n_selected" in df_validation.columns:
+            non_empty = int((df_validation["n_selected"] > 0).sum())
+            lines.append(f"- Configurations with non-empty selection: **{non_empty}**")
+    else:
+        lines.append("- Validation results: not available")
+    lines.append("")
+
+    if missing:
+        lines.append("## Notes")
+        lines.append("")
+        lines.append(
+            "Some optional artifacts were not found. This can be expected when phases are skipped."
+        )
+        lines.append("")
+
+    report_file = output_dir / "THESIS_PIPELINE_REPORT.md"
+    report_file.write_text("\n".join(lines), encoding="utf-8")
+    print(f"✅ Thesis pipeline report written: {report_file}")
+    return report_file
+
+
 def generate_thesis_final_report(
     hamburg_run: Optional[Path] = None,
     kdr100_run: Optional[Path] = None,
+    output_dir: Optional[Path] = None,
+    timestamp: Optional[str] = None,
 ) -> Path:
+    if output_dir is not None:
+        return _generate_single_run_thesis_report(
+            output_dir=Path(output_dir),
+            timestamp=timestamp,
+        )
+
     ROOT = _get_repo_root()
 
     hamb = (
