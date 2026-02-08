@@ -13,13 +13,7 @@ from _pytest.config import Config
 root_dir = Path(__file__).parent.parent.resolve()
 if str(root_dir) not in sys.path:
     sys.path.insert(0, str(root_dir))
-# Versuche, das Paket früh zu importieren, damit `from src.xxx import ...`
-# beim Sammeln (collect) funktioniert.
-try:
-    pass  # type: ignore
-except Exception:
-    # Falls Import trotzdem scheitert, lassen wir pytest die eigentliche Fehlermeldung anzeigen
-    pass
+# Keine stille Import-Probe hier: Fehler sollen im Collect normal sichtbar werden.
 # -----------------------------------------
 
 REPO_ROOT_PATH = Path(root_dir)

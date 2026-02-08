@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Tuple
@@ -31,6 +32,8 @@ except ImportError:
     rasterio = None  # optional, fallback to XML parsing
 
 import xml.etree.ElementTree as ET
+
+logger = logging.getLogger(__name__)
 
 
 def find_aux_xml(image_path: Path, aux_dir: Optional[Path] = None) -> Optional[Path]:
@@ -96,8 +99,8 @@ def extract_bounds_from_aux(
                     right = x_origin + (width * pixel_width)
                     bottom = y_origin + (height * pixel_height)
                     return (left, top, right, bottom)
-    except Exception:
-        pass
+    except (ET.ParseError, ValueError, TypeError, OSError) as exc:
+        logger.warning("Failed to parse aux.xml '%s': %s", aux_path, exc)
     return None
 
 

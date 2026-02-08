@@ -10,6 +10,7 @@ Provides functions for bootstrap-based robustness analysis:
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from pathlib import Path
 from typing import Optional
@@ -20,6 +21,8 @@ import yaml
 from tqdm import trange
 
 from dataselector.cli_decorators import cli_command
+
+logger = logging.getLogger(__name__)
 
 
 def _get_repo_root() -> Path:
@@ -217,9 +220,14 @@ def bootstrap_candidate(
         clustering = ClusteringPipeline(n_clusters=8)
         try:
             _embeddings, _cluster_labels_boot = clustering.fit_transform(boot_features)
-        except Exception:
-            # if clustering fails, continue with metrics computed on original labels
-            pass
+        except Exception as exc:
+            # Clustering is not used for final metric computation in this bootstrap path.
+            logger.warning(
+                "Bootstrap iteration %s: clustering failed (%s: %s); continuing.",
+                i,
+                type(exc).__name__,
+                exc,
+            )
 
         selected_boot = ds.select(
             features=boot_features,
