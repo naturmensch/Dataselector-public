@@ -115,3 +115,18 @@ IMG1,KDR_001_IMG1_1901.png,13,52.1,13.2,51.9
     df = proc.resolve_image_paths(str(imgdir), prefer_shortname=True)
     assert df["image_filename"].iloc[0] == "IMG1.png"
     assert df["image_path"].iloc[1] is not None
+
+
+def test_resolve_image_paths_missing_dir_handles_nan_image_path(tmp_path):
+    csv = """longName,image_path,ul_x,ul_y,lr_x,lr_y
+KDR_001_A_1901.png,,13.0,52.1,13.2,51.9
+KDR_002_B_1902.png,,14.0,52.2,14.2,52.0
+"""
+    path = write_csv(tmp_path, csv)
+    proc = MetadataProcessor(path)
+    proc.load_csv()
+
+    df = proc.resolve_image_paths(str(tmp_path / "does-not-exist"), strict=False)
+
+    assert df["image_path"].tolist() == [None, None]
+    assert df["image_filename"].tolist() == [None, None]

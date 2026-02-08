@@ -314,11 +314,20 @@ class MetadataProcessor:
                 "Feature extraction requires real images."
             )
 
+        def _normalize_existing_path(raw_value):
+            """Normalize CSV path cells so NaN/empty values behave like missing paths."""
+            if raw_value is None or pd.isna(raw_value):
+                return None
+            text = str(raw_value).strip()
+            if not text or text.lower() in {"nan", "none", "null"}:
+                return None
+            return text
+
         if not image_dir_exists:
             # Metadata-only mode: preserve existing image_path values when available.
             if "image_path" in self.df.columns:
-                self.df["image_path"] = self.df["image_path"].where(
-                    self.df["image_path"].notna(), None
+                self.df["image_path"] = self.df["image_path"].apply(
+                    _normalize_existing_path
                 )
             else:
                 self.df["image_path"] = [None] * len(self.df)
