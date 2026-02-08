@@ -77,16 +77,18 @@ def run_workflow(workflow_name: str, args: list[str], smoke: bool = False) -> in
     """Run a dataselector workflow command.
 
     Args:
-        workflow_name: Name of the workflow (e.g., 'optuna-optimize', 'bootstrap')
+        workflow_name: Name of the workflow (e.g., 'optuna-optimize', 'bootstrap-final')
         args: Additional arguments for the workflow
         smoke: Enable smoke mode
 
     Returns:
         Exit code
     """
-    # Most workflows now have proper argparse, so no -- separator needed
+    # Most workflows now have proper argparse, so no -- separator needed.
     cmd = [sys.executable, "-m", "dataselector", workflow_name] + args
-    if smoke and "--smoke" not in args:
+    # Only a subset of workflows supports a --smoke flag; avoid passing unknown args.
+    smoke_capable = {"optuna-optimize"}
+    if smoke and workflow_name in smoke_capable and "--smoke" not in args:
         cmd.append("--smoke")
 
     log("INFO", f"Running: {' '.join(cmd)}")
@@ -271,7 +273,7 @@ def phase_5_bootstrap(
     if seed is not None:
         args.extend(["--seed", str(seed)])
 
-    rc = run_workflow("bootstrap", args, smoke=smoke)
+    rc = run_workflow("bootstrap-final", args, smoke=smoke)
     if rc != 0:
         if smoke:
             log("WARNING", "Bootstrap failed in smoke mode; continuing")
@@ -302,10 +304,13 @@ def finalization(output_dir: Path, smoke: bool = False) -> bool:
                 p.write_text(json.dumps({"status": "placeholder", "smoke": True}))
         log("INFO", "Created smoke-mode placeholders")
 
-    # Generate reports (if generate-reports workflow exists)
-    rc = run_workflow("generate-reports", [], smoke=smoke)
-    if rc != 0:
-        log("WARNING", "Report generation failed or unavailable")
+    # Generate thesis final report from latest XXL run artifacts.
+    if smoke:
+        log("INFO", "Skipping generate-thesis-final in smoke mode")
+    else:
+        rc = run_workflow("generate-thesis-final", [], smoke=smoke)
+        if rc != 0:
+            log("WARNING", "Report generation failed or unavailable")
 
     # Create summary
     summary = {

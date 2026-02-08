@@ -65,3 +65,83 @@ def test_cli_integration(monkeypatch):
         main(["thesis-sampler-suite", "--help"])
     # Help exits with 0
     assert exc_info.value.code == 0
+
+
+def test_map_sampler_for_adaptive_pipeline_rejects_unknown():
+    """Unknown sampler IDs must fail with a clear contract error."""
+    from dataselector.workflows.thesis_sampler_suite import (
+        map_sampler_for_adaptive_pipeline,
+    )
+
+    with pytest.raises(RuntimeError, match="Unsupported best sampler"):
+        map_sampler_for_adaptive_pipeline("does-not-exist")
+
+
+def test_run_suite_maps_best_sampler_for_adaptive_pipeline(monkeypatch, tmp_path):
+    """Adaptive pipeline call must use valid exploration and Optuna sampler args."""
+    from dataselector.workflows import thesis_sampler_suite as mod
+
+    commands: list[list[str]] = []
+
+    class _FakeTable:
+        def to_dict(self, orient: str = "records"):
+            return []
+
+    monkeypatch.setattr(mod, "ROOT", tmp_path)
+    monkeypatch.setattr(mod, "run_cmd", lambda cmd, cwd=None: commands.append(cmd))
+    monkeypatch.setattr(
+        mod,
+        "choose_best_sampler",
+        lambda _results_dir: ("tpe", _FakeTable()),
+    )
+
+    mod.run_thesis_sampler_suite(
+        seeds=[42],
+        n_trials=2,
+        datasets=["hamburg"],
+        samplers=["tpe"],
+        sequential=True,
+        n_trials_full=4,
+        n_candidates=16,
+        autoscale=False,
+    )
+
+    adaptive_cmds = [cmd for cmd in commands if "adaptive-pipeline" in cmd]
+    assert len(adaptive_cmds) == 2
+    for cmd in adaptive_cmds:
+        assert cmd[cmd.index("--sampler") + 1] == "lhs"
+        assert cmd[cmd.index("--optuna-sampler") + 1] == "TPESampler"
+
+
+def test_sampler_suite_alias_forwards_arguments(monkeypatch):
+    """Alias command must forward full argument contract to thesis-sampler-suite."""
+    from dataselector.workflows import sampler_suite
+
+    captured: dict = {}
+
+    def fake_main(**kwargs):
+        captured.update(kwargs)
+        return 0
+
+    monkeypatch.setattr(sampler_suite.thesis_sampler_suite, "main", fake_main)
+
+    rc = sampler_suite.main(
+        seeds=[1, 2],
+        n_trials=12,
+        datasets=["kdr100"],
+        samplers=["qmc"],
+        sequential=True,
+        n_trials_full=99,
+        n_candidates=64,
+        autoscale=False,
+    )
+
+    assert rc == 0
+    assert captured["seeds"] == [1, 2]
+    assert captured["n_trials"] == 12
+    assert captured["datasets"] == ["kdr100"]
+    assert captured["samplers"] == ["qmc"]
+    assert captured["sequential"] is True
+    assert captured["n_trials_full"] == 99
+    assert captured["n_candidates"] == 64
+    assert captured["autoscale"] is False

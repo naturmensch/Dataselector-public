@@ -30,22 +30,85 @@ if TYPE_CHECKING:
     import pandas as pd
 
 
-def run_cmd(cmd: str, cwd: Path | None = None) -> None:
+THESIS_SAMPLER_SUITE_ARGS = {
+    "seeds": {
+        "type": int,
+        "nargs": "+",
+        "default": [42, 43, 44, 45, 46, 47, 48, 49, 50, 51],
+        "help": "Random seeds for reproducibility (default: 10 seeds for thesis-grade validation)",
+    },
+    "n_trials": {
+        "type": int,
+        "default": 1000,
+        "help": "Trials per sampler in comparison (default: 1000 per convergence analysis: 99%% optimum at ~650 trials; 1000 provides thesis-grade robustness)",
+    },
+    "datasets": {
+        "type": str,
+        "nargs": "+",
+        "default": ["hamburg", "kdr100"],
+        "help": "Datasets to compare on (default: hamburg + kdr100 for representative comparison)",
+    },
+    "samplers": {
+        "type": str,
+        "nargs": "+",
+        "default": ["qmc", "tpe", "cmaes"],
+        "help": "Samplers to compare (default: QMC, TPE, CMA-ES)",
+    },
+    "sequential": {
+        "type": bool,
+        "action": "store_true",
+        "help": "Run sequentially",
+    },
+    "n_trials_full": {
+        "type": int,
+        "default": 2000,
+        "help": "Trials for full adaptive runs",
+    },
+    "n_candidates": {
+        "type": int,
+        "default": None,
+        "help": "Number of candidate tiles",
+    },
+    "autoscale": {
+        "type": bool,
+        "action": "store_true",
+        "help": "Run optuna_autoscale.py to determine best n_samples before running sampler suite",
+    },
+}
+
+
+def run_cmd(cmd: list[str], cwd: Path | None = None) -> None:
     """
     Run a shell command and fail fast on non-zero exit.
 
     Parameters
     ----------
-    cmd : str
-        Command to execute
+    cmd : list[str]
+        Command argument vector to execute
     cwd : Path | None
         Working directory for command execution
     """
-    print(f"RUN: {cmd}")
-    proc = subprocess.run(cmd, shell=True, cwd=cwd)
+    print(f"RUN: {' '.join(cmd)}")
+    proc = subprocess.run(cmd, cwd=cwd)
 
     if proc.returncode != 0:
-        raise RuntimeError(f"Command failed: {cmd}")
+        raise RuntimeError(f"Command failed: {' '.join(cmd)}")
+
+
+def map_sampler_for_adaptive_pipeline(best_sampler: str) -> tuple[str, str]:
+    """Map suite sampler IDs to adaptive exploration and Optuna sampler args."""
+    method = str(best_sampler).strip().lower()
+    mapping: dict[str, tuple[str, str]] = {
+        "qmc": ("sobol", "QMCSampler"),
+        "tpe": ("lhs", "TPESampler"),
+        "cmaes": ("lhs", "CmaEsSampler"),
+    }
+    if method not in mapping:
+        raise RuntimeError(
+            f"Unsupported best sampler '{best_sampler}'. "
+            "Expected one of: qmc, tpe, cmaes."
+        )
+    return mapping[method]
 
 
 def choose_best_sampler(results_dir: Path) -> tuple[str, "pd.DataFrame"]:
@@ -257,30 +320,48 @@ def run_thesis_sampler_suite(
             print("Proceeding without autoscale results.")
 
     # 1b) Run compare-samplers workflow
-    seeds_arg = " ".join(str(s) for s in seeds)
-    samplers_arg = " ".join(samplers)
-    datasets_arg = " ".join(datasets)
-
-    compare_cmd = (
-        f"python -m dataselector compare-samplers --samplers {samplers_arg} "
-        f"--seeds {seeds_arg} --n-trials {n_trials} --datasets {datasets_arg} "
-        f"--sequential --output {suite_dir} --n-candidates {n_candidates}"
-    )
-
+    compare_cmd = [
+        sys.executable,
+        "-m",
+        "dataselector",
+        "compare-samplers",
+        "--samplers",
+        *samplers,
+        "--seeds",
+        *[str(s) for s in seeds],
+        "--n-trials",
+        str(n_trials),
+        "--datasets",
+        *datasets,
+        "--output",
+        str(suite_dir),
+        "--n-candidates",
+        str(n_candidates),
+    ]
+    if sequential:
+        compare_cmd.append("--sequential")
     if best_n_samples is not None:
-        compare_cmd += f" --n-samples {best_n_samples}"
-
-    # Add constrained bounds if available
+        compare_cmd.extend(["--n-samples", str(best_n_samples)])
     if constrain_bounds:
-        compare_cmd += (
-            f" --constrain-a-min {constrain_bounds['a_min']}"
-            f" --constrain-a-max {constrain_bounds['a_max']}"
-            f" --constrain-b-min {constrain_bounds['b_min']}"
-            f" --constrain-b-max {constrain_bounds['b_max']}"
-            f" --constrain-c-min {constrain_bounds['c_min']}"
-            f" --constrain-c-max {constrain_bounds['c_max']}"
-            f" --constrain-min-dist-min {constrain_bounds['min_dist_min']}"
-            f" --constrain-min-dist-max {constrain_bounds['min_dist_max']}"
+        compare_cmd.extend(
+            [
+                "--constrain-a-min",
+                str(constrain_bounds["a_min"]),
+                "--constrain-a-max",
+                str(constrain_bounds["a_max"]),
+                "--constrain-b-min",
+                str(constrain_bounds["b_min"]),
+                "--constrain-b-max",
+                str(constrain_bounds["b_max"]),
+                "--constrain-c-min",
+                str(constrain_bounds["c_min"]),
+                "--constrain-c-max",
+                str(constrain_bounds["c_max"]),
+                "--constrain-min-dist-min",
+                str(constrain_bounds["min_dist_min"]),
+                "--constrain-min-dist-max",
+                str(constrain_bounds["min_dist_max"]),
+            ]
         )
 
     run_cmd(compare_cmd)
@@ -301,21 +382,45 @@ def run_thesis_sampler_suite(
 
     # 3) Launch full adaptive runs with best sampler: Hamburg and KDR100
     # Hamburg full run
-    cmd_h = (
-        f"env PYTHONPATH=. python -m dataselector adaptive-pipeline "
-        f"--n-trials {n_trials_full} --n-candidates {n_candidates} "
-        f"--sampler {best} --seed {seeds[0]} --hamburg"
-    )
-    print(f"Launching full Hamburg run: {cmd_h}")
+    explore_sampler, optuna_sampler = map_sampler_for_adaptive_pipeline(best)
+    cmd_h = [
+        sys.executable,
+        "-m",
+        "dataselector",
+        "adaptive-pipeline",
+        "--n-trials",
+        str(n_trials_full),
+        "--n-candidates",
+        str(n_candidates),
+        "--sampler",
+        explore_sampler,
+        "--optuna-sampler",
+        optuna_sampler,
+        "--seed",
+        str(seeds[0]),
+        "--hamburg",
+    ]
+    print(f"Launching full Hamburg run: {' '.join(cmd_h)}")
     run_cmd(cmd_h)
 
     # KDR100 full run (no preselection)
-    cmd_k = (
-        f"env PYTHONPATH=. python -m dataselector adaptive-pipeline "
-        f"--n-trials {n_trials_full} --n-candidates {n_candidates} "
-        f"--sampler {best} --seed {seeds[0]}"
-    )
-    print(f"Launching full KDR100 run: {cmd_k}")
+    cmd_k = [
+        sys.executable,
+        "-m",
+        "dataselector",
+        "adaptive-pipeline",
+        "--n-trials",
+        str(n_trials_full),
+        "--n-candidates",
+        str(n_candidates),
+        "--sampler",
+        explore_sampler,
+        "--optuna-sampler",
+        optuna_sampler,
+        "--seed",
+        str(seeds[0]),
+    ]
+    print(f"Launching full KDR100 run: {' '.join(cmd_k)}")
     run_cmd(cmd_k)
 
     print("\n=== SUITE COMPLETE ===")
@@ -327,51 +432,7 @@ def run_thesis_sampler_suite(
 @cli_command(
     "thesis-sampler-suite",
     help="Thesis-grade sampler evaluation suite with multi-seed comparison",
-    args={
-        "seeds": {
-            "type": int,
-            "nargs": "+",
-            "default": [42, 43, 44, 45, 46, 47, 48, 49, 50, 51],
-            "help": "Random seeds for reproducibility (default: 10 seeds for thesis-grade validation)",
-        },
-        "n_trials": {
-            "type": int,
-            "default": 1000,
-            "help": "Trials per sampler in comparison (default: 1000 per convergence analysis: 99%% optimum at ~650 trials; 1000 provides thesis-grade robustness)",
-        },
-        "datasets": {
-            "type": str,
-            "nargs": "+",
-            "default": ["hamburg", "kdr100"],
-            "help": "Datasets to compare on (default: hamburg + kdr100 for representative comparison)",
-        },
-        "samplers": {
-            "type": str,
-            "nargs": "+",
-            "default": ["qmc", "tpe", "cmaes"],
-            "help": "Samplers to compare (default: QMC, TPE, CMA-ES)",
-        },
-        "sequential": {
-            "type": bool,
-            "action": "store_true",
-            "help": "Run sequentially",
-        },
-        "n_trials_full": {
-            "type": int,
-            "default": 2000,
-            "help": "Trials for full adaptive runs",
-        },
-        "n_candidates": {
-            "type": int,
-            "default": None,
-            "help": "Number of candidate tiles",
-        },
-        "autoscale": {
-            "type": bool,
-            "action": "store_true",
-            "help": "Run optuna_autoscale.py to determine best n_samples before running sampler suite",
-        },
-    },
+    args=THESIS_SAMPLER_SUITE_ARGS,
 )
 def main(
     seeds: list[int] | None = None,

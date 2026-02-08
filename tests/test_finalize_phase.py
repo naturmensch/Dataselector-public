@@ -26,3 +26,32 @@ def test_finalize_with_run_dir_succeeds(tmp_path, monkeypatch):
     )
     assert rc == 0
     assert (tmp_path / "outputs" / "thesis_finalization_summary.json").exists()
+
+
+def test_finalization_uses_registered_report_command(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_run_workflow(name, args, smoke=False):
+        calls.append((name, list(args), smoke))
+        return 0
+
+    monkeypatch.setattr(mod, "run_workflow", fake_run_workflow)
+
+    ok = mod.finalization(tmp_path / "outputs", smoke=False)
+    assert ok is True
+    assert ("generate-thesis-final", [], False) in calls
+    assert all(name != "generate-reports" for name, _, _ in calls)
+
+
+def test_finalization_skips_report_generation_in_smoke(tmp_path, monkeypatch):
+    calls = []
+
+    def fake_run_workflow(name, args, smoke=False):
+        calls.append((name, list(args), smoke))
+        return 0
+
+    monkeypatch.setattr(mod, "run_workflow", fake_run_workflow)
+
+    ok = mod.finalization(tmp_path / "outputs", smoke=True)
+    assert ok is True
+    assert calls == []
