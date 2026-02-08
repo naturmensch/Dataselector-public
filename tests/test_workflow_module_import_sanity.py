@@ -1,4 +1,5 @@
 import importlib
+import inspect
 
 import pytest
 
@@ -16,8 +17,35 @@ import pytest
         ("dataselector.workflows.tune_weights", "generate_weights"),
         ("dataselector.workflows.autoscale", "main"),
         ("dataselector.workflows.xxl", "main"),
+        ("dataselector.workflows.validation", "validate_pareto_candidates"),
+        ("dataselector.workflows.generate_reports", "generate_monitor_report"),
+        ("dataselector.workflows.generate_reports", "generate_thesis_final_report"),
+        ("dataselector.workflows.compare_samplers", "compare_multi_seed"),
+        ("dataselector.workflows.compare_samplers", "run_single_optuna"),
+        ("dataselector.workflows.compare_samplers", "compare_seeded_vs_unseeded"),
+        ("dataselector.workflows.compare_samplers", "benchmark_seed"),
+        ("dataselector.workflows.bootstrap", "run_bootstrap_pareto"),
+        ("dataselector.workflows.bootstrap", "run_bootstrap_final"),
+        ("dataselector.workflows.bootstrap", "bootstrap_candidate"),
+        ("dataselector.workflows.bootstrap", "bootstrap_selection"),
+        ("dataselector.workflows.bootstrap", "summarize_bootstrap"),
+        ("dataselector.workflows.bootstrap", "jaccard"),
     ],
 )
 def test_workflow_module_import_sanity(module_name: str, symbol: str):
     module = importlib.import_module(module_name)
     assert hasattr(module, symbol), f"{module_name} missing expected symbol '{symbol}'"
+
+
+@pytest.mark.fast
+@pytest.mark.unit
+def test_bootstrap_workflow_signatures():
+    bootstrap = importlib.import_module("dataselector.workflows.bootstrap")
+
+    pareto_sig = inspect.signature(bootstrap.run_bootstrap_pareto)
+    assert {"pareto_csv", "n_boot", "output_csv", "random_seed"} <= set(
+        pareto_sig.parameters
+    )
+
+    final_sig = inspect.signature(bootstrap.run_bootstrap_final)
+    assert {"run_dir", "n_boot", "seed"} <= set(final_sig.parameters)
