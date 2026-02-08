@@ -1,3 +1,12 @@
+# Historical/Legacy (Not Normative)
+
+This page is kept for historical notes and may reference script-era usage.
+
+Use the authoritative replacements:
+
+1. `docs/03_USER_GUIDES/THESIS_PIPELINE_HOWTO.md`
+2. `docs/03_USER_GUIDES/PIPELINES.md`
+
 # Sampler Suite (QMC vs TPE vs CMA-ES)
 
 This page explains how to run the sampler suite for multi-seed comparisons:

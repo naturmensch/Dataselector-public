@@ -75,6 +75,11 @@ Dataselector/
 
 ## Nutzung
 
+> Thesis-Runbook (authoritative): `docs/03_USER_GUIDES/THESIS_PIPELINE_HOWTO.md`
+>
+> Diese Datei ist die zentrale Quelle fuer Setup, Gates, deterministische
+> Twin-Run-Pruefung und Go/No-Go vor Annotation.
+
 ### Daten vorbereiten
 
 1. Platzieren Sie die Metadaten-Datei (`KDR100_foliage_with_files_epsg3857.csv` oder `all_png_tiles.dbf`) im `data/` Verzeichnis

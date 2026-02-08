@@ -1,3 +1,12 @@
+# Historical/Legacy (Not Normative)
+
+This page is retained for historical context and still contains script-era
+examples.
+
+Use the authoritative replacement:
+
+- `docs/03_USER_GUIDES/THESIS_PIPELINE_HOWTO.md`
+
 # 🚀 Thesis Pipeline: Quick Start Guide
 
 Schnelleinstieg für die **4-Phasen Parameter-Optimierung**:
