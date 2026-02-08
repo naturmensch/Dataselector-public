@@ -52,7 +52,6 @@ def run_thesis_pipeline(
         True if all phases succeeded, False otherwise
     """
     # Lazy imports to avoid heavy dependencies at import time
-    from dataselector.workflows.bootstrap import bootstrap_pareto_candidates
     from dataselector.workflows.generate_reports import generate_thesis_final_report
     from dataselector.workflows.optuna_optimize import run_optuna
     from dataselector.workflows.tune_weights import run_exploration
@@ -145,21 +144,32 @@ def run_thesis_pipeline(
     else:
         print("\n⏭️  ÜBERSPRINGE Phase 2: Optimization")
 
-    # Phase 3: Validation (Bootstrap)
+    # Phase 3: Validation
     if not skip_validation:
         print("\n" + "=" * 80)
-        print("PHASE 3: VALIDATION (Bootstrap Robustness)")
+        print("PHASE 3: VALIDATION (Pareto Candidate Robustness)")
         print("=" * 80)
 
         if dry_run:
-            print("[DRY-RUN] Would run: Bootstrap validation")
+            print("[DRY-RUN] Would run: validation over exploration Pareto candidates")
         else:
             t0 = time.time()
             try:
-                print("Running Bootstrap validation...")
-                bootstrap_pareto_candidates(
-                    n_iterations=100,
-                    output_dir=output_dir / "bootstrap",
+                from dataselector.workflows.validation import validate_pareto_candidates
+
+                pareto_csv = (
+                    output_dir / "tuning_weights" / "pareto" / "pareto_solutions.csv"
+                )
+                if not pareto_csv.exists():
+                    raise FileNotFoundError(
+                        "Validation requires Pareto candidates at "
+                        f"{pareto_csv}. Run exploration first."
+                    )
+
+                print(f"Running validation for Pareto candidates: {pareto_csv}")
+                validate_pareto_candidates(
+                    pareto_csv=pareto_csv,
+                    output_dir=output_dir / "validation",
                 )
                 elapsed = time.time() - t0
                 print(f"✅ Phase 3 erfolgreich (Dauer: {elapsed:.1f}s)")

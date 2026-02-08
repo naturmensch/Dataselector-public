@@ -24,6 +24,9 @@ micromamba run -n dataselector python -m dataselector --help
 `real_tiles` is maintained as a legacy alias marker and is normalized to `real_images`
 in collection hooks.
 
+Note: `-m "e2e and real_images"` usually selects no tests because the current suite
+separates those marker sets by design.
+
 ## Contract Gates
 
 1. E2E tests are opt-in and skipped unless:
