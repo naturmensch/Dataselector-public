@@ -1,14 +1,5 @@
-"""
-Master-Pipeline für die Thesis-Optimierung.
+"""Master pipeline for thesis optimization."""
 
-Führt 4 Phasen sequenziell aus:
-  1. EXPLORATION (LHS): Pareto-Front visualisieren
-  2. OPTIMIZATION (Optuna): Bayesian-optimierte Parameter finden
-  3. VALIDATION (Bootstrap): Robustheit der Pareto-Kandidaten testen
-  4. SUMMARY: Report & Vergleich
-"""
-
-import argparse
 import logging
 import sys
 import time
@@ -17,6 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from dataselector.cli_decorators import cli_command
+from dataselector.runtime import activate_repro_mode, write_run_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +21,8 @@ def run_thesis_pipeline(
     skip_validation: bool = False,
     dry_run: bool = False,
     output_dir: Optional[Path] = None,
+    execution_profile: str = "default",
+    seed: int = 42,
 ) -> bool:
     """
     Run complete thesis optimization pipeline.
@@ -51,6 +45,8 @@ def run_thesis_pipeline(
     Returns:
         True if all phases succeeded, False otherwise
     """
+    runtime_state = activate_repro_mode(profile=execution_profile, seed=seed)
+
     # Lazy imports to avoid heavy dependencies at import time
     from dataselector.workflows.generate_reports import generate_thesis_final_report
     from dataselector.workflows.optuna_optimize import run_optuna
@@ -60,13 +56,14 @@ def run_thesis_pipeline(
         output_dir = Path("outputs")
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    metadata_path = Path("data/new_all_tiles.csv")
+
     # Compute adaptive n_lhs if not provided
     if n_lhs is None:
         try:
             import numpy as np
             import pandas as pd
 
-            metadata_path = Path("data/new_all_tiles.csv")
             if metadata_path.exists():
                 n_tiles = len(pd.read_csv(metadata_path))
                 n_lhs = max(50, int(2 * np.sqrt(n_tiles)))
@@ -105,6 +102,8 @@ def run_thesis_pipeline(
                 run_exploration(
                     n_samples=n_lhs,
                     sampler="lhs",
+                    seed=seed,
+                    metadata_path=metadata_path,
                     output_dir=output_dir / "tuning_weights",
                 )
                 elapsed = time.time() - t0
@@ -131,8 +130,11 @@ def run_thesis_pipeline(
                 print(f"Running Optuna with n_trials={n_trials}...")
                 run_optuna(
                     n_trials=n_trials,
-                    sampler="cmaes",
-                    output_dir=output_dir / "optuna",
+                    sampler_name="cmaes",
+                    metadata_path=metadata_path,
+                    seed=seed,
+                    out_dir=output_dir / "optuna",
+                    study_name=f"thesis_optuna_{timestamp}",
                 )
                 elapsed = time.time() - t0
                 print(f"✅ Phase 2 erfolgreich (Dauer: {elapsed:.1f}s)")
@@ -206,6 +208,26 @@ def run_thesis_pipeline(
         print("❌ PIPELINE MIT FEHLERN ABGESCHLOSSEN")
     print("=" * 80)
 
+    try:
+        write_run_metadata(
+            output_dir=output_dir,
+            execution_profile=execution_profile,
+            seed=seed,
+            command=sys.argv,
+            config_path=Path("config/pipeline_config.yaml"),
+            runtime_state=runtime_state,
+            extra={
+                "n_lhs": n_lhs,
+                "n_trials": n_trials,
+                "skip_exploration": skip_exploration,
+                "skip_optimization": skip_optimization,
+                "skip_validation": skip_validation,
+                "dry_run": dry_run,
+            },
+        )
+    except Exception as exc:
+        print(f"⚠️ Could not write run metadata: {exc}")
+
     return all_success
 
 
@@ -248,6 +270,17 @@ def run_thesis_pipeline(
             "default": None,
             "help": "Output directory (default: outputs/)",
         },
+        "execution_profile": {
+            "type": str,
+            "default": "default",
+            "choices": ["default", "thesis_repro"],
+            "help": "Runtime execution profile",
+        },
+        "seed": {
+            "type": int,
+            "default": 42,
+            "help": "Global random seed for reproducible runs",
+        },
     },
 )
 def main(
@@ -258,7 +291,9 @@ def main(
     skip_validation: bool = False,
     dry_run: bool = False,
     output_dir: Optional[str] = None,
-):
+    execution_profile: str = "default",
+    seed: int = 42,
+) -> int:
     """CLI entry point for thesis pipeline."""
     # Convert str path to Path object
     output_dir_path = Path(output_dir) if output_dir else None
@@ -272,30 +307,11 @@ def main(
         skip_validation=skip_validation,
         dry_run=dry_run,
         output_dir=output_dir_path,
+        execution_profile=execution_profile,
+        seed=seed,
     )
-
-    sys.exit(0 if success else 1)
+    return 0 if success else 1
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run thesis optimization pipeline")
-    parser.add_argument("--n-lhs", type=int, default=None, help="Number of LHS samples")
-    parser.add_argument(
-        "--n-trials", type=int, default=100, help="Number of Optuna trials"
-    )
-    parser.add_argument("--skip-exploration", action="store_true", help="Skip Phase 1")
-    parser.add_argument("--skip-optimization", action="store_true", help="Skip Phase 2")
-    parser.add_argument("--skip-validation", action="store_true", help="Skip Phase 3")
-    parser.add_argument("--dry-run", action="store_true", help="Dry run")
-    parser.add_argument("--output-dir", type=str, default=None, help="Output directory")
-
-    args = parser.parse_args()
-    main(
-        n_lhs=args.n_lhs,
-        n_trials=args.n_trials,
-        skip_exploration=args.skip_exploration,
-        skip_optimization=args.skip_optimization,
-        skip_validation=args.skip_validation,
-        dry_run=args.dry_run,
-        output_dir=args.output_dir,
-    )
+    raise SystemExit(main())

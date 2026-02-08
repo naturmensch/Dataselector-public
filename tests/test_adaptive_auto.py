@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import dataselector.workflows.adaptive_auto as mod
@@ -37,6 +38,7 @@ def test_adaptive_auto_uses_explicit_n_samples_without_autoscale(
     assert rc == 0
     assert calls["autoscale"] == 0
     assert calls["adaptive"] == 1
+    assert (tmp_path / "outputs" / "run_metadata.json").exists()
 
 
 def test_adaptive_auto_handoff_from_autoscale(tmp_path: Path, monkeypatch):
@@ -71,6 +73,7 @@ def test_adaptive_auto_handoff_from_autoscale(tmp_path: Path, monkeypatch):
     assert rc == 0
     assert captured["n_samples"] == 34
     assert captured["sampler"] == "sobol"
+    assert (out_dir / "run_metadata.json").exists()
 
 
 def test_adaptive_auto_errors_when_autoscale_does_not_emit_n_samples(
@@ -114,3 +117,41 @@ def test_adaptive_auto_dry_run_skips_execution(tmp_path: Path, monkeypatch):
     assert rc == 0
     assert calls["autoscale"] == 0
     assert calls["adaptive"] == 0
+    assert (tmp_path / "outputs" / "run_metadata.json").exists()
+
+
+def test_adaptive_auto_uses_execution_profile(monkeypatch, tmp_path: Path):
+    csv_path = tmp_path / "tiles.csv"
+    csv_path.write_text("ul_x,ul_y,lr_x,lr_y,year\n1,2,3,4,1900\n", encoding="utf-8")
+
+    captured = {}
+
+    def fake_activate(profile: str, seed: int):
+        captured["profile"] = profile
+        captured["seed"] = seed
+        return {"profile": profile, "seed": seed}
+
+    monkeypatch.setattr(mod, "activate_repro_mode", fake_activate)
+    monkeypatch.setattr(mod, "autoscale_main", lambda **_kwargs: 0)
+    monkeypatch.setattr(mod, "adaptive_pipeline_main", lambda **_kwargs: 0)
+
+    # Ensure autoscale handoff does not block this profile contract test.
+    out_dir = tmp_path / "outputs"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "autoscale_selected_n_samples.txt").write_text("12", encoding="utf-8")
+
+    rc = mod.run_adaptive_auto(
+        csv=str(csv_path),
+        output_dir=str(out_dir),
+        n_samples=None,
+        execution_profile="thesis_repro",
+        seed=99,
+    )
+
+    assert rc == 0
+    assert captured["profile"] == "thesis_repro"
+    assert captured["seed"] == 99
+
+    metadata = json.loads((out_dir / "run_metadata.json").read_text(encoding="utf-8"))
+    assert metadata["execution_profile"] == "thesis_repro"
+    assert metadata["seed"] == 99

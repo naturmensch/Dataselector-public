@@ -18,6 +18,7 @@ def main(
     n_trials_full: int = 2000,
     n_candidates: int | None = None,
     autoscale: bool = True,
+    execution_profile: str = "default",
 ) -> int:
     """Alias command that delegates to thesis-sampler-suite.
 
@@ -34,4 +35,5 @@ def main(
         n_trials_full=n_trials_full,
         n_candidates=n_candidates,
         autoscale=autoscale,
+        execution_profile=execution_profile,
     )

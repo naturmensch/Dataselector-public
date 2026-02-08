@@ -1,5 +1,7 @@
 """Tests for thesis pipeline workflow."""
 
+import json
+
 import pytest
 
 
@@ -27,6 +29,8 @@ def test_thesis_pipeline_signature():
         "skip_validation",
         "dry_run",
         "output_dir",
+        "execution_profile",
+        "seed",
     ]
 
     for param in expected_params:
@@ -43,9 +47,63 @@ def test_run_thesis_pipeline_dry_run_skip_validation(tmp_path):
         skip_validation=True,
         dry_run=True,
         output_dir=tmp_path / "outputs",
+        execution_profile="thesis_repro",
+        seed=7,
     )
 
     assert success is True
+    metadata_path = tmp_path / "outputs" / "run_metadata.json"
+    assert metadata_path.exists()
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    assert metadata["execution_profile"] == "thesis_repro"
+    assert metadata["seed"] == 7
+
+
+def test_run_thesis_pipeline_passes_metadata_path_to_stages(tmp_path, monkeypatch):
+    """Non-dry-run must pass metadata_path to exploration and Optuna workflows."""
+    from dataselector.workflows import thesis_pipeline as mod
+
+    ws = tmp_path
+    (ws / "data").mkdir(parents=True, exist_ok=True)
+    (ws / "data" / "new_all_tiles.csv").write_text(
+        "ul_x,ul_y,lr_x,lr_y,year\n1,2,3,4,1900\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(ws)
+
+    calls: dict[str, str] = {}
+
+    def fake_exploration(**kwargs):
+        calls["exploration_metadata_path"] = str(kwargs["metadata_path"])
+        return [], ws / "dummy.csv"
+
+    def fake_optuna(**kwargs):
+        calls["optuna_metadata_path"] = str(kwargs["metadata_path"])
+        return object()
+
+    monkeypatch.setattr(
+        "dataselector.workflows.tune_weights.run_exploration", fake_exploration
+    )
+    monkeypatch.setattr(
+        "dataselector.workflows.optuna_optimize.run_optuna", fake_optuna
+    )
+    monkeypatch.setattr(
+        "dataselector.workflows.generate_reports.generate_thesis_final_report",
+        lambda **_kwargs: None,
+    )
+
+    success = mod.run_thesis_pipeline(
+        n_lhs=5,
+        n_trials=2,
+        skip_validation=True,
+        dry_run=False,
+        output_dir=ws / "outputs",
+        seed=11,
+    )
+
+    assert success is True
+    assert calls["exploration_metadata_path"].endswith("data/new_all_tiles.csv")
+    assert calls["optuna_metadata_path"].endswith("data/new_all_tiles.csv")
 
 
 @pytest.mark.skipif(

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from dataselector.cli_decorators import cli_command
+from dataselector.runtime import activate_repro_mode, write_run_metadata
 from dataselector.workflows.adaptive_pipeline import main as adaptive_pipeline_main
 from dataselector.workflows.autoscale import main as autoscale_main
 
@@ -41,9 +42,12 @@ def run_adaptive_auto(
     autoscale_trials: list[int] | None = None,
     autoscale_stages: list[str] | None = None,
     autoscale_patience: int = 2,
+    execution_profile: str = "default",
     dry_run: bool = False,
 ) -> int:
     """Run adaptive-auto flow with explicit autoscale handoff when needed."""
+    runtime_state = activate_repro_mode(profile=execution_profile, seed=seed)
+    used_autoscale = n_samples is None
     csv_path = Path(csv)
     out_root = Path(output_dir)
     out_root.mkdir(parents=True, exist_ok=True)
@@ -58,6 +62,17 @@ def run_adaptive_auto(
             print(
                 f"adaptive-auto dry-run: would execute adaptive-pipeline with n_samples={n_samples}."
             )
+        write_run_metadata(
+            output_dir=out_root,
+            execution_profile=execution_profile,
+            seed=seed,
+            runtime_state=runtime_state,
+            extra={
+                "csv": str(csv_path),
+                "experiment_name": experiment_name,
+                "dry_run": True,
+            },
+        )
         return 0
 
     if n_samples is None:
@@ -94,7 +109,7 @@ def run_adaptive_auto(
             return 1
 
     print(f"adaptive-auto: running adaptive-pipeline with n_samples={n_samples}")
-    return adaptive_pipeline_main(
+    rc = adaptive_pipeline_main(
         experiment_name=experiment_name,
         csv_path=str(csv_path),
         n_lhs=n_lhs,
@@ -108,6 +123,22 @@ def run_adaptive_auto(
         n_samples=n_samples,
         dry_run=dry_run,
     )
+    write_run_metadata(
+        output_dir=out_root,
+        execution_profile=execution_profile,
+        seed=seed,
+        runtime_state=runtime_state,
+        extra={
+            "csv": str(csv_path),
+            "experiment_name": experiment_name,
+            "n_samples": n_samples,
+            "sampler": sampler,
+            "optuna_sampler": optuna_sampler,
+            "autoscale_used": used_autoscale,
+            "exit_code": rc,
+        },
+    )
+    return rc
 
 
 @cli_command(
@@ -193,6 +224,12 @@ def run_adaptive_auto(
             "default": 2,
             "help": "Autoscale early-stopping patience",
         },
+        "execution_profile": {
+            "type": str,
+            "choices": ["default", "thesis_repro"],
+            "default": "default",
+            "help": "Runtime execution profile",
+        },
         "dry_run": {
             "type": bool,
             "action": "store_true",
@@ -216,6 +253,7 @@ def main(
     autoscale_trials: list[int] | None = None,
     autoscale_stages: list[str] | None = None,
     autoscale_patience: int = 2,
+    execution_profile: str = "default",
     dry_run: bool = False,
 ) -> int:
     return run_adaptive_auto(
@@ -234,5 +272,6 @@ def main(
         autoscale_trials=autoscale_trials,
         autoscale_stages=autoscale_stages,
         autoscale_patience=autoscale_patience,
+        execution_profile=execution_profile,
         dry_run=dry_run,
     )

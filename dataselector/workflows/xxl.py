@@ -19,6 +19,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime
@@ -26,6 +27,7 @@ from pathlib import Path
 from typing import Optional
 
 from dataselector.cli_decorators import cli_command
+from dataselector.runtime import activate_repro_mode, write_run_metadata
 
 
 def log(level: str, msg: str):
@@ -73,7 +75,12 @@ def read_autoscale_config(out_dir: Path) -> dict:
     return config
 
 
-def run_workflow(workflow_name: str, args: list[str], smoke: bool = False) -> int:
+def run_workflow(
+    workflow_name: str,
+    args: list[str],
+    smoke: bool = False,
+    env: dict[str, str] | None = None,
+) -> int:
     """Run a dataselector workflow command.
 
     Args:
@@ -92,7 +99,7 @@ def run_workflow(workflow_name: str, args: list[str], smoke: bool = False) -> in
         cmd.append("--smoke")
 
     log("INFO", f"Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd)
+    result = subprocess.run(cmd, env=env)
 
     if result.returncode != 0:
         log("ERROR", f"Workflow {workflow_name} failed with code {result.returncode}")
@@ -186,6 +193,7 @@ def phase_1_optimization(
     smoke: bool = False,
     seed: Optional[int] = None,
     output_dir: Optional[Path] = None,
+    child_env: dict[str, str] | None = None,
 ) -> bool:
     """Phase 1-4: XXL Optimization on Hamburg + KDR100."""
     log("PHASE", "=" * 70)
@@ -217,7 +225,10 @@ def phase_1_optimization(
         if seed is not None:
             args.extend(["--seed", str(seed)])
 
-        rc = run_workflow("optuna-optimize", args, smoke=smoke)
+        if child_env is None:
+            rc = run_workflow("optuna-optimize", args, smoke=smoke)
+        else:
+            rc = run_workflow("optuna-optimize", args, smoke=smoke, env=child_env)
         if rc != 0:
             log("ERROR", "Baseline optimization failed")
             return False
@@ -238,7 +249,15 @@ def phase_1_optimization(
                 "--exp-name",
                 f"repro_seed{s}_{timestamp}",
             ]
-            rc = run_workflow("optuna-optimize", repro_args, smoke=smoke)
+            if child_env is None:
+                rc = run_workflow("optuna-optimize", repro_args, smoke=smoke)
+            else:
+                rc = run_workflow(
+                    "optuna-optimize",
+                    repro_args,
+                    smoke=smoke,
+                    env=child_env,
+                )
             if rc != 0:
                 log("WARNING", f"Repro seed={s} failed; continuing")
 
@@ -250,6 +269,7 @@ def phase_5_bootstrap(
     run_dir: Optional[Path],
     smoke: bool = False,
     seed: Optional[int] = None,
+    child_env: dict[str, str] | None = None,
 ) -> bool:
     """Phase 5: Bootstrap Uncertainty Quantification."""
     log("PHASE", "=" * 70)
@@ -273,7 +293,10 @@ def phase_5_bootstrap(
     if seed is not None:
         args.extend(["--seed", str(seed)])
 
-    rc = run_workflow("bootstrap-final", args, smoke=smoke)
+    if child_env is None:
+        rc = run_workflow("bootstrap-final", args, smoke=smoke)
+    else:
+        rc = run_workflow("bootstrap-final", args, smoke=smoke, env=child_env)
     if rc != 0:
         if smoke:
             log("WARNING", "Bootstrap failed in smoke mode; continuing")
@@ -285,7 +308,11 @@ def phase_5_bootstrap(
     return True
 
 
-def finalization(output_dir: Path, smoke: bool = False) -> bool:
+def finalization(
+    output_dir: Path,
+    smoke: bool = False,
+    child_env: dict[str, str] | None = None,
+) -> bool:
     """Final: Generate thesis artifacts and reports."""
     log("PHASE", "=" * 70)
     log("PHASE", "FINALIZATION: Thesis Artifacts & Reports")
@@ -308,7 +335,10 @@ def finalization(output_dir: Path, smoke: bool = False) -> bool:
     if smoke:
         log("INFO", "Skipping generate-thesis-final in smoke mode")
     else:
-        rc = run_workflow("generate-thesis-final", [], smoke=smoke)
+        if child_env is None:
+            rc = run_workflow("generate-thesis-final", [], smoke=smoke)
+        else:
+            rc = run_workflow("generate-thesis-final", [], smoke=smoke, env=child_env)
         if rc != 0:
             log("WARNING", "Report generation failed or unavailable")
 
@@ -367,6 +397,12 @@ def finalization(output_dir: Path, smoke: bool = False) -> bool:
             "default": None,
             "help": "Random seed for reproducibility",
         },
+        "execution_profile": {
+            "type": str,
+            "choices": ["default", "thesis_repro"],
+            "default": "default",
+            "help": "Runtime execution profile",
+        },
     },
 )
 def main(
@@ -377,34 +413,50 @@ def main(
     n_candidates: int = 676,
     smoke: bool = False,
     seed: int | None = None,
+    execution_profile: str = "default",
 ) -> int:
     """Entry point for XXL thesis pipeline."""
 
     output_dir_path = Path(output_dir)
     output_dir_path.mkdir(exist_ok=True, parents=True)
+    effective_seed = seed if seed is not None else 42
+    runtime_state = activate_repro_mode(
+        profile=execution_profile,
+        seed=effective_seed,
+    )
+    child_env = dict(os.environ)
+    child_env["DATASELECTOR_EXECUTION_PROFILE"] = execution_profile
+    child_env["DATASELECTOR_EXECUTION_SEED"] = str(effective_seed)
 
     # Read autoscale config
     autoscale_config = read_autoscale_config(output_dir_path)
 
-    # Validate autoscale config for full runs
-    if phase == "full" and autoscale_config["n_samples"] is None and not smoke:
-        log("ERROR", "No autoscale configuration found!")
-        log("ERROR", "Run 'dataselector autoscale' first")
-        return 1
-
+    rc = 1
     try:
+        # Validate autoscale config for full runs
+        if phase == "full" and autoscale_config["n_samples"] is None and not smoke:
+            log("ERROR", "No autoscale configuration found!")
+            log("ERROR", "Run 'dataselector autoscale' first")
+            rc = 1
+            return rc
+
         if phase == "finalize":
             log("INFO", "Running finalize-only phase")
             run_dir_path = Path(run_dir) if run_dir else None
 
-            if not phase_5_bootstrap(run_dir_path, smoke=smoke, seed=seed):
-                return 1
+            if not phase_5_bootstrap(
+                run_dir_path, smoke=smoke, seed=seed, child_env=child_env
+            ):
+                rc = 1
+                return rc
 
-            if not finalization(output_dir_path, smoke=smoke):
-                return 1
+            if not finalization(output_dir_path, smoke=smoke, child_env=child_env):
+                rc = 1
+                return rc
 
             log("SUCCESS", "Finalize phase complete")
-            return 0
+            rc = 0
+            return rc
 
         # Full pipeline
         log("START", "🚀 XXL THESIS COMPLETE PIPELINE")
@@ -424,34 +476,60 @@ def main(
             smoke=smoke,
             seed=seed,
             output_dir=output_dir_path,
+            child_env=child_env,
         ):
-            return 1
+            rc = 1
+            return rc
 
         print()
 
         # Phase 5: Bootstrap
-        if not phase_5_bootstrap(None, smoke=smoke, seed=seed):
-            return 1
+        if not phase_5_bootstrap(None, smoke=smoke, seed=seed, child_env=child_env):
+            rc = 1
+            return rc
 
         print()
 
         # Finalization
-        if not finalization(output_dir_path, smoke=smoke):
-            return 1
+        if not finalization(output_dir_path, smoke=smoke, child_env=child_env):
+            rc = 1
+            return rc
 
         print()
         log("SUCCESS", "=" * 70)
         log("SUCCESS", "✅ XXL THESIS PIPELINE COMPLETE!")
         log("SUCCESS", "=" * 70)
 
-        return 0
+        rc = 0
+        return rc
 
     except KeyboardInterrupt:
         log("ERROR", "Pipeline interrupted by user")
-        return 1
+        rc = 1
+        return rc
     except Exception as e:
         log("ERROR", f"Pipeline failed: {e}")
         import traceback
 
         traceback.print_exc()
-        return 1
+        rc = 1
+        return rc
+    finally:
+        try:
+            write_run_metadata(
+                output_dir=output_dir_path,
+                execution_profile=execution_profile,
+                seed=effective_seed,
+                runtime_state=runtime_state,
+                extra={
+                    "workflow": "xxl",
+                    "phase": phase,
+                    "best_sampler": best_sampler,
+                    "n_candidates": n_candidates,
+                    "smoke": smoke,
+                    "run_dir": run_dir,
+                    "exit_code": rc,
+                },
+            )
+        except Exception as exc:
+            log("WARNING", f"Could not write run metadata: {exc}")

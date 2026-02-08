@@ -15,6 +15,7 @@ Author: Phase 4 Migration
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from datetime import datetime
@@ -22,6 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from dataselector.cli_decorators import cli_command
+from dataselector.runtime import activate_repro_mode, write_run_metadata
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -74,10 +76,18 @@ THESIS_SAMPLER_SUITE_ARGS = {
         "action": "store_true",
         "help": "Run optuna_autoscale.py to determine best n_samples before running sampler suite",
     },
+    "execution_profile": {
+        "type": str,
+        "choices": ["default", "thesis_repro"],
+        "default": "default",
+        "help": "Runtime execution profile",
+    },
 }
 
 
-def run_cmd(cmd: list[str], cwd: Path | None = None) -> None:
+def run_cmd(
+    cmd: list[str], cwd: Path | None = None, env: dict[str, str] | None = None
+) -> None:
     """
     Run a shell command and fail fast on non-zero exit.
 
@@ -89,7 +99,7 @@ def run_cmd(cmd: list[str], cwd: Path | None = None) -> None:
         Working directory for command execution
     """
     print(f"RUN: {' '.join(cmd)}")
-    proc = subprocess.run(cmd, cwd=cwd)
+    proc = subprocess.run(cmd, cwd=cwd, env=env)
 
     if proc.returncode != 0:
         raise RuntimeError(f"Command failed: {' '.join(cmd)}")
@@ -181,6 +191,7 @@ def run_thesis_sampler_suite(
     n_trials_full: int = 2000,
     n_candidates: int | None = None,
     autoscale: bool = True,
+    execution_profile: str = "default",
 ) -> Path:
     """
     Execute thesis-grade sampler evaluation suite.
@@ -220,6 +231,9 @@ def run_thesis_sampler_suite(
         samplers = ["qmc", "tpe", "cmaes"]
 
     OUT_BASE = ROOT / "outputs" / "runs"
+    primary_seed = seeds[0]
+    runtime_state = activate_repro_mode(profile=execution_profile, seed=primary_seed)
+    child_env = dict(os.environ)
 
     # Dynamically read n_candidates from CSV if not set
     if n_candidates is None:
@@ -250,7 +264,7 @@ def run_thesis_sampler_suite(
 
         # Load data
         features, metadata = load_or_create_data(
-            out_dir=Path("outputs"), n=n_candidates, dim=256, seed=42
+            out_dir=Path("outputs"), n=n_candidates, dim=256, seed=primary_seed
         )
 
         try:
@@ -364,7 +378,7 @@ def run_thesis_sampler_suite(
             ]
         )
 
-    run_cmd(compare_cmd)
+    run_cmd(compare_cmd, env=child_env)
 
     # 2) Choose best sampler
     try:
@@ -378,7 +392,7 @@ def run_thesis_sampler_suite(
         )
     except Exception as e:
         print(f"ERROR selecting best sampler: {e}")
-        sys.exit(1)
+        raise RuntimeError("Best sampler selection failed") from e
 
     # 3) Launch full adaptive runs with best sampler: Hamburg and KDR100
     # Hamburg full run
@@ -401,7 +415,7 @@ def run_thesis_sampler_suite(
         "--hamburg",
     ]
     print(f"Launching full Hamburg run: {' '.join(cmd_h)}")
-    run_cmd(cmd_h)
+    run_cmd(cmd_h, env=child_env)
 
     # KDR100 full run (no preselection)
     cmd_k = [
@@ -421,10 +435,24 @@ def run_thesis_sampler_suite(
         str(seeds[0]),
     ]
     print(f"Launching full KDR100 run: {' '.join(cmd_k)}")
-    run_cmd(cmd_k)
+    run_cmd(cmd_k, env=child_env)
 
     print("\n=== SUITE COMPLETE ===")
     print(f"Results and artifacts: {suite_dir}")
+    write_run_metadata(
+        output_dir=suite_dir,
+        execution_profile=execution_profile,
+        seed=primary_seed,
+        runtime_state=runtime_state,
+        extra={
+            "n_trials": n_trials,
+            "n_trials_full": n_trials_full,
+            "n_candidates": n_candidates,
+            "autoscale": autoscale,
+            "datasets": datasets,
+            "samplers": samplers,
+        },
+    )
 
     return suite_dir
 
@@ -443,6 +471,7 @@ def main(
     n_trials_full: int = 2000,
     n_candidates: int | None = None,
     autoscale: bool = True,
+    execution_profile: str = "default",
 ) -> int:
     """CLI entry point for thesis sampler suite."""
 
@@ -463,6 +492,7 @@ def main(
         n_trials_full=n_trials_full,
         n_candidates=n_candidates,
         autoscale=autoscale,
+        execution_profile=execution_profile,
     )
 
     print(f"\n✅ Thesis sampler suite completed. Results in: {suite_dir}")

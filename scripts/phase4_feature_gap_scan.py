@@ -1,17 +1,10 @@
 #!/usr/bin/env python3
-"""Phase 4B feature gap scanner.
-
-Builds a repository-level feature readiness matrix to find:
-- implemented commands
-- contract mismatches
-- missing but referenced features
-- intentionally deferred items
-- obsolete references
-"""
+"""Phase 4 feature-gap scanner with ownership governance checks."""
 
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import subprocess
@@ -20,21 +13,33 @@ from datetime import date
 from pathlib import Path
 from typing import Iterable
 
+import yaml
+
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_JSON = ROOT / "artifacts" / "phase4b" / "feature_gap_scan.json"
 DEFAULT_MD = ROOT / "docs" / "status" / f"phase4b_feature_gap_matrix_{date.today()}.md"
+REGISTRY_PATH = ROOT / "docs" / "status" / "feature_ownership_registry.yaml"
+
+ACTIVE_CALLSITE_PREFIXES = (
+    "dataselector/workflows",
+    "dataselector/tools",
+    ".github/workflows",
+)
 
 
 @dataclass
 class FeatureRow:
     feature: str
     owner_module: str
+    registry_owner_module: str
+    registry_type: str
     in_cli_registry: bool
     help_ok: bool
     callsite_count: int
     callsites: list[str]
     status: str
     proposed_action: str
+    violations: list[str]
     notes: str = ""
 
 
@@ -45,8 +50,6 @@ def run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
 def parse_cli_commands(help_text: str) -> list[str]:
     commands: set[str] = set()
 
-    # Argparse main usage style:
-    # usage: dataselector [-h] {cmd-a,cmd-b,...} ...
     usage_match = re.search(r"\{([a-z0-9,\-]+)\}\s*\.\.\.", help_text)
     if usage_match:
         for token in usage_match.group(1).split(","):
@@ -55,7 +58,6 @@ def parse_cli_commands(help_text: str) -> list[str]:
                 commands.add(token)
         return sorted(commands)
 
-    # Fallback for alternate help layout where commands are listed line-by-line.
     in_positional = False
     for line in help_text.splitlines():
         raw = line.rstrip()
@@ -130,98 +132,212 @@ def find_callsites(feature: str) -> list[str]:
     return sorted(hits)
 
 
-def detect_contract_mismatch(feature: str) -> str:
-    if feature == "bootstrap-pareto":
-        boot = ROOT / "dataselector" / "workflows" / "bootstrap.py"
-        text = boot.read_text(encoding="utf-8", errors="ignore")
-        if "Ensemble mode is not implemented yet" in text:
-            return "ensemble_uq_not_implemented"
-    if feature == "adaptive-auto":
-        cli = ROOT / "dataselector" / "cli.py"
-        text = cli.read_text(encoding="utf-8", errors="ignore")
-        if "adaptive_auto" not in text:
-            return "command_not_registered"
-    return ""
+def _extract_commands_from_text(text: str) -> set[str]:
+    patterns = [
+        re.compile(r"\bpython\s+-m\s+dataselector\s+([a-z0-9][a-z0-9-]*)\b"),
+        re.compile(
+            r"['\"]-m['\"]\s*,\s*['\"]dataselector['\"]\s*,\s*['\"]([a-z0-9][a-z0-9-]*)['\"]"
+        ),
+    ]
+    commands: set[str] = set()
+    for pattern in patterns:
+        for match in pattern.finditer(text):
+            commands.add(match.group(1))
+    return commands
+
+
+def find_active_command_callsites() -> dict[str, list[str]]:
+    hits: dict[str, set[str]] = {}
+    for path in iter_source_files():
+        rel = str(path.relative_to(ROOT))
+        if not rel.startswith(ACTIVE_CALLSITE_PREFIXES):
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        for cmd in _extract_commands_from_text(text):
+            hits.setdefault(cmd, set()).add(rel)
+    return {cmd: sorted(paths) for cmd, paths in hits.items()}
+
+
+def collect_cli_owners() -> dict[str, list[str]]:
+    owners: dict[str, set[str]] = {}
+    for path in ROOT.joinpath("dataselector").rglob("*.py"):
+        if path.name == "cli_decorators.py":
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if not (isinstance(func, ast.Name) and func.id == "cli_command"):
+                continue
+            if not node.args:
+                continue
+            first = node.args[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                owners.setdefault(first.value, set()).add(str(path.relative_to(ROOT)))
+    return {cmd: sorted(paths) for cmd, paths in owners.items()}
+
+
+def load_ownership_registry() -> dict[str, dict]:
+    if not REGISTRY_PATH.exists():
+        return {}
+    data = yaml.safe_load(REGISTRY_PATH.read_text(encoding="utf-8")) or {}
+    commands = data.get("commands", {})
+    if not isinstance(commands, dict):
+        raise ValueError(f"Invalid ownership registry format in {REGISTRY_PATH}")
+    return commands
+
+
+def _alias_behavior_ok(entry: dict, owner_module: str) -> tuple[bool, str]:
+    expected = str(entry.get("expected_behavior", "")).strip()
+    if expected != "forward":
+        return True, ""
+
+    owner_path = ROOT / owner_module
+    if not owner_path.exists():
+        return False, f"alias owner module not found: {owner_module}"
+
+    text = owner_path.read_text(encoding="utf-8", errors="ignore")
+    target = str(entry.get("forward_target", "")).strip()
+
+    if target and target not in text:
+        return False, f"alias forward target '{target}' not referenced in owner module"
+
+    if not re.search(r"return\s+.*\.main\(", text):
+        return False, "alias wrapper does not forward via return <target>.main(...)"
+
+    return True, ""
 
 
 def classify(
-    feature: str, in_cli: bool, help_ok: bool, callsites: list[str]
+    in_cli: bool,
+    help_ok: bool,
+    has_active_callsites: bool,
+    has_any_callsites: bool,
 ) -> tuple[str, str]:
-    mismatch = detect_contract_mismatch(feature)
-    has_callsites = len(callsites) > 0
-
-    if mismatch == "ensemble_uq_not_implemented":
-        return (
-            "implemented_but_misaligned",
-            "Implement ensemble path in bootstrap-pareto using existing uncertainty_quantification module.",
-        )
-    if mismatch == "command_not_registered":
-        return (
-            "missing_required",
-            "Implement and register adaptive-auto as thin orchestrator over autoscale + adaptive-pipeline.",
-        )
     if in_cli and help_ok:
         return ("implemented_and_valid", "No action.")
     if in_cli and not help_ok:
-        return ("implemented_but_misaligned", "Fix command help/arg parsing contract.")
-    if (not in_cli) and has_callsites:
+        return ("implemented_but_misaligned", "Fix command help/argument parsing.")
+    if (not in_cli) and has_active_callsites:
         return (
             "missing_required",
-            "Feature referenced in active paths but absent from CLI registry; implement or remove active reference.",
+            "Command is referenced in active workflow paths but not registered in CLI.",
         )
-    if (not in_cli) and (not has_callsites):
+    if (not in_cli) and has_any_callsites:
         return (
-            "obsolete_candidate_for_removal",
-            "Not registered and not referenced in active paths; remove dead references if any appear.",
+            "intentionally_deferred",
+            "Referenced only in non-active paths (docs/tests/archive); verify if this is intended.",
         )
-    return ("intentionally_deferred", "Document defer reason and ownership.")
+    return (
+        "obsolete_candidate_for_removal",
+        "No active references and not registered in CLI.",
+    )
 
 
 def build_rows(cli_commands: list[str], python_bin: str) -> list[FeatureRow]:
-    owners = {
-        "autoscale": "dataselector/workflows/autoscale.py",
-        "optuna-optimize": "dataselector/workflows/optuna_optimize.py",
-        "bootstrap-pareto": "dataselector/workflows/bootstrap.py",
-        "bootstrap-final": "dataselector/workflows/bootstrap.py",
-        "compare-samplers": "dataselector/workflows/compare_samplers.py",
-        "thesis-pipeline": "dataselector/workflows/thesis_pipeline.py",
-        "thesis-sampler-suite": "dataselector/workflows/thesis_sampler_suite.py",
-        "sampler-suite": "dataselector/workflows/sampler_suite.py",
-        "xxl": "dataselector/workflows/xxl.py",
-        "adaptive-auto": "dataselector/workflows/adaptive_auto.py",
-    }
+    owner_map = collect_cli_owners()
+    registry = load_ownership_registry()
+    active_callsites = find_active_command_callsites()
 
-    priority_features = list(owners.keys())
-    observed = sorted(set(priority_features + cli_commands))
+    observed = sorted(
+        set(cli_commands)
+        | set(owner_map.keys())
+        | set(registry.keys())
+        | set(active_callsites.keys())
+    )
 
     rows: list[FeatureRow] = []
     for feature in observed:
         in_cli = feature in cli_commands
         help_ok = command_help_ok(feature, python_bin) if in_cli else False
+
         callsites = find_callsites(feature)
-        status, action = classify(feature, in_cli, help_ok, callsites)
+        active_hits = active_callsites.get(feature, [])
+        has_active = len(active_hits) > 0
+
+        status, action = classify(
+            in_cli=in_cli,
+            help_ok=help_ok,
+            has_active_callsites=has_active,
+            has_any_callsites=len(callsites) > 0,
+        )
+
+        owners = owner_map.get(feature, [])
+        owner_module = owners[0] if owners else ""
+        registry_entry = registry.get(feature, {}) if isinstance(registry, dict) else {}
+        registry_owner = str(registry_entry.get("canonical_owner_module", ""))
+        registry_type = str(registry_entry.get("type", ""))
+
+        violations: list[str] = []
+        notes: list[str] = []
+
+        if in_cli and feature not in registry:
+            violations.append("missing ownership registry entry for CLI command")
+
+        if feature in registry and not in_cli and has_active:
+            violations.append("command in ownership registry is not registered in CLI")
+
+        if in_cli and len(owners) == 0:
+            violations.append("no canonical owner module found for CLI command")
+
+        if len(owners) > 1:
+            violations.append(
+                "multiple canonical owners found: " + ", ".join(sorted(owners))
+            )
+
+        if registry_owner and len(owners) == 1 and owners[0] != registry_owner:
+            violations.append(
+                f"registry owner mismatch (registry={registry_owner}, detected={owners[0]})"
+            )
+
+        if has_active and feature not in cli_commands and feature not in registry:
+            violations.append("unknown command referenced in active workflow paths")
+            notes.append("active callsites: " + ", ".join(active_hits[:5]))
+
+        if registry_type == "alias":
+            ok, msg = _alias_behavior_ok(registry_entry, registry_owner or owner_module)
+            if not ok:
+                violations.append(msg)
+
+        if violations and status == "implemented_and_valid":
+            status = "implemented_but_misaligned"
+            action = "Resolve ownership/contract violations listed in this row."
+
         rows.append(
             FeatureRow(
                 feature=feature,
-                owner_module=owners.get(feature, "dataselector/cli.py"),
+                owner_module=owner_module or registry_owner or "dataselector/cli.py",
+                registry_owner_module=registry_owner,
+                registry_type=registry_type,
                 in_cli_registry=in_cli,
                 help_ok=help_ok,
                 callsite_count=len(callsites),
                 callsites=callsites[:10],
                 status=status,
                 proposed_action=action,
+                violations=violations,
+                notes="; ".join(notes),
             )
         )
+
     return rows
 
 
 def render_markdown(rows: list[FeatureRow], sha: str, python_bin: str) -> str:
     lines = [
-        f"# Phase 4B Feature Gap Matrix ({date.today()})",
+        f"# Phase 4 Feature Gap Matrix ({date.today()})",
         "",
         "## Baseline",
         f"- Commit: `{sha}`",
         f"- Python: `{python_bin}`",
+        f"- Ownership registry: `{REGISTRY_PATH.relative_to(ROOT)}`",
         "",
         "## Status Classes",
         "- `implemented_and_valid`",
@@ -232,18 +348,21 @@ def render_markdown(rows: list[FeatureRow], sha: str, python_bin: str) -> str:
         "",
         "## Matrix",
         "",
-        "| Feature | Owner | CLI | Help | Callsites | Status | Action |",
-        "|---|---|---:|---:|---:|---|---|",
+        "| Feature | Owner | Registry Owner | Type | CLI | Help | Callsites | Status | Violations | Action |",
+        "|---|---|---|---|---:|---:|---:|---|---|---|",
     ]
     for row in rows:
         lines.append(
-            "| {feature} | `{owner}` | {cli} | {help_ok} | {calls} | `{status}` | {action} |".format(
+            "| {feature} | `{owner}` | `{registry_owner}` | `{reg_type}` | {cli} | {help_ok} | {calls} | `{status}` | {violations} | {action} |".format(
                 feature=row.feature,
                 owner=row.owner_module,
+                registry_owner=row.registry_owner_module or "-",
+                reg_type=row.registry_type or "-",
                 cli="yes" if row.in_cli_registry else "no",
                 help_ok="yes" if row.help_ok else "no",
                 calls=row.callsite_count,
                 status=row.status,
+                violations=("; ".join(row.violations) if row.violations else "-"),
                 action=row.proposed_action,
             )
         )
@@ -256,6 +375,8 @@ def render_markdown(rows: list[FeatureRow], sha: str, python_bin: str) -> str:
         lines.append(f"### {row.feature}")
         for hit in row.callsites:
             lines.append(f"- `{hit}`")
+        if row.notes:
+            lines.append(f"- note: {row.notes}")
         lines.append("")
 
     return "\n".join(lines)
@@ -263,7 +384,7 @@ def render_markdown(rows: list[FeatureRow], sha: str, python_bin: str) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Generate Phase 4B feature gap scan JSON + markdown matrix."
+        description="Generate feature gap scan JSON + markdown matrix."
     )
     parser.add_argument(
         "--python-bin",

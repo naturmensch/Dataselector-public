@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -81,14 +82,18 @@ def test_run_suite_maps_best_sampler_for_adaptive_pipeline(monkeypatch, tmp_path
     """Adaptive pipeline call must use valid exploration and Optuna sampler args."""
     from dataselector.workflows import thesis_sampler_suite as mod
 
-    commands: list[list[str]] = []
+    commands: list[tuple[list[str], dict | None]] = []
 
     class _FakeTable:
         def to_dict(self, orient: str = "records"):
             return []
 
     monkeypatch.setattr(mod, "ROOT", tmp_path)
-    monkeypatch.setattr(mod, "run_cmd", lambda cmd, cwd=None: commands.append(cmd))
+    monkeypatch.setattr(
+        mod,
+        "run_cmd",
+        lambda cmd, cwd=None, env=None: commands.append((cmd, env)),
+    )
     monkeypatch.setattr(
         mod,
         "choose_best_sampler",
@@ -104,13 +109,24 @@ def test_run_suite_maps_best_sampler_for_adaptive_pipeline(monkeypatch, tmp_path
         n_trials_full=4,
         n_candidates=16,
         autoscale=False,
+        execution_profile="thesis_repro",
     )
 
-    adaptive_cmds = [cmd for cmd in commands if "adaptive-pipeline" in cmd]
+    adaptive_cmds = [cmd for cmd, _env in commands if "adaptive-pipeline" in cmd]
     assert len(adaptive_cmds) == 2
     for cmd in adaptive_cmds:
         assert cmd[cmd.index("--sampler") + 1] == "lhs"
         assert cmd[cmd.index("--optuna-sampler") + 1] == "TPESampler"
+
+    for _cmd, env in commands:
+        assert env is not None
+        assert env["DATASELECTOR_EXECUTION_PROFILE"] == "thesis_repro"
+
+    suite_path = next((tmp_path / "outputs" / "runs").glob("sampler_thesis_suite_*"))
+    metadata = json.loads(
+        suite_path.joinpath("run_metadata.json").read_text(encoding="utf-8")
+    )
+    assert metadata["execution_profile"] == "thesis_repro"
 
 
 def test_sampler_suite_alias_forwards_arguments(monkeypatch):
@@ -134,6 +150,7 @@ def test_sampler_suite_alias_forwards_arguments(monkeypatch):
         n_trials_full=99,
         n_candidates=64,
         autoscale=False,
+        execution_profile="thesis_repro",
     )
 
     assert rc == 0
@@ -145,3 +162,4 @@ def test_sampler_suite_alias_forwards_arguments(monkeypatch):
     assert captured["n_trials_full"] == 99
     assert captured["n_candidates"] == 64
     assert captured["autoscale"] is False
+    assert captured["execution_profile"] == "thesis_repro"
