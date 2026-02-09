@@ -25,6 +25,8 @@ def test_thesis_pipeline_smoke(tmp_path, run_dataselector_cli):
         "thesis-pipeline",
         "--n-lhs",
         "5",  # Small LHS for smoke test
+        "--n-samples",
+        "5",  # Explicit selection target required by contract
         "--skip-validation",  # Skip validation to speed up
         "--dry-run",  # Dry-run mode to just check pipeline setup
     ]

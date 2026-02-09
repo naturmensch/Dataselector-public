@@ -134,6 +134,7 @@ For thesis runs, pass `--n-samples` explicitly in commands below.
 /opt/miniconda3/envs/dataselector/bin/python -m dataselector thesis-pipeline \
   --execution-profile thesis_repro \
   --seed 42 \
+  --n-samples 34 \
   --dry-run \
   --output-dir outputs/thesis_preflight
 ```

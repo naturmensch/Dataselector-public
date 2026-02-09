@@ -65,6 +65,38 @@ def test_run_thesis_pipeline_dry_run_skip_validation(tmp_path):
     assert metadata["seed"] == 7
 
 
+def test_run_thesis_pipeline_fails_without_resolvable_n_samples(tmp_path, monkeypatch):
+    """Thesis path must fail fast if n_samples cannot be resolved from any source."""
+    from dataselector.workflows.thesis_pipeline import run_thesis_pipeline
+
+    ws = tmp_path
+    (ws / "data").mkdir(parents=True, exist_ok=True)
+    (ws / "config").mkdir(parents=True, exist_ok=True)
+    (ws / "data" / "new_all_tiles.csv").write_text(
+        "ul_x,ul_y,lr_x,lr_y,year\n1,2,3,4,1900\n",
+        encoding="utf-8",
+    )
+    (ws / "config" / "pipeline_config.yaml").write_text(
+        "selection:\n  n_samples: null\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(ws)
+
+    with pytest.raises(
+        ValueError, match="could not resolve selection target n_samples"
+    ):
+        run_thesis_pipeline(
+            n_lhs=5,
+            n_samples=None,
+            n_trials=2,
+            skip_validation=True,
+            dry_run=True,
+            output_dir=ws / "outputs",
+            execution_profile="thesis_repro",
+            seed=7,
+        )
+
+
 def test_run_thesis_pipeline_passes_metadata_path_to_stages(tmp_path, monkeypatch):
     """Non-dry-run must pass metadata_path to exploration and Optuna workflows."""
     from dataselector.workflows import thesis_pipeline as mod
