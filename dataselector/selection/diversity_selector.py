@@ -147,44 +147,68 @@ class DiversitySelector:
         self.n_samples = int(effective_n)
         n_to_select = min(self.n_samples, n_candidates)
 
-        # Wähle Selektionsmodus
-        if (
-            self.use_multi_criteria
-            and metadata is not None
-            and MultiCriteriaFacilityLocation is not None
-        ):
-            # Multi-Criteria: Unified distance metric (EMPFOHLEN)
-            print(
-                f"Führe Multi-Criteria Facility Location durch ({n_to_select} Samples)..."
-            )
-            # Resolve pre-selected indices by name (if provided)
-            preselected_indices = []
-            if pre_selected is not None:
-                preselected_indices = list(pre_selected)
-            elif pre_selected_names is not None and metadata is not None:
-                for nm in pre_selected_names:
-                    # match shortName exact (if exists) or longName substring (case-insensitive)
-                    mask = (
+        # Resolve pre-selected indices once so all selection backends can enforce them.
+        preselected_indices: list[int] = []
+        if pre_selected is not None:
+            preselected_indices = [int(i) for i in pre_selected]
+        elif pre_selected_names is not None and metadata is not None:
+            for nm in pre_selected_names:
+                nm_str = str(nm).strip()
+                if not nm_str:
+                    continue
+
+                # Keep user-facing shortcut stable: Hamburg anchor maps to KDR_146.
+                alias_terms = [nm_str]
+                if nm_str.lower() == "hamburg":
+                    alias_terms.append("KDR_146")
+
+                # Match shortName exact, city exact (if present), or longName substring.
+                mask = pd.Series(False, index=metadata.index)
+                for term in alias_terms:
+                    term_lower = str(term).lower()
+                    term_mask = (
                         metadata["longName"]
                         .astype(str)
                         .str.lower()
-                        .str.contains(str(nm).lower())
+                        .str.contains(term_lower)
                     )
                     if "shortName" in metadata.columns:
-                        mask = mask | (
-                            metadata["shortName"].astype(str).str.lower()
-                            == str(nm).lower()
+                        term_mask = term_mask | (
+                            metadata["shortName"].astype(str).str.lower() == term_lower
                         )
-                    idxs = list(mask[mask].index)
-                    if len(idxs) == 0:
-                        print(
-                            f"  [WARN] Pre-selected name '{nm}' not found in metadata"
+                    if "city" in metadata.columns:
+                        term_mask = term_mask | (
+                            metadata["city"].astype(str).str.lower() == term_lower
                         )
-                    else:
-                        preselected_indices.extend(idxs)
+                    mask = mask | term_mask
 
-            # Logging: report resolved preselected indices and their names (if any)
-            if len(preselected_indices) > 0 and metadata is not None:
+                idxs = list(mask[mask].index)
+                if len(idxs) == 0:
+                    print(
+                        f"  [WARN] Pre-selected name '{nm_str}' not found in metadata"
+                    )
+                else:
+                    preselected_indices.extend(idxs)
+                    if nm_str.lower() == "hamburg":
+                        print("  [INFO] Hamburg shortcut resolved via alias 'KDR_146'")
+
+            # Preserve order while removing duplicates from alias expansion.
+            preselected_indices = list(
+                dict.fromkeys(int(i) for i in preselected_indices)
+            )
+
+        # Keep only valid candidate indices.
+        if len(preselected_indices) > 0:
+            valid_pre = [
+                int(i) for i in preselected_indices if 0 <= int(i) < n_candidates
+            ]
+            dropped = len(preselected_indices) - len(valid_pre)
+            if dropped > 0:
+                print(
+                    f"  [WARN] Dropped {dropped} out-of-range pre-selected indices (n_candidates={n_candidates})"
+                )
+            preselected_indices = valid_pre
+            if metadata is not None and len(preselected_indices) > 0:
                 try:
                     names = [
                         str(metadata.loc[i, "shortName"])
@@ -200,6 +224,16 @@ class DiversitySelector:
                         f"  [INFO] Resolved pre-selected indices: {preselected_indices}"
                     )
 
+        # Wähle Selektionsmodus
+        if (
+            self.use_multi_criteria
+            and metadata is not None
+            and MultiCriteriaFacilityLocation is not None
+        ):
+            # Multi-Criteria: Unified distance metric (EMPFOHLEN)
+            print(
+                f"Führe Multi-Criteria Facility Location durch ({n_to_select} Samples)..."
+            )
             self.selector = MultiCriteriaFacilityLocation(
                 n_samples=n_to_select,
                 metadata=metadata,
@@ -328,6 +362,24 @@ class DiversitySelector:
                         self.selected_indices, metadata, min_distance_km=min_distance_km
                     )
 
+        # Enforce preselection in all modes (multi-criteria, constraint-integration, legacy).
+        if len(preselected_indices) > 0:
+            enforced = []
+            for idx in preselected_indices:
+                if idx not in enforced:
+                    enforced.append(int(idx))
+                if len(enforced) >= n_to_select:
+                    break
+
+            if self.selected_indices is not None:
+                for idx in np.asarray(self.selected_indices, dtype=int).tolist():
+                    if idx not in enforced:
+                        enforced.append(int(idx))
+                    if len(enforced) >= n_to_select:
+                        break
+
+            self.selected_indices = np.asarray(enforced[:n_to_select], dtype=int)
+
         # Ensure integer dtype for indices to avoid float-indexing issues in downstream code
         if self.selected_indices is None:
             return np.array([], dtype=int)
@@ -385,10 +437,10 @@ class DiversitySelector:
         Wendet räumlichen Sperrfilter auf die Auswahl an.
         Ersetzt zu nahe Samples durch die nächst-diversen Alternativen.
 
-        Diese Version garantiert, wenn möglich, genau `self.n_samples` zurückzugeben:
-        - Erst wird versucht, `n_samples` einzusammeln, die den min_distance constraint einhalten.
-        - Falls nicht genug valide Samples gefunden werden, werden die nächsten besten
-          Kandidaten aus dem vollständigen Ranking hinzugefügt (Constraint wird gelockert).
+        Hard-cut Verhalten:
+        - Es werden ausschließlich Samples zurückgegeben, die den Abstand einhalten.
+        - Wenn nicht genug Kandidaten den Constraint erfüllen, wird *kein* stilles
+          Auffüllen vorgenommen.
 
         Args:
             indices: Ausgewählte Indizes (Top-K Ranking oder Kandidatenliste)
@@ -396,7 +448,7 @@ class DiversitySelector:
             min_distance_km: Minimale Distanz zwischen Samples
 
         Returns:
-            Bereinigte Indizes (Länge = min(self.n_samples, verfügbare_samples))
+            Bereinigte Indizes (Länge <= min(self.n_samples, verfügbare_samples))
         """
 
         # Verfügbare Kandidaten: falls selector.ranking vorhanden ist, nutze es als vollständiges Ranking
@@ -463,20 +515,12 @@ class DiversitySelector:
             if is_valid:
                 valid_indices.append(idx)
 
-        # 2) Falls nicht genug valide Indizes gefunden wurden: fülle mit nächsten Kandidaten
+        # 2) Hard-cut: kein stilles Auffüllen bei Constraint-Verletzung
         if len(valid_indices) < required:
-            remaining_needed = required - len(valid_indices)
-            # Füge Kandidaten hinzu, die noch nicht in valid_indices (Constraint wird gelockert)
-            for idx in candidate_pool:
-                if len(valid_indices) >= required:
-                    break
-                if idx in valid_indices:
-                    continue
-                valid_indices.append(idx)
-
             print(
-                f"⚠️  Warnung: Nur {len(valid_indices)-remaining_needed}/{required} Samples erfüllten den Abstand; "
-                f"füge {remaining_needed} Kandidaten nach (Constraint gelockert)."
+                "⚠️  Hard-cut aktiv: Nur "
+                f"{len(valid_indices)}/{required} Samples erfüllen min_distance_km={min_distance_km}. "
+                "Kein Constraint-Bypass."
             )
 
         return np.array(valid_indices)
@@ -493,9 +537,8 @@ class DiversitySelector:
         Adaptive spatial constraint: reduziert schrittweise `min_distance_km` um `step_km`
         bis `n_samples` gefunden wurden oder `min_allowed_km` erreicht ist.
 
-        Falls nach Reduktion immer noch nicht genug valide Indizes gefunden wurden,
-        fällt die Methode auf die standardmäßige Lockerung zurück (fügt verbleibende
-        Kandidaten aus dem Ranking hinzu).
+        Auch im adaptiven Modus bleibt der Hard-cut erhalten: es erfolgt kein stilles
+        Auffüllen mit Constraint-verletzenden Samples.
         """
         current_min = float(min_distance_km)
 
@@ -512,9 +555,9 @@ class DiversitySelector:
                 return valid[: min(self.n_samples, len(indices))]
             current_min = max(current_min - float(step_km), min_allowed_km)
 
-        # If still not enough, call the standard function which will relax by filling
+        # If still not enough, return the best feasible set at min_allowed_km.
         print(
-            f"⚠️  adaptive fallback: reached min_allowed_km={min_allowed_km}km but still insufficient; falling back to relaxed addition"
+            f"⚠️  adaptive fallback: reached min_allowed_km={min_allowed_km}km and still insufficient; returning feasible subset only"
         )
         return self._apply_spatial_constraint(
             indices, metadata, min_distance_km=min_allowed_km
