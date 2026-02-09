@@ -79,7 +79,13 @@ def get_optuna_sampler(sampler_name: str = "tpe", seed: int = 42, **sampler_kwar
         return optuna.samplers.TPESampler(seed=seed, **sampler_kwargs)
 
 
-def load_or_create_data(out_dir: Path, n: int = 500, dim: int = 512, seed: int = 123):
+def load_or_create_data(
+    out_dir: Path,
+    n: int = 500,
+    dim: int = 512,
+    seed: int = 123,
+    require_metadata: bool = False,
+):
     """
     Load features and metadata, or create synthetic data for testing.
 
@@ -102,14 +108,38 @@ def load_or_create_data(out_dir: Path, n: int = 500, dim: int = 512, seed: int =
     import numpy as np
     import pandas as pd
 
-    features_path = out_dir / "features.npy"
-    metadata_path = out_dir / "metadata.csv"
-
     from dataselector.data.io import load_or_extract_features
+    from dataselector.data.metadata_source import assert_canonical_metadata
 
-    if features_path.exists() and metadata_path.exists():
+    features_path = out_dir / "features.npy"
+    metadata_path = assert_canonical_metadata(
+        None,
+        context="optuna-optimize",
+    )
+
+    if require_metadata:
+        if not metadata_path.exists():
+            raise FileNotFoundError(
+                "optuna-optimize requires canonical metadata file at "
+                f"'{metadata_path}'."
+            )
         features = load_or_extract_features(
-            out_dir=out_dir, csv_meta=str(metadata_path), batch_size=16, cache=False
+            out_dir=out_dir,
+            csv_meta=str(metadata_path),
+            batch_size=16,
+            cache=False,
+            enforce_canonical=True,
+        )
+        from dataselector.data.io import load_metadata
+
+        metadata = load_metadata(str(metadata_path))
+    elif features_path.exists() and metadata_path.exists():
+        features = load_or_extract_features(
+            out_dir=out_dir,
+            csv_meta=str(metadata_path),
+            batch_size=16,
+            cache=False,
+            enforce_canonical=True,
         )
         from dataselector.data.io import load_metadata
 
@@ -318,6 +348,7 @@ def run_optuna(
     """
     import optuna
 
+    from dataselector.data.metadata_source import assert_canonical_metadata
     from dataselector.pipeline.pipeline_utils import compute_min_distance_km
 
     if out_dir is None:
@@ -331,7 +362,10 @@ def run_optuna(
             "No hardcoded fallback is provided (long-term solution)."
         )
 
-    metadata_path = Path(metadata_path)
+    metadata_path = assert_canonical_metadata(
+        metadata_path,
+        context="optuna-optimize",
+    )
     if not metadata_path.exists():
         raise FileNotFoundError(f"Metadata file not found: {metadata_path}")
 
@@ -343,7 +377,7 @@ def run_optuna(
     )
 
     features, metadata = load_or_create_data(
-        out_dir, n=n_candidates, dim=dim, seed=seed
+        out_dir, n=n_candidates, dim=dim, seed=seed, require_metadata=True
     )
 
     sampler = get_optuna_sampler(sampler_name, seed=seed)

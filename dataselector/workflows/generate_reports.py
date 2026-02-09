@@ -595,6 +595,19 @@ def _generate_single_run_thesis_report(
         if "n_selected" in df_validation.columns:
             non_empty = int((df_validation["n_selected"] > 0).sum())
             lines.append(f"- Configurations with non-empty selection: **{non_empty}**")
+            if non_empty == 0 and len(df_validation) > 0:
+                lines.append(
+                    "- Diagnostic hint: `0` means all validated configurations had `n_selected == 0`."
+                )
+                lines.append(
+                    "- This does not automatically mean exploration/optuna failed globally."
+                )
+                lines.append(
+                    "- Common causes: too strict distance/constraint settings, incompatible preselection, or empty valid candidate subsets."
+                )
+                lines.append(
+                    "- Inspect `validation_results.csv` columns (`n_selected`, `min_distance_km`, weights, seed) before concluding a pipeline failure."
+                )
     else:
         lines.append("- Validation results: not available")
     lines.append("")

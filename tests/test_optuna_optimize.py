@@ -12,6 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def test_optuna_optimize_importable():
     """Module should import without heavy dependencies at import-time."""
@@ -52,6 +54,7 @@ def test_get_optuna_sampler():
     assert sampler_qmc is not None
 
 
+@pytest.mark.synthetic_data
 def test_load_or_create_data_synthetic(tmp_path):
     """Test synthetic data generation when features/metadata don't exist."""
     from dataselector.workflows.optuna_optimize import load_or_create_data

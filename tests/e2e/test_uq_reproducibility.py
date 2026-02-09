@@ -11,9 +11,8 @@ import pytest
 
 @pytest.mark.integration
 @pytest.mark.uq
-def test_uq_reproducibility_same_seed(
-    tmp_workspace: Path, sample_csv: Path, run_dataselector_cli
-):
+@pytest.mark.synthetic_data
+def test_uq_reproducibility_same_seed(tmp_workspace: Path, run_dataselector_cli):
     """Run pipeline twice with same seed, verify identical UQ estimates.
 
     Validates reproducibility of uncertainty quantification.
@@ -29,14 +28,16 @@ def test_uq_reproducibility_same_seed(
 
         cmd = [
             "autoscale",
-            "--csv",
-            str(sample_csv),
             "--output-dir",
             str(out_dir),
             "--seed",
             "42",
             "--n-trials",
             "5",
+            "--n-candidates",
+            "60",
+            "--dim",
+            "32",
         ]
 
         result = run_dataselector_cli(
@@ -59,9 +60,8 @@ def test_uq_reproducibility_same_seed(
 
 @pytest.mark.integration
 @pytest.mark.uq
-def test_uq_different_seeds(
-    tmp_workspace: Path, sample_csv: Path, run_dataselector_cli
-):
+@pytest.mark.synthetic_data
+def test_uq_different_seeds(tmp_workspace: Path, run_dataselector_cli):
     """Run pipeline with different seeds, verify different UQ estimates.
 
     Validates that different seeds produce different results.
@@ -75,14 +75,16 @@ def test_uq_different_seeds(
 
         cmd = [
             "autoscale",
-            "--csv",
-            str(sample_csv),
             "--output-dir",
             str(out_dir),
             "--seed",
             str(seed),
             "--n-trials",
             "5",
+            "--n-candidates",
+            "60",
+            "--dim",
+            "32",
         ]
 
         result = run_dataselector_cli(

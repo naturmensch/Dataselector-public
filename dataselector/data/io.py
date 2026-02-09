@@ -8,6 +8,11 @@ import pandas as pd
 import yaml
 
 from dataselector.data.metadata_processor import MetadataProcessor
+from dataselector.data.metadata_source import (
+    CANONICAL_METADATA_RELATIVE_PATH,
+    assert_canonical_metadata,
+    canonical_metadata_path,
+)
 
 
 def load_metadata(
@@ -65,28 +70,30 @@ def attach_metric_gdf(df, gdf_metric):
 
     Stores the gdf in df.attrs['gdf_metric'] so it survives common pandas operations.
     """
+    # Preferred storage path for pandas DataFrame.
+    if hasattr(df, "attrs"):
+        try:
+            df.attrs["gdf_metric"] = gdf_metric
+            return
+        except Exception:
+            # Fall through to attribute fallback.
+            ...
+
+    # Backward-compatible fallback for custom containers.
     try:
-        if isinstance(df, (type.__class__, object)):
-            # Accept arbitrary containers --- for pandas DataFrame use .attrs
-            try:
-                df.attrs["gdf_metric"] = gdf_metric
-            except Exception:
-                # Fallback: set attribute for backward compatibility
-                setattr(df, "gdf_metric", gdf_metric)
-        else:
-            setattr(df, "gdf_metric", gdf_metric)
-    except Exception:
-        # Last resort: set attribute
         setattr(df, "gdf_metric", gdf_metric)
+    except Exception:
+        return
 
 
 def get_metric_gdf(df):
     """Retrieve attached metric GeoDataFrame if present (attrs or attribute)."""
-    try:
-        if hasattr(df, "attrs") and "gdf_metric" in df.attrs:
-            return df.attrs.get("gdf_metric")
-    except Exception:
-        pass
+    if hasattr(df, "attrs"):
+        try:
+            if "gdf_metric" in df.attrs:
+                return df.attrs.get("gdf_metric")
+        except Exception:
+            return getattr(df, "gdf_metric", None)
     # Backward-compatible fallback
     return getattr(df, "gdf_metric", None)
 
@@ -139,6 +146,7 @@ def load_or_extract_features(
     csv_meta: str | None = None,
     batch_size: int = 16,
     cache: bool = True,
+    enforce_canonical: bool = False,
 ) -> np.ndarray:
     """Load features from a hash-identified cache or extract and create a new cache."""
     from dataselector.pipeline.cache import (
@@ -151,10 +159,12 @@ def load_or_extract_features(
 
     out_dir = Path(out_dir)
 
-    # Resolve metadata CSV path
-    if csv_meta is None:
-        candidate = out_dir / "metadata.csv"
-        csv_meta = str(candidate) if candidate.exists() else "data/new_all_tiles.csv"
+    # Resolve metadata CSV path (production default is canonical source only).
+    csv_meta = _resolve_feature_metadata_csv(
+        csv_meta,
+        context="load_or_extract_features",
+        enforce_canonical=enforce_canonical,
+    )
 
     # Compute deterministic hash for this metadata + extraction params
     params = {"batch_size": batch_size}
@@ -166,7 +176,11 @@ def load_or_extract_features(
             "[WARN] Could not compute metadata hash; falling back to legacy cache behavior."
         )
         return load_or_extract_features_legacy(
-            out_dir=out_dir, csv_meta=csv_meta, batch_size=batch_size, cache=cache
+            out_dir=out_dir,
+            csv_meta=csv_meta,
+            batch_size=batch_size,
+            cache=cache,
+            enforce_canonical=enforce_canonical,
         )
 
     # Try to find existing hash-named cache
@@ -246,6 +260,7 @@ def load_or_extract_features_legacy(
     csv_meta: str | None = None,
     batch_size: int = 16,
     cache: bool = True,
+    enforce_canonical: bool = False,
 ) -> np.ndarray:
     # Original algorithm preserved for falling back in rare error cases
     out_dir = Path(out_dir)
@@ -254,13 +269,12 @@ def load_or_extract_features_legacy(
     if features_path.exists():
         feats = np.load(features_path)
 
-        # Determine metadata source for validation
-        if csv_meta is None:
-            candidate = out_dir / "metadata.csv"
-            if candidate.exists():
-                csv_meta = str(candidate)
-            else:
-                csv_meta = "data/new_all_tiles.csv"
+        # Determine metadata source for validation.
+        csv_meta = _resolve_feature_metadata_csv(
+            csv_meta,
+            context="load_or_extract_features_legacy",
+            enforce_canonical=enforce_canonical,
+        )
 
         # Load metadata and validate shapes: cached features must match metadata rows
         try:
@@ -289,14 +303,12 @@ def load_or_extract_features_legacy(
             except Exception:
                 pass
 
-    # Determine metadata source
-    if csv_meta is None:
-        candidate = out_dir / "metadata.csv"
-        if candidate.exists():
-            csv_meta = str(candidate)
-        else:
-            # Fallback to project CSV
-            csv_meta = "data/new_all_tiles.csv"
+    # Determine metadata source.
+    csv_meta = _resolve_feature_metadata_csv(
+        csv_meta,
+        context="load_or_extract_features_legacy",
+        enforce_canonical=enforce_canonical,
+    )
 
     meta = load_metadata(csv_meta)
     feats = extract_features(meta, batch_size=batch_size)
@@ -316,3 +328,35 @@ def save_selection(df: pd.DataFrame, out_path: str) -> None:
 
 def ensure_output_dir(path: str) -> None:
     Path(path).mkdir(parents=True, exist_ok=True)
+
+
+def _resolve_feature_metadata_csv(
+    csv_meta: str | Path | None,
+    *,
+    context: str,
+    enforce_canonical: bool = False,
+) -> str:
+    """Resolve metadata CSV for feature extraction/caching.
+
+    Productive default is always the canonical source file.
+    """
+    if enforce_canonical:
+        path = assert_canonical_metadata(
+            csv_meta,
+            context=context,
+        )
+    elif csv_meta is None:
+        path = canonical_metadata_path()
+    else:
+        path = Path(csv_meta)
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        path = path.resolve()
+
+    if not path.exists():
+        raise FileNotFoundError(
+            f"{context}: metadata CSV not found at '{path}'. "
+            f"Expected canonical source '{CANONICAL_METADATA_RELATIVE_PATH.as_posix()}' "
+            "for productive runs."
+        )
+    return str(path)

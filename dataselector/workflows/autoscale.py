@@ -32,7 +32,14 @@ def clamp(v, lo, hi):
     return max(lo, min(hi, v))
 
 
-def load_or_create_data(csv_meta=None, n=None, dim=256, seed=123, out_dir=None):
+def load_or_create_data(
+    csv_meta=None,
+    n=None,
+    dim=256,
+    seed=123,
+    out_dir=None,
+    require_metadata: bool = False,
+):
     """Load features and metadata from cache or extract/generate them.
 
     Args:
@@ -41,6 +48,7 @@ def load_or_create_data(csv_meta=None, n=None, dim=256, seed=123, out_dir=None):
         dim: Feature dimension (fallback)
         seed: Random seed
         out_dir: Output directory for cache files
+        require_metadata: Enforce canonical metadata source and real feature extraction
 
     Returns:
         features (np.ndarray), metadata (pd.DataFrame)
@@ -49,13 +57,35 @@ def load_or_create_data(csv_meta=None, n=None, dim=256, seed=123, out_dir=None):
     out_dir.mkdir(exist_ok=True, parents=True)
 
     features_path = out_dir / "features.npy"
-    metadata_path = out_dir / "metadata.csv" if csv_meta is None else Path(csv_meta)
 
     from dataselector.data.io import load_metadata, load_or_extract_features
+    from dataselector.data.metadata_source import assert_canonical_metadata
 
-    if features_path.exists() and metadata_path.exists():
+    metadata_path = assert_canonical_metadata(
+        csv_meta,
+        context="autoscale",
+    )
+
+    if require_metadata:
+        if not metadata_path.exists():
+            raise FileNotFoundError(
+                f"autoscale requires canonical metadata file at '{metadata_path}'."
+            )
         features = load_or_extract_features(
-            out_dir=out_dir, csv_meta=str(metadata_path), batch_size=16, cache=True
+            out_dir=out_dir,
+            csv_meta=str(metadata_path),
+            batch_size=16,
+            cache=True,
+            enforce_canonical=True,
+        )
+        metadata = load_metadata(str(metadata_path))
+    elif features_path.exists() and metadata_path.exists():
+        features = load_or_extract_features(
+            out_dir=out_dir,
+            csv_meta=str(metadata_path),
+            batch_size=16,
+            cache=True,
+            enforce_canonical=True,
         )
         metadata = load_metadata(str(metadata_path))
     else:
@@ -533,6 +563,7 @@ def main(
         dim=dim,
         seed=seed,
         out_dir=output_dir,
+        require_metadata=csv is not None,
     )
 
     actual_n = len(features)

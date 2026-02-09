@@ -18,6 +18,10 @@ import yaml
 
 from dataselector.analysis.visualizer import Visualizer
 from dataselector.data.metadata_processor import MetadataProcessor
+from dataselector.data.metadata_source import (
+    CANONICAL_METADATA_RELATIVE_PATH,
+    assert_canonical_metadata,
+)
 from dataselector.features.feature_extractor import FeatureExtractor
 from dataselector.selection.clustering import ClusteringPipeline
 from dataselector.selection.diversity_selector import DiversitySelector
@@ -45,6 +49,7 @@ class KDR100SelectionPipeline:
         # Daten
         self.metadata_df: Optional[pd.DataFrame] = None
         self.features: Optional[np.ndarray] = None
+        self.metadata_path: Optional[Path] = None
         self.embeddings_2d: Optional[np.ndarray] = None
         self.cluster_labels: Optional[np.ndarray] = None
         self.selected_indices: Optional[np.ndarray] = None
@@ -59,8 +64,8 @@ class KDR100SelectionPipeline:
             # Default-Konfiguration
             return {
                 "data": {
-                    "metadata_path": "data/KDR100_foliage_with_files_epsg3857.csv",
-                    "csv_path": "data/KDR100_foliage_with_files_epsg3857.csv",
+                    "metadata_path": "data/new_all_tiles.csv",
+                    "csv_path": "data/new_all_tiles.csv",
                     "image_dir": "data/images",
                 },
                 "feature_extraction": {
@@ -121,7 +126,16 @@ class KDR100SelectionPipeline:
                 "('metadata_path' oder 'csv_path')."
             )
 
-        self.metadata_processor = MetadataProcessor(metadata_path)
+        metadata_path = assert_canonical_metadata(
+            metadata_path, context="pipeline.main"
+        )
+        if not metadata_path.exists():
+            raise FileNotFoundError(
+                f"pipeline.main: metadata CSV not found at '{metadata_path}'. "
+                f"Expected '{CANONICAL_METADATA_RELATIVE_PATH.as_posix()}'."
+            )
+        self.metadata_path = metadata_path
+        self.metadata_processor = MetadataProcessor(str(metadata_path))
         self.metadata_df = self.metadata_processor.load_csv()
         self.metadata_df = self.metadata_processor.add_temporal_metadata()
 
@@ -157,20 +171,21 @@ class KDR100SelectionPipeline:
         # Prüfe auf gecachte Features (schneller Re-Run)
         output_dir = Path(self.config["output"]["dir"])
         output_dir.mkdir(exist_ok=True, parents=True)
-        metadata_path = output_dir / "metadata.csv"
+        if self.metadata_path is None:
+            raise RuntimeError(
+                "pipeline.main: metadata path not initialized. "
+                "Run metadata processing first."
+            )
 
         from dataselector.data.io import load_or_extract_features
 
-        csv_meta = metadata_path if metadata_path.exists() else None
         self.features = load_or_extract_features(
             out_dir=output_dir,
-            csv_meta=str(csv_meta) if csv_meta is not None else None,
+            csv_meta=str(self.metadata_path),
             batch_size=batch_size,
             cache=True,
+            enforce_canonical=True,
         )
-        # ensure metadata CSV is written if missing
-        if not metadata_path.exists():
-            self.metadata_df.to_csv(metadata_path, index=False)
 
         print(f"  Feature-Dimension: {self.features.shape}")
 

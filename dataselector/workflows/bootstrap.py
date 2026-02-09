@@ -270,6 +270,7 @@ def run_bootstrap_final(
         Exit code (0 on success)
     """
     from dataselector.data.io import load_metadata, load_or_extract_features
+    from dataselector.data.metadata_source import canonical_metadata_path
     from dataselector.selection.clustering import ClusteringPipeline
     from dataselector.selection.diversity_selector import DiversitySelector
 
@@ -318,16 +319,14 @@ def run_bootstrap_final(
 
     # Load data
     print("Loading metadata and features...")
-    metadata_path = ROOT / "outputs" / "metadata.csv"
-    if not metadata_path.exists():
-        metadata = load_metadata(str(ROOT / "data" / "new_all_tiles.csv"))
-    else:
-        metadata = load_metadata(str(metadata_path))
+    metadata_path = canonical_metadata_path(ROOT)
+    metadata = load_metadata(str(metadata_path))
 
     features = load_or_extract_features(
         ROOT / "outputs",
-        csv_meta=str(metadata_path) if metadata_path.exists() else None,
+        csv_meta=str(metadata_path),
         cache=True,
+        enforce_canonical=True,
     )
 
     # Full clustering for metrics
@@ -452,6 +451,7 @@ def run_bootstrap_pareto(
         return 2
 
     from dataselector.data.io import load_metadata, load_or_extract_features
+    from dataselector.data.metadata_source import canonical_metadata_path
     from dataselector.selection.clustering import ClusteringPipeline
     from dataselector.selection.diversity_selector import DiversitySelector
 
@@ -459,16 +459,14 @@ def run_bootstrap_pareto(
     pareto = pd.read_csv(pareto_csv)
 
     # load full metadata and features
-    metadata_path = ROOT / "outputs" / "metadata.csv"
-    if not metadata_path.exists():
-        metadata = load_metadata(str(ROOT / "data" / "new_all_tiles.csv"))
-    else:
-        metadata = load_metadata(str(metadata_path))
+    metadata_path = canonical_metadata_path(ROOT)
+    metadata = load_metadata(str(metadata_path))
 
     features = load_or_extract_features(
         ROOT / "outputs",
-        csv_meta=str(metadata_path) if metadata_path.exists() else None,
+        csv_meta=str(metadata_path),
         cache=True,
+        enforce_canonical=True,
     )
 
     # full clustering (for cluster labels)

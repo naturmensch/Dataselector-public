@@ -3,6 +3,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -21,7 +22,11 @@ def test_optuna_storage_creation(tmp_path):
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT)
 
-    metadata_csv = tmp_path / "metadata.csv"
+    metadata_csv = tmp_path / "data" / "new_all_tiles.csv"
+    metadata_csv.parent.mkdir(parents=True, exist_ok=True)
+    out_dir = tmp_path / "outputs"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
     pd.DataFrame(
         {
             "ul_x": [9.95, 10.05, 10.15, 10.25],
@@ -29,8 +34,11 @@ def test_optuna_storage_creation(tmp_path):
             "lr_x": [10.05, 10.15, 10.25, 10.35],
             "lr_y": [49.95, 50.05, 50.15, 50.25],
             "year": [1900, 1901, 1902, 1903],
+            "image_path": [f"dummy_{i}.png" for i in range(4)],
+            "image_filename": [f"dummy_{i}.png" for i in range(4)],
         }
     ).to_csv(metadata_csv, index=False)
+    np.save(out_dir / "features.npy", np.random.RandomState(11).randn(4, 4))
 
     cmd = [
         sys.executable,

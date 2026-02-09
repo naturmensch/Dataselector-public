@@ -13,6 +13,10 @@ from dataselector.data.io import ensure_output_dir
 from dataselector.data.io import extract_features as _io_extract_features
 from dataselector.data.io import load_metadata as _io_load_metadata
 from dataselector.data.io import save_selection
+from dataselector.data.metadata_source import (
+    CANONICAL_METADATA_RELATIVE_PATH,
+    canonical_metadata_path,
+)
 from dataselector.selection.diversity_selector import DiversitySelector
 
 
@@ -50,13 +54,20 @@ def load_or_extract_features(
     if features_path.exists():
         return np.load(features_path)
 
-    # Determine metadata source
+    # Determine metadata source (canonical by default).
     if csv_meta is None:
-        candidate = out_dir / "metadata.csv"
-        if candidate.exists():
-            csv_meta = str(candidate)
-        else:
-            csv_meta = "data/new_all_tiles.csv"
+        csv_meta = str(canonical_metadata_path())
+
+    csv_path = Path(csv_meta)
+    if not csv_path.is_absolute():
+        csv_path = (Path.cwd() / csv_path).resolve()
+    if not csv_path.exists():
+        raise FileNotFoundError(
+            "pipeline.experiments.load_or_extract_features: metadata CSV not found at "
+            f"'{csv_path}'. Expected canonical source "
+            f"'{CANONICAL_METADATA_RELATIVE_PATH.as_posix()}' for productive runs."
+        )
+    csv_meta = str(csv_path)
 
     meta = load_metadata(csv_meta)
     feats = extract_features(meta, batch_size=batch_size)

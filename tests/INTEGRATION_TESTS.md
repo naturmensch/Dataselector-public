@@ -20,6 +20,8 @@ micromamba run -n dataselector python -m dataselector --help
 | Full E2E (gated) | `-m e2e` | `RUN_FULL_INTEGRATION=1` | Long-running end-to-end validation |
 | Real images (local only) | `-m real_images` | `DATASELECTOR_IMAGE_DIR` | Strict local tests with private image assets |
 | Integration-heavy subset | `-m integration` | native deps (optuna/numba/umap etc.) | Focused dependency-sensitive integration runs |
+| Synthetic data checks | `-m synthetic_data` | none | Fast algorithm/error-path checks without real metadata/images |
+| Canonical source contract | `-m canonical_source_contract` | canonical metadata file shape | Verifies `data/new_all_tiles.csv` source-of-truth behavior |
 
 `real_tiles` is maintained as a legacy alias marker and is normalized to `real_images`
 in collection hooks.
@@ -42,6 +44,14 @@ export DATASELECTOR_IMAGE_DIR=/abs/path/to/private/images
 ```
 
 3. CI must not require private image assets.
+4. Productive metadata source is `data/new_all_tiles.csv`; tests must not rely on implicit `outputs/metadata.csv` fallback.
+
+## Synthetic vs Canonical Policy
+
+1. `synthetic_data` tests are allowed for fast, deterministic algorithm checks.
+2. `synthetic_data` tests are not evidence that productive source contracts are satisfied.
+3. `canonical_source_contract` tests must assert behavior around `data/new_all_tiles.csv` explicitly.
+4. A green pipeline requires both categories: fast synthetic checks and strict source-contract checks.
 
 ## Real-Tiles Governance
 

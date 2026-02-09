@@ -33,6 +33,32 @@ This determines:
 2. Optuna sampler (`TPESampler`, `QMCSampler`, `CmaEsSampler`)
 3. fixed `n_initial_final` and run seed.
 
+### 3.1 Optional evidence: Hamburg-seeded vs unseeded/random baseline
+
+If Hamburg is already annotated and you want to justify starting with Hamburg as a
+seed, create an explicit comparison artifact:
+
+```bash
+/opt/miniconda3/envs/dataselector/bin/python - <<'PY'
+from pathlib import Path
+from dataselector.workflows.compare_samplers import benchmark_seed
+
+out = benchmark_seed(
+    seeds=[42, 43, 44, 45, 46],
+    subset_n=50,
+    output_dir=Path("outputs/seed_vs_unseed_validation"),
+)
+print(out)
+PY
+```
+
+Interpretation target:
+
+1. compare `n_selected`
+2. compare diversity/spatial metrics
+3. compare objective values over multiple seeds (`mean`, `std`, worst-seed)
+4. document whether Hamburg-seeding changes outcome materially or only marginally
+
 ## 4) End-to-End Thesis Flow (Copy/Paste)
 
 ### 4.1 Build metadata from local images
@@ -121,3 +147,40 @@ Start annotation only if all are true:
 If a gate fails: open one focused fix branch per root cause. Do not use broad
 skip/xfail or `continue-on-error` expansion.
 
+## 7) If report shows `0/60 non-empty`
+
+`0/60 non-empty` means: in 60 validated parameter configurations, each had
+`n_selected == 0` in validation. It does **not** automatically prove the whole
+pipeline selected nothing in earlier phases.
+
+Quick diagnosis:
+
+```bash
+# 1) Inspect raw validation outcomes
+/opt/miniconda3/envs/dataselector/bin/python - <<'PY'
+import pandas as pd
+df = pd.read_csv("outputs/validation_results.csv")
+print(df[["n_selected"]].describe(include="all"))
+print(df.head(10))
+PY
+
+# 2) Re-run validation with explicit settings to test sensitivity
+/opt/miniconda3/envs/dataselector/bin/python - <<'PY'
+from dataselector.workflows.validation import validate_pareto_candidates
+print("validate_pareto_candidates callable:", callable(validate_pareto_candidates))
+PY
+```
+
+Check especially:
+
+1. `min_distance_km` strictness
+2. preselection constraints
+3. candidate subset sizes per validation run
+
+## 8) Long-Run Observation Rule (>10 min)
+
+For long-running checks and pipelines:
+
+1. Start run and share one command/run link.
+2. Do not poll continuously in chat.
+3. Continue only after explicit user feedback (`fertig`, `gruen`, `fehlgeschlagen`).

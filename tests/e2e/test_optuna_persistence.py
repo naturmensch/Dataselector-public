@@ -10,21 +10,22 @@ import pytest
 
 @pytest.mark.integration
 @pytest.mark.optuna
-def test_optuna_persistence_study_created(
-    tmp_workspace: Path, sample_csv: Path, run_dataselector_cli
-):
+@pytest.mark.synthetic_data
+def test_optuna_persistence_study_created(tmp_workspace: Path, run_dataselector_cli):
     """Verify Optuna study database is created and persisted."""
     output_dir = tmp_workspace / "outputs"
     output_dir.mkdir(parents=True, exist_ok=True)
 
     cmd = [
         "autoscale",
-        "--csv",
-        str(sample_csv),
         "--output-dir",
         str(output_dir),
         "--n-trials",
         "3",
+        "--n-candidates",
+        "60",
+        "--dim",
+        "32",
     ]
 
     result = run_dataselector_cli(

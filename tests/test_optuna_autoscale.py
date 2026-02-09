@@ -1,5 +1,7 @@
 """Tests for dataselector/workflows/optuna_autoscale.py"""
 
+import pytest
+
 
 def test_optuna_autoscale_importable():
     """Module should import without heavy dependencies at import-time."""
@@ -22,6 +24,7 @@ def test_clamp():
     assert clamp(0.5, 0.01, 1.0) == 0.5
 
 
+@pytest.mark.synthetic_data
 def test_load_or_create_data_synthetic(tmp_path):
     """Test synthetic data generation when features/metadata don't exist."""
     from dataselector.workflows.optuna_autoscale import load_or_create_data

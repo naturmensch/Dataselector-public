@@ -50,6 +50,7 @@ def validate_pareto_candidates(
     from dataselector.analysis.metrics import compute_metrics
     from dataselector.analysis.visualizer import Visualizer
     from dataselector.data.io import load_metadata, load_or_extract_features
+    from dataselector.data.metadata_source import assert_canonical_metadata
     from dataselector.selection.clustering import ClusteringPipeline
     from dataselector.selection.diversity_selector import DiversitySelector
 
@@ -80,22 +81,19 @@ def validate_pareto_candidates(
         )
 
     # Load data once (reuse across all validation runs)
-    metadata_path_default = root / "outputs" / "metadata.csv"
-    metadata_path = (
-        output_dir / "metadata.csv"
-        if (output_dir / "metadata.csv").exists()
-        else metadata_path_default
+    metadata_path = assert_canonical_metadata(
+        None,
+        context="validation",
+        root=root,
     )
-
-    metadata = load_metadata(
-        str(metadata_path) if metadata_path.exists() else "data/new_all_tiles.csv"
-    )
+    metadata = load_metadata(str(metadata_path))
 
     features = load_or_extract_features(
         output_dir,
-        csv_meta=str(metadata_path) if metadata_path.exists() else None,
+        csv_meta=str(metadata_path),
         batch_size=16,
         cache=True,
+        enforce_canonical=True,
     )
 
     # Compute embeddings and cluster labels (consistent with main pipeline)

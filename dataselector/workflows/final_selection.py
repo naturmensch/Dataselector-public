@@ -52,6 +52,7 @@ def run_final_selection(
     from dataselector.analysis.metrics import compute_metrics
     from dataselector.analysis.visualizer import Visualizer
     from dataselector.data.io import load_metadata, load_or_extract_features
+    from dataselector.data.metadata_source import assert_canonical_metadata
     from dataselector.selection.diversity_selector import DiversitySelector
 
     # Set up output directory
@@ -100,18 +101,11 @@ def run_final_selection(
         else cfg.get("selection", {}).get("gamma_temporal", 0.25)
     )
 
-    # Compute min_distance_km (no fallback)
-    if metadata_path is None:
-        # Try common locations
-        if Path("outputs/metadata.csv").exists():
-            metadata_path = Path("outputs/metadata.csv")
-        elif Path("data/new_all_tiles.csv").exists():
-            metadata_path = Path("data/new_all_tiles.csv")
-        else:
-            raise FileNotFoundError(
-                "Metadata not found at outputs/metadata.csv or data/new_all_tiles.csv. "
-                "Cannot compute min_distance_km (no hardcoded fallback)."
-            )
+    # Production policy: only canonical metadata source is allowed.
+    metadata_path = assert_canonical_metadata(
+        metadata_path,
+        context="final-selection",
+    )
 
     min_distance_km = (
         compute_min_distance_km(str(metadata_path))
@@ -126,18 +120,6 @@ def run_final_selection(
     print(f"  seed: {seed}")
 
     # Load metadata and features
-    if metadata_path is None:
-        # Try outputs/metadata.csv, then data/new_all_tiles.csv
-        if Path("outputs/metadata.csv").exists():
-            metadata_path = Path("outputs/metadata.csv")
-        elif Path("data/new_all_tiles.csv").exists():
-            metadata_path = Path("data/new_all_tiles.csv")
-        else:
-            raise FileNotFoundError(
-                "Metadata not found. Provide metadata_path or ensure "
-                "outputs/metadata.csv or data/new_all_tiles.csv exists."
-            )
-
     metadata = load_metadata(str(metadata_path))
     print(f"Loaded {len(metadata)} metadata records from {metadata_path}")
 
@@ -145,10 +127,11 @@ def run_final_selection(
     if features_path is None:
         print("Loading or extracting features (cached)...")
         features = load_or_extract_features(
-            output_dir=Path("outputs"),
+            out_dir=Path("outputs"),
             csv_meta=str(metadata_path),
             batch_size=16,
             cache=True,
+            enforce_canonical=True,
         )
     else:
         if not features_path.exists():

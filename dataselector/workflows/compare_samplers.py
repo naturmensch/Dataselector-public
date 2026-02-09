@@ -343,8 +343,10 @@ def compare_multi_seed(
     constrain_min_dist_min: Optional[int] = None,
     constrain_min_dist_max: Optional[int] = None,
 ) -> dict:
+    from dataselector.data.metadata_source import canonical_metadata_path
+
     ROOT = _get_repo_root()
-    csv_meta_path = ROOT / "data" / "new_all_tiles.csv"
+    csv_meta_path = canonical_metadata_path(ROOT)
 
     datasets = datasets or ["full"]
 
@@ -368,9 +370,9 @@ def compare_multi_seed(
                     f"[INFO] Auto-detected n_candidates from CSV: {n_candidates_local}"
                 )
             except FileNotFoundError:
-                n_candidates_local = 676
-                print(
-                    f"WARNING: {csv_meta_path} not found, using default {n_candidates_local}"
+                raise FileNotFoundError(
+                    "compare-samplers requires canonical metadata source at "
+                    f"'{csv_meta_path}'."
                 )
         else:
             n_candidates_local = n_candidates
@@ -491,17 +493,20 @@ def compare_seeded_vs_unseeded(
     # Runtime imports to avoid heavy deps at import-time
     from dataselector.analysis.metrics import compute_metrics
     from dataselector.data.io import load_metadata, load_or_extract_features
+    from dataselector.data.metadata_source import canonical_metadata_path
     from dataselector.selection.clustering import ClusteringPipeline
     from dataselector.selection.diversity_selector import DiversitySelector
 
     # Load cached features & metadata
+    csv_meta = canonical_metadata_path(ROOT)
     features = load_or_extract_features(
         OUT,
-        csv_meta=str(ROOT / "data" / "new_all_tiles.csv"),
+        csv_meta=str(csv_meta),
         batch_size=batch_size,
         cache=True,
+        enforce_canonical=True,
     )
-    metadata = load_metadata(str(ROOT / "data" / "new_all_tiles.csv"))
+    metadata = load_metadata(str(csv_meta))
 
     # compute cluster labels using existing pipeline to be consistent
     n_clusters_cfg = cfg.get("clustering", {}).get("n_clusters", 8)
@@ -576,6 +581,8 @@ def benchmark_seed(
     output_dir: Optional[Path] = None,
     subset_n: int = 200,
 ) -> Path:
+    from dataselector.data.metadata_source import canonical_metadata_path
+
     ROOT = _get_repo_root()
     OUT = output_dir or (ROOT / "outputs")
     OUT.mkdir(exist_ok=True, parents=True)
@@ -584,14 +591,15 @@ def benchmark_seed(
     from dataselector.selection.clustering import ClusteringPipeline
 
     # Ensure features/metadata exists or extract on-the-fly
-    csv_meta = OUT / "metadata.csv"
-    csv_meta = str(csv_meta) if csv_meta.exists() else None
+    csv_meta = canonical_metadata_path(ROOT)
     features = load_or_extract_features(
-        out_dir=OUT, csv_meta=csv_meta, batch_size=16, cache=True
+        out_dir=OUT,
+        csv_meta=str(csv_meta),
+        batch_size=16,
+        cache=True,
+        enforce_canonical=True,
     )
-    _metadata = load_metadata(
-        csv_meta if csv_meta is not None else str(ROOT / "data" / "new_all_tiles.csv")
-    )
+    _metadata = load_metadata(str(csv_meta))
 
     # subset size for quick timing
     subset_n = min(subset_n, len(features))

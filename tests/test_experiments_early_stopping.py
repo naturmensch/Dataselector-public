@@ -19,6 +19,9 @@ def _fake_meta():
 
 def test_early_stopping(monkeypatch, tmp_path):
     runner = ExperimentRunner(output_dir=str(tmp_path))
+    canonical_csv = tmp_path / "data" / "new_all_tiles.csv"
+    canonical_csv.parent.mkdir(parents=True, exist_ok=True)
+    canonical_csv.write_text("id\n1\n", encoding="utf-8")
 
     # Monkeypatch loading and feature extraction to be lightweight
     monkeypatch.setattr(
@@ -58,7 +61,7 @@ def test_early_stopping(monkeypatch, tmp_path):
     weight_combinations = [(0.7, 0.15, 0.15)] * 10
 
     df = runner.run_weight_sweep(
-        csv_meta="dummy.csv",
+        csv_meta=str(canonical_csv),
         n_samples=2,
         weight_combinations=weight_combinations,
         n_clusters=2,

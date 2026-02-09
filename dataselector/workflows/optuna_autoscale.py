@@ -31,17 +31,45 @@ OUT = Path("outputs")
 
 
 def load_or_create_data(
-    out_dir: Path, n: int | None = None, dim: int = 256, seed: int = 123
+    out_dir: Path,
+    n: int | None = None,
+    dim: int = 256,
+    seed: int = 123,
+    require_metadata: bool = False,
 ):
     """Load features and metadata, or create synthetic data for testing."""
-    features_path = out_dir / "features.npy"
-    metadata_path = out_dir / "metadata.csv"
-
     from dataselector.data.io import load_or_extract_features
+    from dataselector.data.metadata_source import assert_canonical_metadata
 
-    if features_path.exists() and metadata_path.exists():
+    features_path = out_dir / "features.npy"
+    metadata_path = assert_canonical_metadata(
+        None,
+        context="optuna-autoscale",
+    )
+
+    if require_metadata:
+        if not metadata_path.exists():
+            raise FileNotFoundError(
+                "optuna-autoscale requires canonical metadata file at "
+                f"'{metadata_path}'."
+            )
         features = load_or_extract_features(
-            out_dir=out_dir, csv_meta=str(metadata_path), batch_size=16, cache=False
+            out_dir=out_dir,
+            csv_meta=str(metadata_path),
+            batch_size=16,
+            cache=False,
+            enforce_canonical=True,
+        )
+        from dataselector.data.io import load_metadata
+
+        metadata = load_metadata(str(metadata_path))
+    elif features_path.exists() and metadata_path.exists():
+        features = load_or_extract_features(
+            out_dir=out_dir,
+            csv_meta=str(metadata_path),
+            batch_size=16,
+            cache=False,
+            enforce_canonical=True,
         )
         from dataselector.data.io import load_metadata
 
@@ -460,7 +488,11 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     features, metadata = load_or_create_data(
-        out_dir=OUT, n=args.n_candidates, dim=args.dim, seed=args.seed
+        out_dir=OUT,
+        n=args.n_candidates,
+        dim=args.dim,
+        seed=args.seed,
+        require_metadata=True,
     )
 
     actual_n = len(features)

@@ -52,18 +52,30 @@ def sample_csv(tmp_workspace: Path) -> Path:
 
     Creates a CSV with:
     - 50 minimal tile records
-    - Columns: id, name, year, longitude, latitude, quadrant
-    - Valid geographic coordinates (Germany region)
+    - Contract columns: ul_x, ul_y, lr_x, lr_y
+    - Compatibility columns: id, name, year, longitude, latitude, quadrant
 
-    Returns path to the generated CSV.
+    Returns path to the generated CSV at the canonical metadata location.
     """
-    csv_file = tmp_workspace / "data" / "sample_tiles.csv"
+    csv_file = tmp_workspace / "data" / "new_all_tiles.csv"
     csv_file.parent.mkdir(parents=True, exist_ok=True)
 
     # Generate minimal CSV with valid coordinates
     with open(csv_file, "w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
-            f, fieldnames=["id", "name", "year", "longitude", "latitude", "quadrant"]
+            f,
+            fieldnames=[
+                "id",
+                "name",
+                "year",
+                "longitude",
+                "latitude",
+                "quadrant",
+                "ul_x",
+                "ul_y",
+                "lr_x",
+                "lr_y",
+            ],
         )
         writer.writeheader()
 
@@ -72,6 +84,9 @@ def sample_csv(tmp_workspace: Path) -> Path:
             year = 1900 + (i % 50)  # Years 1900-1949
             lon = 8.0 + (i % 10) * 0.5  # Longitudes 8-12 (Germany)
             lat = 47.0 + (i // 10) * 0.5  # Latitudes 47-51 (Germany)
+            center_x = 500000.0 + (i % 10) * 200.0
+            center_y = 5900000.0 + (i // 10) * 200.0
+            half = 50.0
 
             writer.writerow(
                 {
@@ -81,6 +96,10 @@ def sample_csv(tmp_workspace: Path) -> Path:
                     "longitude": lon,
                     "latitude": lat,
                     "quadrant": f"Q{(i % 4) + 1}",
+                    "ul_x": center_x - half,
+                    "ul_y": center_y + half,
+                    "lr_x": center_x + half,
+                    "lr_y": center_y - half,
                 }
             )
 

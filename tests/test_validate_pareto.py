@@ -32,12 +32,28 @@ def _make_pareto_csv(tmp_path):
             "image_path": ["a", "b", "c"],
         }
     ).to_csv(out / "metadata.csv", index=False)
+
+    # Canonical production metadata source used by validation workflow.
+    data_dir = tmp_path / "data"
+    data_dir.mkdir(exist_ok=True)
+    pd.DataFrame(
+        {
+            "longName": ["a.png", "b.png", "c.png"],
+            "ul_x": [9.9, 10.9, 11.9],
+            "ul_y": [50.1, 51.1, 52.1],
+            "lr_x": [10.1, 11.1, 12.1],
+            "lr_y": [49.9, 50.9, 51.9],
+            "year": [1900, 1914, 1918],
+            "image_path": ["a", "b", "c"],
+        }
+    ).to_csv(data_dir / "new_all_tiles.csv", index=False)
     return str(p), str(out)
 
 
 @pytest.mark.slow
 def test_validate_small(tmp_path, monkeypatch):
     pareto, outdir = _make_pareto_csv(tmp_path)
+    monkeypatch.chdir(tmp_path)
     # Run validation with small params to be quick and point to temp outdir
     df = validate_pareto_candidates(
         pareto, min_distances=[10], seeds=[1, 2], n_samples=2, output_dir=outdir

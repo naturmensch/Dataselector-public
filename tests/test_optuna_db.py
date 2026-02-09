@@ -11,7 +11,9 @@ from dataselector.workflows.optuna_optimize import run_optuna
 def test_optuna_creates_sqlite_db(tmp_path, monkeypatch):
     out_dir = tmp_path / "outputs"
     study_db = tmp_path / "optuna_study.db"
-    metadata_csv = tmp_path / "metadata.csv"
+    metadata_csv = tmp_path / "data" / "new_all_tiles.csv"
+    metadata_csv.parent.mkdir(parents=True, exist_ok=True)
+    monkeypatch.chdir(tmp_path)
 
     metadata = pd.DataFrame(
         {
@@ -28,7 +30,7 @@ def test_optuna_creates_sqlite_db(tmp_path, monkeypatch):
 
     monkeypatch.setattr(
         "dataselector.workflows.optuna_optimize.load_or_create_data",
-        lambda out_dir, n, dim, seed: (features, metadata),
+        lambda out_dir, n, dim, seed, **kwargs: (features, metadata),
         raising=True,
     )
 
