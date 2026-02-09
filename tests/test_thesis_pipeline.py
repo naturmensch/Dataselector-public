@@ -23,6 +23,7 @@ def test_thesis_pipeline_signature():
 
     expected_params = [
         "n_lhs",
+        "n_samples",
         "n_trials",
         "skip_exploration",
         "skip_optimization",
@@ -31,6 +32,11 @@ def test_thesis_pipeline_signature():
         "output_dir",
         "execution_profile",
         "seed",
+        "pre_names",
+        "pre_indices",
+        "hamburg",
+        "validation_seeds",
+        "validation_min_distances",
     ]
 
     for param in expected_params:
@@ -65,8 +71,13 @@ def test_run_thesis_pipeline_passes_metadata_path_to_stages(tmp_path, monkeypatc
 
     ws = tmp_path
     (ws / "data").mkdir(parents=True, exist_ok=True)
+    (ws / "config").mkdir(parents=True, exist_ok=True)
     (ws / "data" / "new_all_tiles.csv").write_text(
         "ul_x,ul_y,lr_x,lr_y,year\n1,2,3,4,1900\n",
+        encoding="utf-8",
+    )
+    (ws / "config" / "pipeline_config.yaml").write_text(
+        "selection:\n  n_samples: 34\n  min_distance_km: 28.5\n",
         encoding="utf-8",
     )
     monkeypatch.chdir(ws)
@@ -75,10 +86,12 @@ def test_run_thesis_pipeline_passes_metadata_path_to_stages(tmp_path, monkeypatc
 
     def fake_exploration(**kwargs):
         calls["exploration_metadata_path"] = str(kwargs["metadata_path"])
+        calls["exploration_selection_n_samples"] = kwargs["selection_n_samples"]
         return [], ws / "dummy.csv"
 
     def fake_optuna(**kwargs):
         calls["optuna_metadata_path"] = str(kwargs["metadata_path"])
+        calls["optuna_n_samples"] = kwargs["n_samples"]
         return object()
 
     monkeypatch.setattr(
@@ -91,7 +104,6 @@ def test_run_thesis_pipeline_passes_metadata_path_to_stages(tmp_path, monkeypatc
         "dataselector.workflows.generate_reports.generate_thesis_final_report",
         lambda **_kwargs: None,
     )
-
     success = mod.run_thesis_pipeline(
         n_lhs=5,
         n_trials=2,
@@ -104,6 +116,8 @@ def test_run_thesis_pipeline_passes_metadata_path_to_stages(tmp_path, monkeypatc
     assert success is True
     assert calls["exploration_metadata_path"].endswith("data/new_all_tiles.csv")
     assert calls["optuna_metadata_path"].endswith("data/new_all_tiles.csv")
+    assert calls["exploration_selection_n_samples"] == 34
+    assert calls["optuna_n_samples"] == 34
 
 
 def test_run_thesis_pipeline_phase4_single_run_report(tmp_path):
@@ -124,6 +138,96 @@ def test_run_thesis_pipeline_phase4_single_run_report(tmp_path):
 
     assert success is True
     assert (tmp_path / "outputs" / "THESIS_PIPELINE_REPORT.md").exists()
+
+
+def test_run_thesis_pipeline_preselection_forwarding_and_dedup(tmp_path, monkeypatch):
+    """Hamburg shortcut and preselection must be deduped and forwarded end-to-end."""
+    from dataselector.workflows import thesis_pipeline as mod
+
+    ws = tmp_path
+    (ws / "data").mkdir(parents=True, exist_ok=True)
+    (ws / "config").mkdir(parents=True, exist_ok=True)
+    (ws / "data" / "new_all_tiles.csv").write_text(
+        "ul_x,ul_y,lr_x,lr_y,year\n1,2,3,4,1900\n",
+        encoding="utf-8",
+    )
+    (ws / "config" / "pipeline_config.yaml").write_text(
+        "selection:\n  n_samples: 34\n  min_distance_km: 28.5\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(ws)
+
+    calls = {}
+
+    def fake_exploration(**kwargs):
+        calls["exploration"] = kwargs
+        return [], ws / "dummy.csv"
+
+    def fake_optuna(**kwargs):
+        calls["optuna"] = kwargs
+        return object()
+
+    def fake_validate(**kwargs):
+        calls["validation"] = kwargs
+        return None
+
+    monkeypatch.setattr(
+        "dataselector.workflows.tune_weights.run_exploration", fake_exploration
+    )
+    monkeypatch.setattr(
+        "dataselector.workflows.optuna_optimize.run_optuna", fake_optuna
+    )
+    monkeypatch.setattr(
+        "dataselector.workflows.validation.validate_pareto_candidates", fake_validate
+    )
+    monkeypatch.setattr(
+        "dataselector.workflows.generate_reports.generate_thesis_final_report",
+        lambda **_kwargs: None,
+    )
+    pareto_dir = ws / "outputs" / "tuning_weights" / "pareto"
+    pareto_dir.mkdir(parents=True, exist_ok=True)
+    (pareto_dir / "pareto_solutions.csv").write_text(
+        "alpha,beta,gamma\n0.7,0.2,0.1\n",
+        encoding="utf-8",
+    )
+
+    success = mod.run_thesis_pipeline(
+        n_lhs=5,
+        n_samples=37,
+        n_trials=2,
+        skip_exploration=False,
+        skip_optimization=False,
+        skip_validation=False,
+        dry_run=False,
+        output_dir=ws / "outputs",
+        seed=11,
+        pre_names=["Kiel", "Hamburg", "Kiel"],
+        pre_indices=[3, 3, 1],
+        hamburg=True,
+        validation_seeds=[42, 99],
+        validation_min_distances=[28.5, 35.0],
+    )
+
+    assert success is True
+    assert calls["exploration"]["pre_names"] == ["Kiel", "Hamburg"]
+    assert calls["exploration"]["pre_indices"] == [3, 1]
+    assert calls["exploration"]["selection_n_samples"] == 37
+    assert calls["optuna"]["pre_selected_names"] == ["Kiel", "Hamburg"]
+    assert calls["optuna"]["pre_selected_indices"] == [3, 1]
+    assert calls["optuna"]["n_samples"] == 37
+    assert calls["validation"]["pre_selected_names"] == ["Kiel", "Hamburg"]
+    assert calls["validation"]["pre_selected_indices"] == [3, 1]
+    assert calls["validation"]["n_samples"] == 37
+    assert calls["validation"]["seeds"] == [42, 99]
+    assert calls["validation"]["min_distances"] == [28.5, 35.0]
+
+    run_meta = json.loads((ws / "outputs" / "run_metadata.json").read_text("utf-8"))
+    assert run_meta["extra"]["pre_selected_names"] == ["Kiel", "Hamburg"]
+    assert run_meta["extra"]["pre_selected_indices"] == [3, 1]
+    assert run_meta["extra"]["hamburg_shortcut"] is True
+    assert run_meta["extra"]["n_samples"] == 37
+    assert run_meta["extra"]["validation_seeds"] == [42, 99]
+    assert run_meta["extra"]["validation_min_distances"] == [28.5, 35.0]
 
 
 @pytest.mark.skipif(
@@ -163,3 +267,10 @@ def test_cli_integration():
 
     # CLI might not exist yet, so just check it doesn't crash
     assert result.returncode in (0, 1, 2)
+    out = f"{result.stdout}\n{result.stderr}"
+    assert "--pre-names" in out
+    assert "--pre-indices" in out
+    assert "--hamburg" in out
+    assert "--n-samples" in out
+    assert "--validation-seeds" in out
+    assert "--validation-min-distances" in out
