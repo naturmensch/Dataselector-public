@@ -89,7 +89,9 @@ def test_validate_requires_resolved_selection_target(tmp_path, monkeypatch):
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="could not resolve selection target n_samples"):
+    with pytest.raises(
+        ValueError, match="could not resolve selection target n_samples"
+    ):
         validate_pareto_candidates(
             pareto,
             min_distances=[10],

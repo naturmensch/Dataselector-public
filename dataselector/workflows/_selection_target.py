@@ -36,13 +36,18 @@ def resolve_selection_n_samples(
     4) fail fast
     """
     if explicit_n_samples is not None:
-        return _parse_positive_int(
-            str(explicit_n_samples), context=f"{context}: explicit_n_samples"
-        ), "explicit"
+        return (
+            _parse_positive_int(
+                str(explicit_n_samples), context=f"{context}: explicit_n_samples"
+            ),
+            "explicit",
+        )
 
     resolved_root = root if root is not None else Path.cwd()
     resolved_config = (
-        config_path if config_path is not None else resolved_root / "config" / "pipeline_config.yaml"
+        config_path
+        if config_path is not None
+        else resolved_root / "config" / "pipeline_config.yaml"
     )
 
     # Config source
@@ -58,9 +63,12 @@ def resolve_selection_n_samples(
             cfg_value = None
 
     if cfg_value is not None:
-        return _parse_positive_int(
-            str(cfg_value), context=f"{context}: config selection.n_samples"
-        ), "config"
+        return (
+            _parse_positive_int(
+                str(cfg_value), context=f"{context}: config selection.n_samples"
+            ),
+            "config",
+        )
 
     # Autoscale artifact source
     exp_dir = (
@@ -77,10 +85,13 @@ def resolve_selection_n_samples(
             candidate = exp_dir / fname
             if not candidate.exists():
                 continue
-            return _parse_positive_int(
-                candidate.read_text(encoding="utf-8"),
-                context=f"{context}: {fname}",
-            ), f"experiment_artifact:{fname}"
+            return (
+                _parse_positive_int(
+                    candidate.read_text(encoding="utf-8"),
+                    context=f"{context}: {fname}",
+                ),
+                f"experiment_artifact:{fname}",
+            )
 
     raise ValueError(
         f"{context}: could not resolve selection target n_samples. "

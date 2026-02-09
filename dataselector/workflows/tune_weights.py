@@ -185,9 +185,7 @@ def run_exploration(
     print(
         f"Weight combinations: {len(weight_combinations)} ({sampler.upper()}-samples)"
     )
-    print(
-        f"Selection target: {selection_target} samples ({selection_target_source})"
-    )
+    print(f"Selection target: {selection_target} samples ({selection_target_source})")
     print(f"Min Distance Constraint: {min_distance} km ({min_distance_source})")
     print(f"Seed: {seed}")
     print("=" * 70 + "\n")

@@ -47,7 +47,9 @@ def _install_exploration_mocks(monkeypatch, *, captured: dict) -> None:
                 ]
             )
 
-    monkeypatch.setattr("dataselector.pipeline.experiments.ExperimentRunner", DummyRunner)
+    monkeypatch.setattr(
+        "dataselector.pipeline.experiments.ExperimentRunner", DummyRunner
+    )
     monkeypatch.setattr(
         "dataselector.selection.pareto.compute_pareto_front", lambda df: df
     )
@@ -100,9 +102,7 @@ def test_run_exploration_separates_lhs_points_from_selection_target(
     assert kwargs["n_samples"] == 21
 
 
-def test_run_exploration_honors_explicit_selection_target(
-    tmp_path: Path, monkeypatch
-):
+def test_run_exploration_honors_explicit_selection_target(tmp_path: Path, monkeypatch):
     """Explicit `selection_n_samples` must override fallback/config logic."""
     from dataselector.workflows import tune_weights as mod
 
@@ -156,7 +156,9 @@ def test_run_exploration_fails_without_selection_target_source(
 
     metadata_csv = _write_metadata_csv(tmp_path / "metadata.csv", n_rows=50)
 
-    with pytest.raises(ValueError, match="could not resolve selection target n_samples"):
+    with pytest.raises(
+        ValueError, match="could not resolve selection target n_samples"
+    ):
         mod.run_exploration(
             n_samples=4,
             sampler="lhs",
