@@ -83,8 +83,6 @@ def run_final_selection(
         print(f"Warning: Config not found at {config_path}, using defaults")
         cfg = {}
 
-    from dataselector.pipeline.pipeline_utils import compute_min_distance_km
-
     # Extract parameters (CLI overrides config)
     n_samples = n_samples or cfg.get("selection", {}).get("n_samples", 34)
     alpha = (
@@ -107,11 +105,14 @@ def run_final_selection(
         context="final-selection",
     )
 
-    min_distance_km = (
-        compute_min_distance_km(str(metadata_path))
-        if min_distance_km is None
-        else min_distance_km
-    )
+    if min_distance_km is None:
+        cfg_distance = cfg.get("selection", {}).get("min_distance_km")
+        if cfg_distance is not None:
+            min_distance_km = float(cfg_distance)
+        else:
+            from dataselector.pipeline.pipeline_utils import compute_min_distance_km
+
+            min_distance_km = compute_min_distance_km(str(metadata_path))
 
     print("\nFinal selection parameters:")
     print(f"  n_samples: {n_samples}")
@@ -196,6 +197,12 @@ def run_final_selection(
     duration = time.time() - start_time
     print(f"Selection completed in {duration:.2f}s")
     print(f"Selected {len(selected_idx)} samples")
+    shortfall = max(0, int(n_samples) - int(len(selected_idx)))
+    if shortfall > 0:
+        print(
+            "⚠️  Hard-cut shortfall in final-selection: "
+            f"requested={n_samples}, selected={len(selected_idx)}"
+        )
 
     # Export selection
     sel_df = metadata.iloc[selected_idx].copy()
@@ -218,6 +225,8 @@ def run_final_selection(
             "min_distance_km": min_distance_km,
             "n_requested": n_samples,
             "n_selected": len(selected_idx),
+            "selection_shortfall": shortfall,
+            "hardcut_target_met": shortfall == 0,
             "duration_s": duration,
             "seed": seed,
             "pre_selected_names": pre_selected_names,

@@ -80,9 +80,19 @@ def load_or_extract_features(
 
 
 class ExperimentRunner:
-    def __init__(self, output_dir: str = "outputs/tuning_weights"):
+    def __init__(
+        self,
+        output_dir: str = "outputs/tuning_weights",
+        feature_cache_dir: str | Path | None = None,
+    ):
         self.output_dir = Path(output_dir)
         ensure_output_dir(self.output_dir)
+        self.feature_cache_dir = (
+            Path(feature_cache_dir)
+            if feature_cache_dir is not None
+            else self.output_dir
+        )
+        ensure_output_dir(self.feature_cache_dir)
 
     def run_weight_sweep(
         self,
@@ -94,7 +104,7 @@ class ExperimentRunner:
         gamma_vals: List[float] = None,
         n_clusters: int = 8,
         batch_size: int = 16,
-        min_distance_km: float = 50.0,
+        min_distance_km: float | None = None,
         patience: int = 5,
         max_runs: int = None,
         score_fn=None,
@@ -102,16 +112,52 @@ class ExperimentRunner:
         pre_selected_names: list = None,
     ) -> pd.DataFrame:
         meta = load_metadata(csv_meta)
-        # Load cached features when available to avoid repeated expensive extraction
-        features = load_or_extract_features(
-            out_dir=self.output_dir,
-            csv_meta=csv_meta,
-            batch_size=batch_size,
-            cache=True,
-        )
+        # Load cached features when available to avoid repeated expensive extraction.
+        # For shared cache directories, use the hash-based I/O cache implementation.
+        if self.feature_cache_dir != self.output_dir:
+            from dataselector.data.io import (
+                load_or_extract_features as io_load_or_extract_features,
+            )
+
+            features = io_load_or_extract_features(
+                out_dir=self.feature_cache_dir,
+                csv_meta=csv_meta,
+                batch_size=batch_size,
+                cache=True,
+            )
+        else:
+            # Keep monkeypatch-friendly local behavior for unit/integration tests.
+            features = load_or_extract_features(
+                out_dir=self.feature_cache_dir,
+                csv_meta=csv_meta,
+                batch_size=batch_size,
+                cache=True,
+            )
 
         kmeans = KMeans(n_clusters=n_clusters, random_state=42)
         cluster_labels = kmeans.fit_predict(features)
+
+        # Resolve min-distance policy only once per sweep.
+        resolved_min_distance = (
+            float(min_distance_km) if min_distance_km is not None else None
+        )
+        if resolved_min_distance is None:
+            try:
+                import yaml
+
+                cfg_path = Path("config/pipeline_config.yaml")
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    cfg = yaml.safe_load(f) or {}
+                cfg_dist = cfg.get("selection", {}).get("min_distance_km")
+                if cfg_dist is not None:
+                    resolved_min_distance = float(cfg_dist)
+            except Exception:
+                resolved_min_distance = None
+
+        if resolved_min_distance is None:
+            from dataselector.pipeline.pipeline_utils import compute_min_distance_km
+
+            resolved_min_distance = float(compute_min_distance_km(csv_meta))
 
         results = []
 
@@ -158,7 +204,7 @@ class ExperimentRunner:
                 beta_spatial=beta,
                 gamma_temporal=gamma,
                 spatial_constraint=True,
-                min_distance_km=min_distance_km,
+                min_distance_km=resolved_min_distance,
                 pre_selected=pre_selected,
                 pre_selected_names=pre_selected_names,
             )

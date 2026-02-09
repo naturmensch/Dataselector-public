@@ -46,3 +46,31 @@ def test_preselection(tmp_path, test_case, stub_feature_extraction):
     assert len(selected) == test_case["n_samples"]
 
     # Spatial distance checks removed from this test; see `tests/test_spatial_logic.py` for comprehensive spatial constraint validation.
+
+
+def test_preselection_hamburg_alias_resolves_to_kdr146(
+    tmp_path, stub_feature_extraction
+):
+    """Hamburg shortcut must resolve to the documented anchor tile KDR_146."""
+    meta = dataselector.data.io.load_metadata("data/new_all_tiles.csv")
+    features = dataselector.data.io.load_or_extract_features(
+        tmp_path, csv_meta=str("data/new_all_tiles.csv"), cache=True
+    )
+
+    mask = meta["shortName"].astype(str).str.upper() == "KDR_146"
+    assert mask.any(), "KDR_146 not found in metadata for Hamburg alias test"
+    anchor_idx = int(mask[mask].index[0])
+
+    ds = DiversitySelector(n_samples=1, use_multi_criteria=True, random_state=42)
+    selected = ds.select(
+        features=features,
+        metadata=meta,
+        alpha_visual=0.7,
+        beta_spatial=0.05,
+        gamma_temporal=0.25,
+        spatial_constraint=False,
+        min_distance_km=0.0,
+        pre_selected_names=["Hamburg"],
+    )
+
+    assert anchor_idx in selected, "Hamburg alias did not include KDR_146"

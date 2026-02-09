@@ -85,6 +85,7 @@ def load_or_create_data(
     dim: int = 512,
     seed: int = 123,
     require_metadata: bool = False,
+    feature_cache_dir: Path | None = None,
 ):
     """
     Load features and metadata, or create synthetic data for testing.
@@ -112,6 +113,7 @@ def load_or_create_data(
     from dataselector.data.metadata_source import assert_canonical_metadata
 
     features_path = out_dir / "features.npy"
+    cache_dir = feature_cache_dir if feature_cache_dir is not None else out_dir
     metadata_path = assert_canonical_metadata(
         None,
         context="optuna-optimize",
@@ -124,10 +126,10 @@ def load_or_create_data(
                 f"'{metadata_path}'."
             )
         features = load_or_extract_features(
-            out_dir=out_dir,
+            out_dir=cache_dir,
             csv_meta=str(metadata_path),
             batch_size=16,
-            cache=False,
+            cache=True,
             enforce_canonical=True,
         )
         from dataselector.data.io import load_metadata
@@ -135,10 +137,10 @@ def load_or_create_data(
         metadata = load_metadata(str(metadata_path))
     elif features_path.exists() and metadata_path.exists():
         features = load_or_extract_features(
-            out_dir=out_dir,
+            out_dir=cache_dir,
             csv_meta=str(metadata_path),
             batch_size=16,
-            cache=False,
+            cache=True,
             enforce_canonical=True,
         )
         from dataselector.data.io import load_metadata
@@ -171,6 +173,8 @@ def objective_factory(
     min_distance_bounds: tuple[int, int] | None = None,
     n_samples_range: tuple[int, int] | None = None,
     constrain_bounds: dict[str, float] | None = None,
+    pre_selected_names: list[str] | None = None,
+    pre_selected_indices: list[int] | None = None,
 ):
     """
     Create Optuna objective function for hyperparameter optimization.
@@ -253,12 +257,23 @@ def objective_factory(
                 alpha_visual=alpha,
                 beta_spatial=beta,
                 gamma_temporal=gamma,
+                pre_selected=pre_selected_indices,
+                pre_selected_names=pre_selected_names,
             )
 
             # Compute metrics
             n_selected = len(selected)
             if n_selected == 0:
+                trial.set_user_attr("selection_shortfall", int(n_samp))
+                trial.set_user_attr("hardcut_target_met", False)
                 return 0.0
+            shortfall = max(0, int(n_samp) - int(n_selected))
+            if shortfall > 0:
+                print(
+                    "⚠️  Optuna hard-cut shortfall: "
+                    f"requested n_samples={n_samp}, selected={n_selected}, "
+                    f"trial={getattr(trial, 'number', 'N/A')}, min_distance_km={min_dist}"
+                )
 
             diversity = selector._calculate_diversity_score(features[selected])
             spatial_meta = normalize_spatial_schema(
@@ -276,6 +291,8 @@ def objective_factory(
             trial.set_user_attr("min_distance_km", int(min_dist))
             trial.set_user_attr("n_selected", int(n_selected))
             trial.set_user_attr("n_samples", int(n_samp))
+            trial.set_user_attr("selection_shortfall", int(shortfall))
+            trial.set_user_attr("hardcut_target_met", shortfall == 0)
             trial.set_user_attr("diversity", float(diversity))
             trial.set_user_attr("spatial_spread", float(spread))
 
@@ -305,7 +322,10 @@ def run_optuna(
     exp_name: str | None = None,
     checkpoint_every: int = 0,
     out_dir: Path | None = None,
+    feature_cache_dir: Path | None = None,
     study_db: str | None = None,
+    pre_selected_names: list[str] | None = None,
+    pre_selected_indices: list[int] | None = None,
 ) -> "optuna.Study":
     """
     Run Optuna optimization for multi-criteria hyperparameters.
@@ -338,8 +358,15 @@ def run_optuna(
         Save checkpoint every N trials (0 = disabled)
     out_dir : Path | None
         Output directory (default: outputs/)
+    feature_cache_dir : Path | None
+        Shared directory for feature-cache files across repeated runs.
+        If None, uses `out_dir`.
     study_db : str | None
         SQLite DB path for persistent storage
+    pre_selected_names : list[str] | None
+        Optional pre-selected tile names to enforce during selection
+    pre_selected_indices : list[int] | None
+        Optional pre-selected tile indices to enforce during selection
 
     Returns
     -------
@@ -354,6 +381,8 @@ def run_optuna(
     if out_dir is None:
         out_dir = Path("outputs")
     out_dir.mkdir(exist_ok=True)
+    if feature_cache_dir is not None:
+        feature_cache_dir.mkdir(parents=True, exist_ok=True)
 
     # Compute min_distance_km bounds (no fallback)
     if metadata_path is None:
@@ -377,7 +406,12 @@ def run_optuna(
     )
 
     features, metadata = load_or_create_data(
-        out_dir, n=n_candidates, dim=dim, seed=seed, require_metadata=True
+        out_dir,
+        n=n_candidates,
+        dim=dim,
+        seed=seed,
+        require_metadata=True,
+        feature_cache_dir=feature_cache_dir,
     )
 
     sampler = get_optuna_sampler(sampler_name, seed=seed)
@@ -408,6 +442,8 @@ def run_optuna(
         min_distance_bounds=min_distance_bounds,
         n_samples_range=n_samples_range,
         constrain_bounds=constrain_bounds,
+        pre_selected_names=pre_selected_names,
+        pre_selected_indices=pre_selected_indices,
     )
 
     # Setup optional checkpoint callback
@@ -524,9 +560,12 @@ def run_optuna(
             "help": "Max samples for range (ignored if n-samples-min not set)",
         },
         "min_distance_km": {
-            "type": int,
-            "default": 28,
-            "help": "Minimum distance constraint in km",
+            "type": float,
+            "default": None,
+            "help": (
+                "Deprecated no-op. min_distance bounds are derived from "
+                "metadata_path + constraints."
+            ),
         },
         "seed": {"type": int, "default": 42, "help": "Random seed"},
         "checkpoint_every": {
@@ -595,6 +634,23 @@ def run_optuna(
             "default": None,
             "help": "Constrain min_distance upper bound",
         },
+        "pre_names": {
+            "type": str,
+            "nargs": "*",
+            "default": None,
+            "help": "Pre-selected tile names",
+        },
+        "pre_indices": {
+            "type": int,
+            "nargs": "*",
+            "default": None,
+            "help": "Pre-selected tile indices",
+        },
+        "hamburg": {
+            "type": bool,
+            "action": "store_true",
+            "help": "Add Hamburg to pre-selected names",
+        },
     },
 )
 def main(
@@ -606,7 +662,7 @@ def main(
     workspace: str | None = None,
     n_samples_min: int | None = None,
     n_samples_max: int | None = None,
-    min_distance_km: int = 28,
+    min_distance_km: float | None = None,
     seed: int = 42,
     checkpoint_every: int = 0,
     sampler: str = "tpe",
@@ -622,8 +678,17 @@ def main(
     constrain_c_max: float | None = None,
     constrain_min_dist_min: int | None = None,
     constrain_min_dist_max: int | None = None,
+    pre_names: list[str] | None = None,
+    pre_indices: list[int] | None = None,
+    hamburg: bool = False,
 ) -> int:
     """CLI entry point for Optuna optimization."""
+    if min_distance_km is not None:
+        print(
+            "[WARN] --min-distance-km is deprecated in optuna-optimize and is ignored. "
+            "Bounds are derived from metadata_path (and optional constraint args)."
+        )
+
     # Apply smoke-mode overrides
     if smoke:
         n_trials = min(3, n_trials)
@@ -634,6 +699,16 @@ def main(
     if workspace:
         print(f"Setting DATASELECTOR_WORKSPACE to {workspace}")
         os.environ.setdefault("DATASELECTOR_WORKSPACE", workspace)
+
+    pre_names_list = list(pre_names) if pre_names is not None else []
+    if hamburg:
+        pre_names_list.append("Hamburg")
+    pre_names_list = list(dict.fromkeys(pre_names_list))
+    pre_indices_list = (
+        list(dict.fromkeys(int(idx) for idx in pre_indices))
+        if pre_indices is not None
+        else []
+    )
 
     # Set output directory
     if os.environ.get("DATASELECTOR_WORKSPACE"):
@@ -693,6 +768,8 @@ def main(
         out_dir=out_dir,
         study_db=study_db_path,
         metadata_path=metadata_path,
+        pre_selected_names=pre_names_list if pre_names_list else None,
+        pre_selected_indices=pre_indices_list if pre_indices_list else None,
     )
 
     return 0

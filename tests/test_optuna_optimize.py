@@ -80,3 +80,31 @@ def test_cli_integration():
         text=True,
     )
     assert res.returncode == 0
+    out = f"{res.stdout}\n{res.stderr}"
+    assert "--pre-names" in out
+    assert "--pre-indices" in out
+    assert "--hamburg" in out
+
+
+def test_main_deduplicates_hamburg_preselection(monkeypatch):
+    """CLI main should deduplicate Hamburg shortcut + explicit preselection."""
+    from dataselector.workflows import optuna_optimize as mod
+
+    captured = {}
+
+    def fake_run_optuna(**kwargs):
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(mod, "run_optuna", fake_run_optuna)
+
+    rc = mod.main(
+        n_trials=1,
+        pre_names=["Hamburg", "Kiel", "Hamburg"],
+        pre_indices=[2, 2, 1],
+        hamburg=True,
+    )
+
+    assert rc == 0
+    assert captured["pre_selected_names"] == ["Hamburg", "Kiel"]
+    assert captured["pre_selected_indices"] == [2, 1]
