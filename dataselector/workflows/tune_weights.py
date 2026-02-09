@@ -52,9 +52,11 @@ def generate_weights(n_points: int = 50, seed: int = 42, sampler: str = "lhs"):
 
 def run_exploration(
     n_samples: int = 50,
+    selection_n_samples: int | None = None,
     sampler: str = "lhs",
     seed: int = 42,
     metadata_path: Path | str | None = None,
+    min_distance_km: float | None = None,
     pre_names: list | None = None,
     pre_indices: list | None = None,
     output_dir: Path | None = None,
@@ -65,13 +67,19 @@ def run_exploration(
     Parameters
     ----------
     n_samples : int
-        Number of weight combinations
+        Number of weight combinations (LHS/Sobol points)
+    selection_n_samples : int | None
+        Number of tiles to select per weight combination. If None, resolve from
+        config (`selection.n_samples`) or autoscale artifact; otherwise fail-fast.
     sampler : str
         'lhs' or 'sobol'
     seed : int
         Random seed
     metadata_path : Path | str | None
         Path to metadata CSV for computing min_distance_km (required, no hardcoded fallback)
+    min_distance_km : float | None
+        Explicit min distance policy (km). If None, load from pipeline config and
+        only fall back to data-driven computation when config has no value.
     pre_names : list | None
         Pre-selected tile names
     pre_indices : list | None
@@ -100,7 +108,12 @@ def run_exploration(
         em.log("Attached to pipeline run (exploration stage)")
         em.save_config(
             "exploration",
-            {"n_samples": n_samples, "sampler": sampler, "seed": seed},
+            {
+                "lhs_points": n_samples,
+                "selection_n_samples": selection_n_samples,
+                "sampler": sampler,
+                "seed": seed,
+            },
         )
 
     from dataselector.pipeline.experiments import ExperimentRunner
@@ -110,6 +123,7 @@ def run_exploration(
         export_pareto_report,
         visualize_pareto_front,
     )
+    from dataselector.workflows._selection_target import resolve_selection_n_samples
 
     # Compute min_distance_km from data (no fallback)
     if metadata_path is None:
@@ -122,9 +136,43 @@ def run_exploration(
     if not metadata_path.exists():
         raise FileNotFoundError(f"Metadata file not found: {metadata_path}")
 
-    min_distance = compute_min_distance_km(str(metadata_path))
+    min_distance: float | None = None
+    min_distance_source = "explicit"
+    if min_distance_km is not None:
+        min_distance = float(min_distance_km)
+    else:
+        # Thesis policy default comes from config, not from implicit recomputation.
+        min_distance_source = "config"
+        try:
+            import yaml
 
-    runner = ExperimentRunner(output_dir=str(output_dir))
+            cfg_path = ROOT / "config" / "pipeline_config.yaml"
+            with open(cfg_path, "r") as f:
+                cfg = yaml.safe_load(f) or {}
+            cfg_dist = cfg.get("selection", {}).get("min_distance_km")
+            if cfg_dist is not None:
+                min_distance = float(cfg_dist)
+            else:
+                min_distance_source = "data-driven fallback"
+        except Exception:
+            min_distance_source = "data-driven fallback"
+
+    if min_distance is None:
+        min_distance = compute_min_distance_km(str(metadata_path))
+
+    # Resolve selection target size (separate from LHS point count).
+    selection_target, selection_target_source = resolve_selection_n_samples(
+        selection_n_samples,
+        context="tune_weights.run_exploration",
+        root=ROOT,
+        experiment_run_dir=exp_dir,
+    )
+
+    runner = ExperimentRunner(
+        output_dir=str(output_dir),
+        # Share feature cache across runs to avoid repeated heavy extraction.
+        feature_cache_dir=ROOT / "outputs",
+    )
 
     # Generate weight combinations
     weight_combinations = generate_weights(
@@ -137,14 +185,17 @@ def run_exploration(
     print(
         f"Weight combinations: {len(weight_combinations)} ({sampler.upper()}-samples)"
     )
-    print(f"Min Distance Constraint: {min_distance} km")
+    print(
+        f"Selection target: {selection_target} samples ({selection_target_source})"
+    )
+    print(f"Min Distance Constraint: {min_distance} km ({min_distance_source})")
     print(f"Seed: {seed}")
     print("=" * 70 + "\n")
 
     # Run sweep
     results = runner.run_weight_sweep(
-        csv_meta=str(DATA_META),
-        n_samples=673,
+        csv_meta=str(metadata_path),
+        n_samples=selection_target,
         weight_combinations=weight_combinations,
         n_clusters=8,
         batch_size=16,
@@ -188,7 +239,11 @@ def run_exploration(
             em.save_results("pareto_solutions", pd.read_csv(report_path), format="csv")
             em.mark_stage_complete(
                 "exploration",
-                summary={"pareto_count": len(pareto_front), "n_samples": n_samples},
+                summary={
+                    "pareto_count": len(pareto_front),
+                    "lhs_points": n_samples,
+                    "selection_n_samples": selection_target,
+                },
             )
         except Exception as e:
             print(f"Warning: could not save to experiment manager: {e}")
@@ -207,6 +262,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--n-samples", type=int, default=50)
     parser.add_argument(
+        "--selection-n-samples",
+        type=int,
+        default=None,
+        help=(
+            "Selection target per run. Resolution: explicit > config "
+            "selection.n_samples > autoscale artifact > fail-fast."
+        ),
+    )
+    parser.add_argument(
         "--sampler", choices=["lhs", "sobol"], required=False, default=None
     )
     parser.add_argument("--seed", type=int, default=42)
@@ -218,6 +282,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--pre-names", type=str, nargs="*", default=None)
     parser.add_argument("--pre-indices", type=int, nargs="*", default=None)
+    parser.add_argument(
+        "--min-distance-km",
+        type=float,
+        required=False,
+        default=None,
+        help="Optional min distance policy override in km",
+    )
 
     args = parser.parse_args(argv)
 
@@ -227,9 +298,11 @@ def main(argv: list[str] | None = None) -> int:
     try:
         run_exploration(
             n_samples=args.n_samples,
+            selection_n_samples=args.selection_n_samples,
             sampler=args.sampler,
             seed=args.seed,
             metadata_path=metadata_path,
+            min_distance_km=args.min_distance_km,
             pre_names=args.pre_names,
             pre_indices=args.pre_indices,
         )

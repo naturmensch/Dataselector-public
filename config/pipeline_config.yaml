@@ -30,13 +30,11 @@ clustering:
   umap_n_jobs: 1
 
 # Diversity Selection (Multi-Criteria Facility Location)
-# Updated: 2026-01-15 based on Optuna optimization and Fine Sweep validation
-# Dataset: 673 tiles, 42.8% WWI-clustering (1906-1918), median neighbor distance ~28 km
-# Default: historically set to 5% (≈34 Samples) — changed so no hard default is enforced
+# Updated: 2026-02-09 based on canonical dataset checks and policy gate
+# Dataset reference: canonical `data/new_all_tiles.csv` (currently 676 tiles)
+# Thesis default: 34 samples (historically ~5% of canonical set at 676 rows)
 selection:
-  n_samples: null  # If null, n_samples is computed adaptively via `src.pipeline_utils.compute_adaptive_n_initial` or set persistently here to an int.
-                 # Recommended: set persistently in this config (e.g. n_samples: 50) or override on the CLI with `--n-samples` when invoking pipeline
-                 # Rationale: prefer dataset-adaptive selection rather than a fixed 5% heuristic
+  n_samples: 34  # Explicit thesis production target. No implicit fallback is used in workflows.
   metric: "euclidean"
   
   # DEPRECATED: Legacy parameters (use multi-criteria instead)
@@ -51,9 +49,12 @@ selection:
   # pre_selected_indices: [145]
   
   # Spatial constraint
-  # Wissenschaftlich validiert: Fine Sweep (40 km optimal), Optuna (36-39 km), Median ~28 km
+  # Policy split:
+  # - geometric reference on canonical metadata: ~45.0 km (median NN)
+  # - operational thesis policy: 28.5 km (decision gate; tie-break prefers smaller
+  #   distance when quality is statistically equivalent, preserving combination space)
   spatial_constraint: true
-  min_distance_km: 40.0  # Optimaler Abstand basierend auf empirischer Validierung
+  min_distance_km: 28.5
   
   # Method selection (IMPORTANT)
   use_multi_criteria: true           # REQUIRED: Unified distance metric
@@ -64,7 +65,7 @@ selection:
   validation_seeds: [42, 43, 44, 45, 46]
   
 # Expected results with optimized config (for n=34):
-# - 34 Samples (≈5% of 673 tiles)
+# - 34 Samples (≈5% of current canonical tile count)
 # - WWI-Anteil: ~23.5% (bei empfohlenen Gewichten)
 # - Temporal STD: ~6.3 Jahre
 # - Temporal Range: ~32 Jahre
