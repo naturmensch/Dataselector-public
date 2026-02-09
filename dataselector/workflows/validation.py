@@ -18,8 +18,11 @@ def validate_pareto_candidates(
     pareto_csv: str | Path,
     min_distances: List[float] = None,
     seeds: List[int] = None,
-    n_samples: int = 673,
+    n_samples: int | None = None,
     output_dir: str | Path = None,
+    feature_cache_dir: str | Path | None = None,
+    pre_selected_names: list[str] | None = None,
+    pre_selected_indices: list[int] | None = None,
 ) -> pd.DataFrame:
     """Validate Pareto-optimal candidates via min_distance sweep + bootstrapping.
 
@@ -31,8 +34,11 @@ def validate_pareto_candidates(
         pareto_csv: Path to Pareto solutions CSV (α, β, γ columns)
         min_distances: List of min_distance_km values to test (default: [25, 35, 50])
         seeds: Random seeds for bootstrapping (default: [42, 43, 44, 45, 46])
-        n_samples: Target sample size (default: 673)
+        n_samples: Target sample size (resolved via explicit/config/autoscale)
         output_dir: Output directory for results (default: outputs/validation/)
+        feature_cache_dir: Optional shared feature-cache directory across runs
+        pre_selected_names: Optional pre-selected tile names enforced in selection
+        pre_selected_indices: Optional pre-selected tile indices enforced in selection
 
     Returns:
         DataFrame with validation results (metrics × configurations × seeds)
@@ -42,7 +48,7 @@ def validate_pareto_candidates(
         ...     pareto_csv="outputs/tuning_weights/pareto/pareto_solutions.csv",
         ...     min_distances=[25, 35, 50],
         ...     seeds=[42, 43, 44],
-        ...     n_samples=673
+        ...     n_samples=34
         ... )
         >>> print(f"Tested {len(results)} configurations")
     """
@@ -53,6 +59,7 @@ def validate_pareto_candidates(
     from dataselector.data.metadata_source import assert_canonical_metadata
     from dataselector.selection.clustering import ClusteringPipeline
     from dataselector.selection.diversity_selector import DiversitySelector
+    from dataselector.workflows._selection_target import resolve_selection_n_samples
 
     # Default parameters
     if min_distances is None:
@@ -72,6 +79,8 @@ def validate_pareto_candidates(
         output_dir = Path(output_dir)
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    cache_dir = Path(feature_cache_dir) if feature_cache_dir is not None else output_dir
+    cache_dir.mkdir(parents=True, exist_ok=True)
 
     # Load Pareto solutions
     pareto = pd.read_csv(pareto_csv)
@@ -87,9 +96,21 @@ def validate_pareto_candidates(
         root=root,
     )
     metadata = load_metadata(str(metadata_path))
+    resolved_n_samples, n_samples_source = resolve_selection_n_samples(
+        n_samples,
+        context="validation.validate_pareto_candidates",
+        root=root,
+        experiment_run_dir=output_dir,
+    )
+    print(
+        "Validation selection target: {} samples ({})".format(
+            resolved_n_samples,
+            n_samples_source,
+        )
+    )
 
     features = load_or_extract_features(
-        output_dir,
+        cache_dir,
         csv_meta=str(metadata_path),
         batch_size=16,
         cache=True,
@@ -131,7 +152,9 @@ def validate_pareto_candidates(
 
                 # Run selection with current configuration
                 ds = DiversitySelector(
-                    n_samples=n_samples, use_multi_criteria=True, random_state=int(seed)
+                    n_samples=resolved_n_samples,
+                    use_multi_criteria=True,
+                    random_state=int(seed),
                 )
                 selected = ds.select(
                     features=features,
@@ -141,7 +164,18 @@ def validate_pareto_candidates(
                     gamma_temporal=float(gamma),
                     spatial_constraint=True,
                     min_distance_km=float(min_d),
+                    pre_selected=pre_selected_indices,
+                    pre_selected_names=pre_selected_names,
                 )
+                selected_count = len(selected)
+                shortfall = max(0, int(resolved_n_samples) - selected_count)
+                if shortfall > 0:
+                    print(
+                        "⚠️  Validation hard-cut shortfall: "
+                        f"requested n_samples={resolved_n_samples}, selected={selected_count} "
+                        f"(alpha={alpha:.3f}, beta={beta:.3f}, gamma={gamma:.3f}, "
+                        f"min_distance_km={min_d}, seed={seed})"
+                    )
 
                 duration = time.time() - t0
 
@@ -155,6 +189,12 @@ def validate_pareto_candidates(
                         "min_distance_km": min_d,
                         "seed": seed,
                         "duration_s": duration,
+                        "pre_selected_names": pre_selected_names,
+                        "pre_selected_indices": pre_selected_indices,
+                        "requested_n_samples": int(resolved_n_samples),
+                        "n_samples_source": n_samples_source,
+                        "selection_shortfall": shortfall,
+                        "hardcut_target_met": shortfall == 0,
                     }
                 )
                 rows.append(metrics)

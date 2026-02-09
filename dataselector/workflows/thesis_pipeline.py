@@ -9,12 +9,14 @@ from typing import Optional
 
 from dataselector.cli_decorators import cli_command
 from dataselector.runtime import activate_repro_mode, write_run_metadata
+from dataselector.workflows._selection_target import resolve_selection_n_samples
 
 logger = logging.getLogger(__name__)
 
 
 def run_thesis_pipeline(
     n_lhs: Optional[int] = None,
+    n_samples: Optional[int] = None,
     n_trials: int = 100,
     skip_exploration: bool = False,
     skip_optimization: bool = False,
@@ -23,6 +25,11 @@ def run_thesis_pipeline(
     output_dir: Optional[Path] = None,
     execution_profile: str = "default",
     seed: int = 42,
+    pre_names: Optional[list[str]] = None,
+    pre_indices: Optional[list[int]] = None,
+    hamburg: bool = False,
+    validation_seeds: Optional[list[int]] = None,
+    validation_min_distances: Optional[list[float]] = None,
 ) -> bool:
     """
     Run complete thesis optimization pipeline.
@@ -35,12 +42,18 @@ def run_thesis_pipeline(
 
     Args:
         n_lhs: Number of LHS samples (if None, compute adaptive default)
+        n_samples: Target number of selected tiles (resolved if None)
         n_trials: Number of Optuna trials
         skip_exploration: Skip Phase 1
         skip_optimization: Skip Phase 2
         skip_validation: Skip Phase 3
         dry_run: Show commands without executing
         output_dir: Output directory (defaults to outputs/)
+        pre_names: Optional pre-selected tile names
+        pre_indices: Optional pre-selected tile indices
+        hamburg: Convenience flag to add "Hamburg" to pre-selected names
+        validation_seeds: Optional validation seed list (quick gate default: [seed])
+        validation_min_distances: Optional min_distance list for validation
 
     Returns:
         True if all phases succeeded, False otherwise
@@ -57,6 +70,50 @@ def run_thesis_pipeline(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     metadata_path = Path("data/new_all_tiles.csv")
+    config_path = Path("config/pipeline_config.yaml")
+    config_min_distance_km: float | None = None
+    try:
+        import yaml
+
+        with open(config_path, "r") as f:
+            cfg = yaml.safe_load(f) or {}
+        raw_dist = cfg.get("selection", {}).get("min_distance_km")
+        if raw_dist is not None:
+            config_min_distance_km = float(raw_dist)
+    except Exception:
+        config_min_distance_km = None
+
+    resolved_n_samples, n_samples_source = resolve_selection_n_samples(
+        n_samples,
+        context="thesis_pipeline",
+        root=Path.cwd(),
+        experiment_run_dir=output_dir,
+    )
+
+    # Quick-gate defaults to avoid accidental long full-grid validations.
+    if validation_seeds is None:
+        validation_seeds = [int(seed)]
+    else:
+        validation_seeds = [int(s) for s in validation_seeds]
+
+    if validation_min_distances is None:
+        if config_min_distance_km is not None:
+            validation_min_distances = [float(config_min_distance_km)]
+        else:
+            validation_min_distances = [28.5]
+    else:
+        validation_min_distances = [float(d) for d in validation_min_distances]
+
+    pre_names_list = list(pre_names) if pre_names is not None else []
+    if hamburg:
+        pre_names_list.append("Hamburg")
+    # Keep deterministic ordering while removing duplicates.
+    pre_names_list = list(dict.fromkeys(pre_names_list))
+    pre_indices_list = (
+        list(dict.fromkeys(int(idx) for idx in pre_indices))
+        if pre_indices is not None
+        else []
+    )
 
     # Compute adaptive n_lhs if not provided
     if n_lhs is None:
@@ -82,7 +139,22 @@ def run_thesis_pipeline(
     print("=" * 80)
     print(f"Start: {timestamp}")
     print(f"Output Directory: {output_dir}")
-    print(f"n_lhs: {n_lhs}, n_trials: {n_trials}")
+    print(
+        f"n_lhs: {n_lhs}, n_samples: {resolved_n_samples} ({n_samples_source}), "
+        f"n_trials: {n_trials}"
+    )
+    print(
+        "validation: seeds={}, min_distances={}".format(
+            validation_seeds,
+            validation_min_distances,
+        )
+    )
+    print(
+        "Preselection: names={}, indices={}".format(
+            pre_names_list if pre_names_list else None,
+            pre_indices_list if pre_indices_list else None,
+        )
+    )
     print("=" * 80)
 
     all_success = True
@@ -101,9 +173,13 @@ def run_thesis_pipeline(
                 print(f"Running Exploration with n_lhs={n_lhs}...")
                 run_exploration(
                     n_samples=n_lhs,
+                    selection_n_samples=resolved_n_samples,
                     sampler="lhs",
                     seed=seed,
                     metadata_path=metadata_path,
+                    min_distance_km=config_min_distance_km,
+                    pre_names=pre_names_list if pre_names_list else None,
+                    pre_indices=pre_indices_list if pre_indices_list else None,
                     output_dir=output_dir / "tuning_weights",
                 )
                 elapsed = time.time() - t0
@@ -130,10 +206,14 @@ def run_thesis_pipeline(
                 print(f"Running Optuna with n_trials={n_trials}...")
                 run_optuna(
                     n_trials=n_trials,
+                    n_samples=resolved_n_samples,
                     sampler_name="cmaes",
                     metadata_path=metadata_path,
                     seed=seed,
+                    pre_selected_names=pre_names_list if pre_names_list else None,
+                    pre_selected_indices=pre_indices_list if pre_indices_list else None,
                     out_dir=output_dir / "optuna",
+                    feature_cache_dir=Path("outputs"),
                     study_name=f"thesis_optuna_{timestamp}",
                 )
                 elapsed = time.time() - t0
@@ -171,7 +251,13 @@ def run_thesis_pipeline(
                 print(f"Running validation for Pareto candidates: {pareto_csv}")
                 validate_pareto_candidates(
                     pareto_csv=pareto_csv,
+                    min_distances=validation_min_distances,
+                    seeds=validation_seeds,
                     output_dir=output_dir / "validation",
+                    feature_cache_dir=Path("outputs"),
+                    n_samples=resolved_n_samples,
+                    pre_selected_names=pre_names_list if pre_names_list else None,
+                    pre_selected_indices=pre_indices_list if pre_indices_list else None,
                 )
                 elapsed = time.time() - t0
                 print(f"✅ Phase 3 erfolgreich (Dauer: {elapsed:.1f}s)")
@@ -218,11 +304,18 @@ def run_thesis_pipeline(
             runtime_state=runtime_state,
             extra={
                 "n_lhs": n_lhs,
+                "n_samples": resolved_n_samples,
+                "n_samples_source": n_samples_source,
                 "n_trials": n_trials,
                 "skip_exploration": skip_exploration,
                 "skip_optimization": skip_optimization,
                 "skip_validation": skip_validation,
                 "dry_run": dry_run,
+                "validation_seeds": validation_seeds,
+                "validation_min_distances": validation_min_distances,
+                "pre_selected_names": pre_names_list if pre_names_list else None,
+                "pre_selected_indices": pre_indices_list if pre_indices_list else None,
+                "hamburg_shortcut": bool(hamburg),
             },
         )
     except Exception as exc:
@@ -239,6 +332,11 @@ def run_thesis_pipeline(
             "type": int,
             "default": None,
             "help": "Number of LHS samples (default: adaptive)",
+        },
+        "n_samples": {
+            "type": int,
+            "default": None,
+            "help": "Target selected tiles (explicit > config > autoscale artifact)",
         },
         "n_trials": {
             "type": int,
@@ -281,10 +379,40 @@ def run_thesis_pipeline(
             "default": 42,
             "help": "Global random seed for reproducible runs",
         },
+        "pre_names": {
+            "type": str,
+            "nargs": "*",
+            "default": None,
+            "help": "Pre-selected tile names",
+        },
+        "pre_indices": {
+            "type": int,
+            "nargs": "*",
+            "default": None,
+            "help": "Pre-selected tile indices",
+        },
+        "hamburg": {
+            "type": bool,
+            "action": "store_true",
+            "help": "Add Hamburg to pre-names",
+        },
+        "validation_seeds": {
+            "type": int,
+            "nargs": "+",
+            "default": None,
+            "help": "Validation seed list (quick gate default: seed only)",
+        },
+        "validation_min_distances": {
+            "type": float,
+            "nargs": "+",
+            "default": None,
+            "help": "Validation min_distance list in km (quick gate default: policy value)",
+        },
     },
 )
 def main(
     n_lhs: Optional[int] = None,
+    n_samples: Optional[int] = None,
     n_trials: int = 100,
     skip_exploration: bool = False,
     skip_optimization: bool = False,
@@ -293,6 +421,11 @@ def main(
     output_dir: Optional[str] = None,
     execution_profile: str = "default",
     seed: int = 42,
+    pre_names: Optional[list[str]] = None,
+    pre_indices: Optional[list[int]] = None,
+    hamburg: bool = False,
+    validation_seeds: Optional[list[int]] = None,
+    validation_min_distances: Optional[list[float]] = None,
 ) -> int:
     """CLI entry point for thesis pipeline."""
     # Convert str path to Path object
@@ -301,6 +434,7 @@ def main(
     # Run the pipeline
     success = run_thesis_pipeline(
         n_lhs=n_lhs,
+        n_samples=n_samples,
         n_trials=n_trials,
         skip_exploration=skip_exploration,
         skip_optimization=skip_optimization,
@@ -309,6 +443,11 @@ def main(
         output_dir=output_dir_path,
         execution_profile=execution_profile,
         seed=seed,
+        pre_names=pre_names,
+        pre_indices=pre_indices,
+        hamburg=hamburg,
+        validation_seeds=validation_seeds,
+        validation_min_distances=validation_min_distances,
     )
     return 0 if success else 1
 

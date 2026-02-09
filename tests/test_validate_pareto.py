@@ -56,12 +56,46 @@ def test_validate_small(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     # Run validation with small params to be quick and point to temp outdir
     df = validate_pareto_candidates(
-        pareto, min_distances=[10], seeds=[1, 2], n_samples=2, output_dir=outdir
+        pareto,
+        min_distances=[10],
+        seeds=[1, 2],
+        n_samples=2,
+        output_dir=outdir,
+        pre_selected_names=["Hamburg"],
+        pre_selected_indices=[1],
     )
     assert "n_selected" in df.columns
+    assert "pre_selected_names" in df.columns
+    assert "pre_selected_indices" in df.columns
     assert len(df) == 4
+    assert set(df["pre_selected_names"].astype(str)) == {"['Hamburg']"}
+    assert set(df["pre_selected_indices"].astype(str)) == {"[1]"}
 
     # Check that plots were generated
     plots_dir = Path(outdir) / "plots" / "sel_a0.7_b0.15_g0.15_d10_s1"
     assert plots_dir.exists()
     assert (plots_dir / "spatial_distribution.png").exists()
+
+
+@pytest.mark.slow
+def test_validate_requires_resolved_selection_target(tmp_path, monkeypatch):
+    """Validation must not silently default n_samples to full metadata length."""
+    pareto, outdir = _make_pareto_csv(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    # Explicitly keep config unset/null for selection target resolution.
+    (tmp_path / "config").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "config" / "pipeline_config.yaml").write_text(
+        "selection:\n  n_samples: null\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError, match="could not resolve selection target n_samples"
+    ):
+        validate_pareto_candidates(
+            pareto,
+            min_distances=[10],
+            seeds=[1],
+            n_samples=None,
+            output_dir=outdir,
+        )
