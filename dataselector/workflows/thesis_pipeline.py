@@ -944,6 +944,8 @@ def run_thesis_pipeline(
                 runtime_state=runtime_state,
                 extra={
                     "resolution_only": True,
+                    "n_samples": resolved_n_samples,
+                    "n_samples_source": n_samples_source,
                     "parameter_source": parameter_source,
                     "resolved_sampler": resolved_sampler,
                     "resolved_sampler_source": sampler_source,

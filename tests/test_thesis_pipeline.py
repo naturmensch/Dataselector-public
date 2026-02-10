@@ -440,6 +440,8 @@ def test_run_thesis_pipeline_compute_params_uses_autoscale_artifact(tmp_path, mo
 
     assert success is True
     run_meta = json.loads((ws / "outputs" / "run_metadata.json").read_text("utf-8"))
+    assert run_meta["extra"]["n_samples"] == 29
+    assert run_meta["extra"]["n_samples_source"] == "computed_autoscale_artifact"
     assert run_meta["extra"]["computed_selection_method"] == "computed_autoscale_artifact"
 
     import yaml
