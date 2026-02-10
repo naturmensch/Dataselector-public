@@ -12,21 +12,39 @@ ENV_NAME=${1:-.venv}
 PYTHON=${2:-python3}
 
 # Try conda-lock first (reproducible)
-if command -v mamba &> /dev/null && [ -f locks/conda-lock-linux-64.lock ]; then
+if command -v micromamba &> /dev/null && [ -f locks/conda-lock-linux-64.lock ]; then
   echo "✓ Using conda-lock (reproducible build)"
-  mamba create -n "$ENV_NAME" --file locks/conda-lock-linux-64.lock -y
-  
-  # Activate and install PyTorch CPU extras
-  eval "$(mamba shell.bash hook)"
-  mamba activate "$ENV_NAME"
-  
+  micromamba create -n "$ENV_NAME" --file locks/conda-lock-linux-64.lock -y
+
   if [ -f requirements-cpu.txt ]; then
     echo "Installing CPU-only PyTorch from requirements-cpu.txt..."
-    pip install -r requirements-cpu.txt
+    micromamba run -n "$ENV_NAME" pip install -r requirements-cpu.txt
   fi
-  
-  # Install package in editable mode
-  pip install -e .
+
+  micromamba run -n "$ENV_NAME" pip install -e .
+
+  cat <<EOF
+
+Done. Activate the environment with:
+
+  micromamba activate $ENV_NAME
+
+Then you can run project scripts like:
+
+  ./scripts/exec_in_env.sh -- python scripts/run_adaptive_pipeline.py --yes
+
+EOF
+
+elif command -v mamba &> /dev/null && [ -f locks/conda-lock-linux-64.lock ]; then
+  echo "✓ Using conda-lock (reproducible build)"
+  mamba create -n "$ENV_NAME" --file locks/conda-lock-linux-64.lock -y
+
+  if [ -f requirements-cpu.txt ]; then
+    echo "Installing CPU-only PyTorch from requirements-cpu.txt..."
+    mamba run -n "$ENV_NAME" pip install -r requirements-cpu.txt
+  fi
+
+  mamba run -n "$ENV_NAME" pip install -e .
   
   cat <<EOF
 
@@ -43,18 +61,13 @@ EOF
 elif command -v conda &> /dev/null && [ -f locks/conda-lock-linux-64.lock ]; then
   echo "✓ Using conda-lock (reproducible build)"
   conda create -n "$ENV_NAME" --file locks/conda-lock-linux-64.lock -y
-  
-  # Activate and install PyTorch CPU extras
-  eval "$(conda shell.bash hook)"
-  conda activate "$ENV_NAME"
-  
+
   if [ -f requirements-cpu.txt ]; then
     echo "Installing CPU-only PyTorch from requirements-cpu.txt..."
-    pip install -r requirements-cpu.txt
+    conda run -n "$ENV_NAME" pip install -r requirements-cpu.txt
   fi
-  
-  # Install package in editable mode
-  pip install -e .
+
+  conda run -n "$ENV_NAME" pip install -e .
   
   cat <<EOF
 

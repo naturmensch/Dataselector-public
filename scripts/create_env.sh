@@ -7,11 +7,20 @@ PY_VER=${2:-3.11}
 FORCE=false
 if [[ "${3:-}" == "--force" ]]; then FORCE=true; fi
 
-# Prefer mamba if available
+# Prefer micromamba, then mamba, then conda
 PM=conda
-if command -v mamba >/dev/null 2>&1; then PM=mamba; fi
+if command -v micromamba >/dev/null 2>&1; then
+  PM=micromamba
+elif command -v mamba >/dev/null 2>&1; then
+  PM=mamba
+fi
 
 echo "Using package manager: $PM"
+
+ACTIVATE_CMD="conda activate $ENV_NAME"
+if [ "$PM" = "micromamba" ]; then
+  ACTIVATE_CMD="micromamba activate $ENV_NAME"
+fi
 
 if [ "$FORCE" = true ]; then
   echo "Removing existing environment '$ENV_NAME' (force)"
@@ -29,7 +38,7 @@ else
   $PM install -n "$ENV_NAME" -c pytorch cpuonly pytorch torchvision -y
 fi
 
-# Install pip extras from requirements file (if present) using conda/mamba run
+# Install pip extras from requirements file (if present) using the env runner
 if [ -f requirements-cpu.txt ]; then
   echo "Installing pip extras from requirements-cpu.txt into '$ENV_NAME' (best-effort)"
   $PM run -n "$ENV_NAME" pip install -r requirements-cpu.txt || true
@@ -51,8 +60,5 @@ cat <<EOF
 
 Done. To use the environment run:
 
-  conda activate $ENV_NAME
-
-If you prefer mamba and it is not installed, consider installing it with:
-  conda install -n base -c conda-forge mamba -y
+  $ACTIVATE_CMD
 EOF

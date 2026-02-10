@@ -3,24 +3,27 @@
 To ensure reproducible and robust runs across developer machines and CI, follow these rules:
 
 - For interactive development (manually running tests or scripts):
-  - Activate the `dataselector` conda env:
+  - Activate the `dataselector` env:
     ```bash
-    conda activate dataselector
+    micromamba activate dataselector
     pytest -q
     ```
 
-- For scripts, Makefile targets, and CI: do NOT rely on users to have an activated env. Instead, use the canonical wrapper:
+- Canonical runtime invocation for scripts, Makefile targets, and CI:
+  ```bash
+  micromamba run -n dataselector -- <your command>
+  ```
+  Compatibility wrapper (optional):
   ```bash
   ./scripts/exec_in_env.sh --env dataselector -- <your command>
   ```
-  This enforces the environment, handles creation/updating, and avoids "works on my machine" problems.
 
 - Avoid `conda activate` or `source activate` inside executable scripts — they are fragile in non-interactive shells. Use `mamba run -n <env> -- <cmd>` or the wrapper instead.
 
 - Recommended Makefile pattern for commands that need the project env:
   ```makefile
   test:
-	@./scripts/exec_in_env.sh --env dataselector -- pytest -q
+	@micromamba run -n dataselector -- pytest -q
   ```
 
 - To bypass env checks for debugging only, set:

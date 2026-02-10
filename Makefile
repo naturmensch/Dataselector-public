@@ -34,11 +34,27 @@ test:
 
 env-create:
 	@echo "Creating/updating conda env '$(ENV_NAME)' from environment.yml"
-	@conda env update -n $(ENV_NAME) -f environment.yml --prune || conda env create -n $(ENV_NAME) -f environment.yml
+	@if command -v micromamba >/dev/null 2>&1; then \
+		micromamba env update -n $(ENV_NAME) -f environment.yml --prune || micromamba env create -n $(ENV_NAME) -f environment.yml; \
+	elif [ -x ./scripts/exec_in_env.sh ]; then \
+		./scripts/exec_in_env.sh --env $(ENV_NAME) --create --yes -- true; \
+	elif command -v conda >/dev/null 2>&1; then \
+		conda env update -n $(ENV_NAME) -f environment.yml --prune || conda env create -n $(ENV_NAME) -f environment.yml; \
+	else \
+		echo "No env manager found. Install micromamba or conda."; exit 2; \
+	fi
 
 env-update:
 	@echo "Updating conda env '$(ENV_NAME)' from environment.yml"
-	@conda env update -n $(ENV_NAME) -f environment.yml --prune
+	@if command -v micromamba >/dev/null 2>&1; then \
+		micromamba env update -n $(ENV_NAME) -f environment.yml --prune; \
+	elif [ -x ./scripts/exec_in_env.sh ]; then \
+		./scripts/exec_in_env.sh --env $(ENV_NAME) --update --yes -- true; \
+	elif command -v conda >/dev/null 2>&1; then \
+		conda env update -n $(ENV_NAME) -f environment.yml --prune; \
+	else \
+		echo "No env manager found. Install micromamba or conda."; exit 2; \
+	fi
 
 ensure-env: env-create
 
@@ -56,7 +72,13 @@ test-e2e-auto:
 
 test-e2e-ci:
 	@echo "(CI) Running E2E tests in conda env '$(ENV_NAME)'"
-	@conda run -n $(ENV_NAME) python -m pytest -q -m e2e
+	@if command -v micromamba >/dev/null 2>&1; then \
+		micromamba run -n $(ENV_NAME) python -m pytest -q -m e2e; \
+	elif [ -x ./scripts/exec_in_env.sh ]; then \
+		./scripts/exec_in_env.sh --env $(ENV_NAME) -- python -m pytest -q -m e2e; \
+	else \
+		conda run -n $(ENV_NAME) python -m pytest -q -m e2e; \
+	fi
 
 test-e2e:
 	@echo "Running e2e smoke tests in current interpreter"

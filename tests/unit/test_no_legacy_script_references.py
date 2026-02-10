@@ -15,7 +15,6 @@ CODE_PATTERNS = [
 ]
 
 CI_PATTERNS = [
-    re.compile(r"exec_in_env\.sh"),
     re.compile(r"\bpython(?:3)?\s+scripts/[^\s]+\.py\b"),
     re.compile(r"\bpython(?:3)?\s+-m\s+scripts(?:\.|\b)"),
 ]
@@ -35,6 +34,17 @@ LEGACY_SPATIAL_SCHEMA_PATTERNS = [
     ),
     re.compile(r"\[\s*['\"]N['\"]\s*,\s*['\"]left['\"]\s*\]"),
     re.compile(r"['\"]N['\"]\s*\)\s*and\s*\(\s*['\"]left['\"]"),
+]
+
+# Transitional wrappers may still import internal modules while migration
+# to CLI-first subcommands is being completed.
+TRANSITIONAL_WRAPPER_ALLOWLIST_VERSION = "2026-02-10"
+TRANSITIONAL_WRAPPER_ALLOWLIST: set[str] = set()
+INTERNAL_DOMAIN_IMPORT_PATTERNS = [
+    re.compile(r"^\s*from\s+dataselector\.(pipeline|selection|features|workflows)\b"),
+    re.compile(
+        r"^\s*import\s+dataselector\.(pipeline|selection|features|workflows)\b"
+    ),
 ]
 
 
@@ -109,4 +119,20 @@ def test_no_hardcoded_legacy_spatial_schema_in_production_code():
     assert not offenders, (
         "Found hardcoded legacy spatial schema expectations (N/left) "
         "in production code:\n" + "\n".join(offenders)
+    )
+
+
+def test_wrapper_scripts_do_not_duplicate_domain_logic():
+    """Keep scripts thin; only explicit transitional wrappers may import domain internals."""
+    offenders: list[str] = []
+    scripts_dir = ROOT / "scripts"
+    for script in sorted(scripts_dir.glob("*.py")):
+        rel = str(script.relative_to(ROOT))
+        if rel in TRANSITIONAL_WRAPPER_ALLOWLIST:
+            continue
+        offenders.extend(_scan_file(script, INTERNAL_DOMAIN_IMPORT_PATTERNS))
+
+    assert not offenders, (
+        "Found non-allowlisted scripts importing domain internals "
+        "(wrapper contract violation):\n" + "\n".join(offenders)
     )

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import shutil
 from pathlib import Path
 from typing import Iterable, List, Set
 
@@ -197,7 +198,7 @@ def check_geo() -> int:
     if failures:
         print("\nMissing geo dependencies: ", ", ".join(failures))
         print(
-            "Install with conda: conda install -n dataselector -c conda-forge geopandas pyproj shapely fiona rtree rasterio"
+            "Install with micromamba: micromamba install -n dataselector -c conda-forge geopandas pyproj shapely fiona rtree rasterio"
         )
         return 2
     else:
@@ -225,12 +226,12 @@ DEFAULT_SCAN_PATHS = [
 ENV_PATTERNS = [
     (
         re.compile(r"\.\/scripts\/exec_in_env\.sh"),
-        "uses deprecated exec_in_env wrapper",
-        "bad",
+        "uses compatibility exec_in_env wrapper",
+        "good",
     ),
     (
-        re.compile(r"(conda|mamba)\s+run\s+-n\s+['\"]?(?P<env>\w+)"),
-        "uses conda/mamba run -n <env>",
+        re.compile(r"(micromamba|conda|mamba)\s+run\s+-n\s+['\"]?(?P<env>\w+)"),
+        "uses micromamba/conda/mamba run -n <env>",
         "good_if_env_matches",
     ),
     (
@@ -257,8 +258,20 @@ ENV_PATTERNS = [
     (re.compile(r"pytest\b"), "invokes pytest directly", "suspicious"),
     (
         re.compile(r"exec_in_env\.sh\s+--env\s+dataselector"),
-        "explicitly runs with dataselector env",
+        "explicitly runs with dataselector env via compatibility wrapper",
         "good",
+    ),
+]
+
+# ===== Script wrapper governance =====
+
+TRANSITIONAL_WRAPPER_ALLOWLIST_VERSION = "2026-02-10"
+TRANSITIONAL_WRAPPER_ALLOWLIST: set[str] = set()
+
+INTERNAL_DOMAIN_IMPORT_PATTERNS = [
+    re.compile(r"^\s*from\s+dataselector\.(pipeline|selection|features|workflows)\b"),
+    re.compile(
+        r"^\s*import\s+dataselector\.(pipeline|selection|features|workflows)\b"
     ),
 ]
 
@@ -280,13 +293,17 @@ def scan_file_env(path: Path):
                 continue
             if re.search(r"\b(py)?test\b", ln) or re.search(r"\bpython\b", ln):
                 uses_wrapper = "exec_in_env.sh" in ln
-                uses_explicit_env = "conda run" in ln or "mamba run" in ln
+                uses_explicit_env = (
+                    "micromamba run" in ln
+                    or "conda run" in ln
+                    or "mamba run" in ln
+                )
                 findings.append(
                     (
                         "Makefile-line",
                         "Makefile command",
                         (
-                            "bad"
+                            "good"
                             if uses_wrapper
                             else ("good" if uses_explicit_env else "suspicious")
                         ),
@@ -344,8 +361,8 @@ def check_env_usage(paths=None) -> int:
 
     Scans the repository (scripts/, Makefile, .github/workflows/, top-level shell scripts)
     and reports:
-    - uses of exec_in_env.sh
-    - uses of conda/mamba run/activate
+    - uses of exec_in_env.sh compatibility wrapper
+    - uses of micromamba/conda/mamba run/activate
     - bare python invocations in Makefile or scripts
     - shebangs pointing to python
     - suggestions to wrap calls with exec_in_env.sh
@@ -378,7 +395,7 @@ def check_env_usage(paths=None) -> int:
         print(f"  suspicious/bad occurrences: {bad}")
         print("\nRecommendations:")
         print(
-            "- Prefer 'python -m dataselector ...' plus explicit 'conda run -n dataselector -- <cmd>' or 'mamba run -n dataselector -- <cmd>' in CI."
+            "- Prefer CLI-first commands ('python -m dataselector ...') executed via 'micromamba run -n dataselector <cmd>' (or exec_in_env compatibility wrapper)."
         )
         print(
             "- Avoid 'conda activate' or 'source activate' inside scripts; prefer explicit runner invocation."
@@ -388,3 +405,138 @@ def check_env_usage(paths=None) -> int:
         )
 
     return 2 if bad else 0
+
+
+def _scan_file_lines_for_patterns(path: Path, patterns: list[re.Pattern]) -> list[str]:
+    text = path.read_text(encoding="utf-8", errors="ignore")
+    hits: list[str] = []
+    for lineno, line in enumerate(text.splitlines(), start=1):
+        for pat in patterns:
+            if pat.search(line):
+                hits.append(f"{path.relative_to(ROOT)}:{lineno}: {line.strip()}")
+                break
+    return hits
+
+
+@cli_command(
+    "check-script-wrappers",
+    help="Fail if non-allowlisted top-level scripts import scientific core modules",
+    args={
+        "strict": {
+            "type": bool,
+            "action": "store_true",
+            "help": "Also fail on transitional allowlist entries (for migration closeout)",
+        },
+    },
+)
+def check_script_wrappers(strict: bool = False) -> int:
+    scripts_dir = ROOT / "scripts"
+    if not scripts_dir.exists():
+        print("scripts/ directory not found; nothing to check.")
+        return 0
+
+    offenders: list[str] = []
+    allowlisted_hits: list[str] = []
+
+    for script in sorted(scripts_dir.glob("*.py")):
+        rel = str(script.relative_to(ROOT))
+        hits = _scan_file_lines_for_patterns(script, INTERNAL_DOMAIN_IMPORT_PATTERNS)
+        if not hits:
+            continue
+        if rel in TRANSITIONAL_WRAPPER_ALLOWLIST:
+            allowlisted_hits.extend(hits)
+            continue
+        offenders.extend(hits)
+
+    if strict and allowlisted_hits:
+        offenders.extend(allowlisted_hits)
+
+    if offenders:
+        print("ERROR: Script wrapper governance violation(s) detected:")
+        for item in offenders:
+            print(f"  {item}")
+        print(
+            "\nPolicy: scripts/* may orchestrate/delegate but scientific core logic must live in dataselector/*."
+        )
+        if not strict:
+            print(
+                f"Transitional allowlist version {TRANSITIONAL_WRAPPER_ALLOWLIST_VERSION}: "
+                + ", ".join(sorted(TRANSITIONAL_WRAPPER_ALLOWLIST))
+            )
+        return 2
+
+    print("Script wrapper governance check passed.")
+    if allowlisted_hits:
+        print(
+            "Note: transitional allowlist still active ({} entries).".format(
+                len(TRANSITIONAL_WRAPPER_ALLOWLIST)
+            )
+        )
+    return 0
+
+
+@cli_command(
+    "check-runtime-readiness",
+    help="Validate canonical runtime readiness (micromamba-first policy)",
+    args={
+        "env": {
+            "type": str,
+            "default": "dataselector",
+            "help": "Expected micromamba environment name",
+        },
+        "allow_compat": {
+            "type": bool,
+            "action": "store_true",
+            "help": "Allow compatibility fallback (exec_in_env/conda) when micromamba is missing",
+        },
+    },
+)
+def check_runtime_readiness(env: str = "dataselector", allow_compat: bool = False) -> int:
+    micromamba = shutil.which("micromamba")
+    if micromamba:
+        probes = [
+            ["micromamba", "run", "-n", env, "python", "-c", "import sys"],
+            ["micromamba", "run", "-n", env, "--", "python", "-c", "import sys"],
+        ]
+        for cmd in probes:
+            probe = subprocess.run(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+            if probe.returncode == 0:
+                print(f"OK: micromamba runtime ready at {micromamba} (env={env})")
+                return 0
+
+        if allow_compat:
+            print(
+                "WARN: micromamba found but env '{}' is not runnable; compatibility mode allowed.".format(
+                    env
+                )
+            )
+            return 0
+
+        print(
+            "ERROR: micromamba found at {}, but env '{}' is not runnable.\n"
+            "Create/update it with one of:\n"
+            "  micromamba create -n {} -f environment.yml\n"
+            "  micromamba env update -n {} -f environment.yml --prune".format(
+                micromamba, env, env, env
+            )
+        )
+        return 2
+
+    if allow_compat:
+        print(
+            "WARN: micromamba not found, but compatibility mode allowed "
+            "(exec_in_env.sh / conda fallbacks)."
+        )
+        return 0
+
+    print(
+        "ERROR: micromamba not found. Canonical runtime policy requires:\n"
+        "  micromamba run -n dataselector <command>\n"
+        "Install micromamba or run with --allow-compat for transitional checks."
+    )
+    return 2
