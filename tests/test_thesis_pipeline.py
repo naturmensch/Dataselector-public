@@ -1,8 +1,45 @@
 """Tests for thesis pipeline workflow."""
 
 import json
+from pathlib import Path
 
 import pytest
+
+
+def _minimal_resolved_config(
+    *,
+    n_samples: int | None,
+    min_distance_km: float = 28.5,
+    optuna_sampler: str = "tpe",
+    exploration_sampler: str = "lhs",
+) -> str:
+    n_samples_literal = "null" if n_samples is None else str(int(n_samples))
+    return (
+        "feature_extraction:\n"
+        "  model: dinov2\n"
+        "  batch_size: 8\n"
+        "  crop_size: [2048, 2048]\n"
+        "  device: auto\n"
+        "clustering:\n"
+        "  n_clusters: 8\n"
+        "  umap_components: 2\n"
+        "  umap_n_neighbors: 15\n"
+        "  umap_random_state: 42\n"
+        "  umap_n_jobs: 1\n"
+        "selection:\n"
+        f"  n_samples: {n_samples_literal}\n"
+        f"  min_distance_km: {min_distance_km}\n"
+        "  metric: euclidean\n"
+        "  alpha_visual: 0.4\n"
+        "  beta_spatial: 0.3\n"
+        "  gamma_temporal: 0.3\n"
+        "  spatial_constraint: true\n"
+        "  use_multi_criteria: true\n"
+        "  use_constraint_integration: false\n"
+        "  random_state: 42\n"
+        f"  optuna_sampler: {optuna_sampler}\n"
+        f"  exploration_sampler: {exploration_sampler}\n"
+    )
 
 
 def test_thesis_pipeline_importable():
@@ -77,7 +114,7 @@ def test_run_thesis_pipeline_fails_without_resolvable_n_samples(tmp_path, monkey
         encoding="utf-8",
     )
     (ws / "config" / "pipeline_config.yaml").write_text(
-        "selection:\n  n_samples: null\n",
+        _minimal_resolved_config(n_samples=None),
         encoding="utf-8",
     )
     monkeypatch.chdir(ws)
@@ -109,7 +146,7 @@ def test_run_thesis_pipeline_passes_metadata_path_to_stages(tmp_path, monkeypatc
         encoding="utf-8",
     )
     (ws / "config" / "pipeline_config.yaml").write_text(
-        "selection:\n  n_samples: 34\n  min_distance_km: 28.5\n",
+        _minimal_resolved_config(n_samples=34),
         encoding="utf-8",
     )
     monkeypatch.chdir(ws)
@@ -172,6 +209,39 @@ def test_run_thesis_pipeline_phase4_single_run_report(tmp_path):
     assert (tmp_path / "outputs" / "THESIS_PIPELINE_REPORT.md").exists()
 
 
+def test_run_thesis_pipeline_fails_without_resolvable_optuna_sampler(
+    tmp_path, monkeypatch
+):
+    """Canonical thesis path must not silently fall back to implicit sampler defaults."""
+    from dataselector.workflows import thesis_pipeline as mod
+
+    ws = tmp_path
+    (ws / "data").mkdir(parents=True, exist_ok=True)
+    (ws / "config").mkdir(parents=True, exist_ok=True)
+    (ws / "data" / "new_all_tiles.csv").write_text(
+        "ul_x,ul_y,lr_x,lr_y,year\n1,2,3,4,1900\n",
+        encoding="utf-8",
+    )
+    # Deliberately omit selection.optuna_sampler and sampler artifacts.
+    (ws / "config" / "pipeline_config.yaml").write_text(
+        _minimal_resolved_config(n_samples=24).replace("  optuna_sampler: tpe\n", ""),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(ws)
+
+    with pytest.raises(ValueError, match="Optuna sampler unresolved"):
+        mod.run_thesis_pipeline(
+            n_lhs=5,
+            n_trials=2,
+            skip_exploration=True,
+            skip_optimization=False,
+            skip_validation=True,
+            dry_run=False,
+            output_dir=ws / "outputs",
+            seed=11,
+        )
+
+
 def test_run_thesis_pipeline_preselection_forwarding_and_dedup(tmp_path, monkeypatch):
     """Hamburg shortcut and preselection must be deduped and forwarded end-to-end."""
     from dataselector.workflows import thesis_pipeline as mod
@@ -184,7 +254,7 @@ def test_run_thesis_pipeline_preselection_forwarding_and_dedup(tmp_path, monkeyp
         encoding="utf-8",
     )
     (ws / "config" / "pipeline_config.yaml").write_text(
-        "selection:\n  n_samples: 34\n  min_distance_km: 28.5\n",
+        _minimal_resolved_config(n_samples=34),
         encoding="utf-8",
     )
     monkeypatch.chdir(ws)
@@ -260,6 +330,58 @@ def test_run_thesis_pipeline_preselection_forwarding_and_dedup(tmp_path, monkeyp
     assert run_meta["extra"]["n_samples"] == 37
     assert run_meta["extra"]["validation_seeds"] == [42, 99]
     assert run_meta["extra"]["validation_min_distances"] == [28.5, 35.0]
+
+
+def test_run_thesis_pipeline_writes_central_parameter_provenance(tmp_path, monkeypatch):
+    """Central thesis path must snapshot critical parameters + provenance pre-run."""
+    from dataselector.workflows import thesis_pipeline as mod
+
+    ws = tmp_path
+    (ws / "data").mkdir(parents=True, exist_ok=True)
+    (ws / "config").mkdir(parents=True, exist_ok=True)
+    (ws / "data" / "new_all_tiles.csv").write_text(
+        "ul_x,ul_y,lr_x,lr_y,year\n1,2,3,4,1900\n",
+        encoding="utf-8",
+    )
+    (ws / "config" / "pipeline_config.yaml").write_text(
+        _minimal_resolved_config(n_samples=24),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(ws)
+    monkeypatch.setattr(
+        "dataselector.workflows.generate_reports.generate_thesis_final_report",
+        lambda **_kwargs: None,
+    )
+
+    success = mod.run_thesis_pipeline(
+        n_lhs=5,
+        n_trials=2,
+        skip_exploration=True,
+        skip_optimization=True,
+        skip_validation=True,
+        dry_run=True,
+        output_dir=ws / "outputs",
+        seed=11,
+        snapshot_config=True,
+    )
+
+    assert success is True
+    run_meta = json.loads((ws / "outputs" / "run_metadata.json").read_text("utf-8"))
+    snapshot_path = run_meta["extra"]["resolved_snapshot_path"]
+    assert snapshot_path is not None
+
+    assert run_meta["extra"]["resolved_snapshot_sha256"] is not None
+
+    import yaml
+
+    resolved = yaml.safe_load(Path(snapshot_path).read_text(encoding="utf-8"))
+    params = resolved["parameters"]
+    assert "selection" in params and "_provenance" in params["selection"]
+    assert "clustering" in params and "_provenance" in params["clustering"]
+    assert "feature_extraction" in params and "_provenance" in params["feature_extraction"]
+    assert "alpha_visual" in params["selection"]["_provenance"]
+    assert "n_clusters" in params["clustering"]["_provenance"]
+    assert "batch_size" in params["feature_extraction"]["_provenance"]
 
 
 @pytest.mark.skipif(

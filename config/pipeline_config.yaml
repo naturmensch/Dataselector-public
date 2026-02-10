@@ -70,6 +70,6 @@ selection:
 
 # Output
 output:
-  dir: "outputs"
+  dir: "outputs/runs"
   prefix: "kdr100_selection"
   create_visualizations: true

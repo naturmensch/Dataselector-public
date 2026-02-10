@@ -1,0 +1,70 @@
+# HISTORICAL CONFIG (NON-DEFAULT)
+# This file is reference-only. Active default is config/pipeline_config.yaml.
+
+# KDR100 Datenselektion - Pipeline Konfiguration für Best Trial #70
+
+# Datenpfade
+data:
+  metadata_path: "data/new_all_tiles.csv"
+  csv_path: "data/new_all_tiles.csv"
+  image_dir: "data/images"
+
+# Global feature flags
+features:
+  geo: true
+
+# Feature Extraction (Deep Learning)
+feature_extraction:
+  model: "dinov2"
+  input_size: 392
+  resnet_input_size: 224
+  batch_size: 8
+  crop_size: [2048, 2048]
+  device: "auto"
+
+# Clustering (UMAP + K-Means)
+clustering:
+  n_clusters: 8
+  umap_components: 2
+  umap_n_neighbors: 15
+  umap_min_dist: 0.1
+  umap_metric: "cosine"
+  umap_random_state: 2026
+  umap_n_jobs: 1
+
+# Diversity Selection (Multi-Criteria Facility Location)
+# Best Trial #70 from Optuna CMA-ES optimization
+selection:
+  n_samples: 24
+  metric: "euclidean"
+  
+  # Best Trial #70 weights (from optuna_results.csv trial #70)
+  alpha_visual: 0.5162819328663889    # Visual diversity
+  beta_spatial: 0.23118041705370455   # Spatial diversity
+  gamma_temporal: 0.2525376400799165  # Temporal diversity
+  
+  pre_selected_names: null
+  
+  # Spatial constraint
+  spatial_constraint: true
+  min_distance_km: 28.5
+  
+  # Method selection
+  use_multi_criteria: true
+  use_constraint_integration: false
+  
+  # Seeds for reproducible validation experiments
+  random_state: 42
+  validation_seeds: [42, 43, 44, 45, 46]
+
+# Output
+output:
+  dir: "outputs/runs"
+  prefix: "kdr100_selection"
+  create_visualizations: true
+
+# Validation controls (CPU-friendly caps)
+# These settings are for validation scripts (Phase 2-3)
+# They cap computationally expensive operations on CPU
+validation:
+  umap_max_samples: 2000

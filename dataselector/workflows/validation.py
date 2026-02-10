@@ -19,6 +19,12 @@ def validate_pareto_candidates(
     min_distances: List[float] = None,
     seeds: List[int] = None,
     n_samples: int | None = None,
+    n_clusters: int | None = None,
+    batch_size: int | None = None,
+    umap_n_components: int | None = None,
+    umap_n_neighbors: int | None = None,
+    umap_random_state: int | None = None,
+    umap_n_jobs: int | None = None,
     output_dir: str | Path = None,
     feature_cache_dir: str | Path | None = None,
     pre_selected_names: list[str] | None = None,
@@ -35,6 +41,12 @@ def validate_pareto_candidates(
         min_distances: List of min_distance_km values to test (default: [25, 35, 50])
         seeds: Random seeds for bootstrapping (default: [42, 43, 44, 45, 46])
         n_samples: Target sample size (resolved via explicit/config/autoscale)
+        n_clusters: Clustering count for validation embeddings (default: 8)
+        batch_size: Feature extraction batch size (default: 16)
+        umap_n_components: UMAP component count (default: 2)
+        umap_n_neighbors: UMAP neighbors (default: adaptive behavior in clustering)
+        umap_random_state: UMAP random state (default: 42)
+        umap_n_jobs: UMAP parallel jobs when non-deterministic (default: 1)
         output_dir: Output directory for results (default: outputs/validation/)
         feature_cache_dir: Optional shared feature-cache directory across runs
         pre_selected_names: Optional pre-selected tile names enforced in selection
@@ -66,6 +78,16 @@ def validate_pareto_candidates(
         min_distances = [25, 35, 50]
     if seeds is None:
         seeds = [42, 43, 44, 45, 46]
+    if n_clusters is None:
+        n_clusters = 8
+    if batch_size is None:
+        batch_size = 16
+    if umap_n_components is None:
+        umap_n_components = 2
+    if umap_random_state is None:
+        umap_random_state = 42
+    if umap_n_jobs is None:
+        umap_n_jobs = 1
 
     # Setup paths
     pareto_csv = Path(pareto_csv)
@@ -112,13 +134,20 @@ def validate_pareto_candidates(
     features = load_or_extract_features(
         cache_dir,
         csv_meta=str(metadata_path),
-        batch_size=16,
+        batch_size=int(batch_size),
         cache=True,
         enforce_canonical=True,
     )
 
     # Compute embeddings and cluster labels (consistent with main pipeline)
-    clustering = ClusteringPipeline(n_clusters=8)
+    clustering = ClusteringPipeline(
+        n_clusters=int(n_clusters),
+        umap_n_components=int(umap_n_components),
+        random_state=int(seeds[0]) if len(seeds) > 0 else 42,
+        umap_random_state=int(umap_random_state),
+        umap_n_jobs=int(umap_n_jobs),
+        umap_n_neighbors=int(umap_n_neighbors) if umap_n_neighbors is not None else None,
+    )
 
     try:
         embeddings_2d, cluster_labels = clustering.fit_transform(features)

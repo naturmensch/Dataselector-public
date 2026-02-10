@@ -57,6 +57,8 @@ def run_exploration(
     seed: int = 42,
     metadata_path: Path | str | None = None,
     min_distance_km: float | None = None,
+    n_clusters: int | None = None,
+    batch_size: int | None = None,
     pre_names: list | None = None,
     pre_indices: list | None = None,
     output_dir: Path | None = None,
@@ -80,6 +82,11 @@ def run_exploration(
     min_distance_km : float | None
         Explicit min distance policy (km). If None, load from pipeline config and
         only fall back to data-driven computation when config has no value.
+    n_clusters : int | None
+        Clustering count used by ExperimentRunner sweep. If None, resolve from config.
+    batch_size : int | None
+        Feature extraction batch size used by ExperimentRunner sweep. If None, resolve
+        from config.
     pre_names : list | None
         Pre-selected tile names
     pre_indices : list | None
@@ -98,6 +105,7 @@ def run_exploration(
 
     # Pipeline integration
     import os
+    import yaml
 
     em = None
     exp_dir = os.environ.get("EXPERIMENT_RUN_DIR")
@@ -160,6 +168,32 @@ def run_exploration(
     if min_distance is None:
         min_distance = compute_min_distance_km(str(metadata_path))
 
+    cfg: dict = {}
+    cfg_path = ROOT / "config" / "pipeline_config.yaml"
+    if cfg_path.exists():
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f) or {}
+
+    if n_clusters is None:
+        cfg_clusters = cfg.get("clustering", {}).get("n_clusters")
+        if cfg_clusters is None:
+            raise ValueError(
+                "n_clusters unresolved for exploration. Set explicit n_clusters or "
+                "provide clustering.n_clusters in config/pipeline_config.yaml."
+            )
+        n_clusters = int(cfg_clusters)
+
+    if batch_size is None:
+        cfg_batch = cfg.get("feature_extraction", {}).get("batch_size")
+        if cfg_batch is None:
+            cfg_batch = cfg.get("data", {}).get("batch_size")
+        if cfg_batch is None:
+            raise ValueError(
+                "batch_size unresolved for exploration. Set explicit batch_size or "
+                "provide feature_extraction.batch_size in config/pipeline_config.yaml."
+            )
+        batch_size = int(cfg_batch)
+
     # Resolve selection target size (separate from LHS point count).
     selection_target, selection_target_source = resolve_selection_n_samples(
         selection_n_samples,
@@ -187,6 +221,8 @@ def run_exploration(
     )
     print(f"Selection target: {selection_target} samples ({selection_target_source})")
     print(f"Min Distance Constraint: {min_distance} km ({min_distance_source})")
+    print(f"n_clusters: {n_clusters}")
+    print(f"batch_size: {batch_size}")
     print(f"Seed: {seed}")
     print("=" * 70 + "\n")
 
@@ -195,8 +231,8 @@ def run_exploration(
         csv_meta=str(metadata_path),
         n_samples=selection_target,
         weight_combinations=weight_combinations,
-        n_clusters=8,
-        batch_size=16,
+        n_clusters=int(n_clusters),
+        batch_size=int(batch_size),
         min_distance_km=min_distance,
         patience=None,
         pre_selected=pre_indices,
