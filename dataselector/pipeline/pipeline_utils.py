@@ -115,8 +115,8 @@ def compute_min_distance_km(
     Example
     -------
     >>> min_dist = compute_min_distance_km("data/new_all_tiles.csv", strategy="median_nn")
-    >>> print(f"Optimal min_distance: {min_dist} km")
-    Optimal min_distance: 28.5 km
+    >>> print(f"Computed min_distance: {min_dist} km")
+    Computed min_distance: 45.0 km  # current canonical dataset snapshot (2026-02-09)
     """
     p = Path(metadata_csv)
     if not p.exists():
