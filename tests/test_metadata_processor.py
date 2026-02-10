@@ -41,6 +41,22 @@ def test_extract_year_and_temporal(tmp_path):
     assert list(proc.df["year"]) == [1901, 1950]
 
 
+def test_extract_year_handles_nan_values(tmp_path):
+    csv = """File,ul_x,ul_y,lr_x,lr_y\nKDR_001_Someplace_1901.png,13.3,52.1,13.5,51.9\nKDR_002_Other_1950.png,13.4,52.2,13.6,52.0\n"""
+    path = write_csv(tmp_path, csv)
+    proc = MetadataProcessor(path)
+    proc.load_csv()
+
+    assert proc.extract_year(float("nan")) is None
+    assert proc.extract_year(None) is None
+
+    # Regression guard: missing/NaN longName entries must not crash temporal metadata extraction.
+    proc.df.loc[0, "longName"] = float("nan")
+    proc.add_temporal_metadata()
+    assert proc.df["year"].isna().iloc[0]
+    assert proc.df["year"].iloc[1] == 1950
+
+
 def test_spatial_distance_and_filter(tmp_path):
     csv = """File,ul_x,ul_y,lr_x,lr_y\nA.png,-0.1,0.1,0.1,-0.1\nB.png,0.9,0.1,1.1,-0.1\nC.png,49.9,50.1,50.1,49.9\n"""
     path = write_csv(tmp_path, csv)
