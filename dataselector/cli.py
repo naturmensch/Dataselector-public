@@ -32,6 +32,8 @@ import dataselector.workflows.optuna_autoscale
 import dataselector.workflows.optuna_import
 import dataselector.workflows.optuna_optimize
 import dataselector.workflows.sampler_suite
+import dataselector.workflows.scientific_tools
+import dataselector.workflows.script_convergence_tools
 import dataselector.workflows.thesis_pipeline
 import dataselector.workflows.thesis_sampler_suite
 import dataselector.workflows.tune_weights
