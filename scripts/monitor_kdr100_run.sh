@@ -4,7 +4,7 @@
 
 set -euo pipefail
 
-RUN_LOG="outputs/experiments/run_adaptive_20260116T214718Z.session.log"
+RUN_LOG="outputs/runs/run_adaptive_20260116T214718Z.session.log"
 RESULTS_DIR="outputs/runs/20260116_T214724_adaptive_full/results"
 
 if [[ ! -f "$RUN_LOG" ]]; then

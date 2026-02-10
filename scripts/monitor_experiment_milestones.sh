@@ -12,9 +12,9 @@ while [[ $# -gt 0 ]]; do
 done
 if [[ -z "$LOG" ]]; then
   # pick latest session.log
-  LOG=$(ls -1t outputs/experiments/*.session.log 2>/dev/null | head -n1 || true)
+  LOG=$(ls -1t outputs/runs/*.session.log 2>/dev/null | head -n1 || true)
   if [[ -z "$LOG" ]]; then
-    echo "No session log found in outputs/experiments/" >&2; exit 1
+    echo "No session log found in outputs/runs/" >&2; exit 1
   fi
 fi
 MILESTONE_LOG="${LOG%.session.log}.milestones.log"

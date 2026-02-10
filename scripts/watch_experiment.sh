@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Simple watcher to tail all .log files for a given run directory
 # Features:
-#  - If no run_dir provided, picks the most recent outputs/experiments/run_*
+#  - If no run_dir provided, picks the most recent outputs/runs/run_*
 #  - Optional --filter <regex> to only show matching lines (live)
 #  - Optional --show-proc to attempt showing related PID/CPU/MEM (no extra deps)
 # Usage:
@@ -19,7 +19,7 @@ usage() {
   cat <<EOF
 Usage: $0 [run_dir] [--filter '<regex>'] [--show-proc] [--lines N]
 
-If run_dir is omitted the latest directory matching 'outputs/experiments/run_*' is used.
+If run_dir is omitted the latest directory matching 'outputs/runs/run_*' is used.
 --filter : live grep regex (use quotes, e.g. --filter 'FAILED|Traceback')
 --show-proc : attempt to show PID/CPU/MEM for related processes (uses pgrep/ps, no new deps)
 --lines N : how many lines to show initially (default: ${TAIL_LINES})
@@ -47,9 +47,9 @@ done
 
 # Determine run dir
 if [ ${#positional[@]} -eq 0 ]; then
-  RUN_DIR=$(ls -td outputs/experiments/run_* 2>/dev/null | head -n1 || true)
+  RUN_DIR=$(ls -td outputs/runs/run_* 2>/dev/null | head -n1 || true)
   if [ -z "$RUN_DIR" ]; then
-    echo "No run directories found under outputs/experiments/"
+    echo "No run directories found under outputs/runs/"
     exit 1
   fi
 else

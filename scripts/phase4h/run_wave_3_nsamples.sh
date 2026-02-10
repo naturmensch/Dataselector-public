@@ -29,7 +29,7 @@ SEEDS=(${N_SAMPLES_SEEDS:-42 43 44 45 46})
 
   for n in "${CANDIDATES[@]}"; do
     echo "[${WAVE}] evaluating n_samples=${n}"
-    "${PYTHON_BIN}" scripts/compare_min_distance_policies.py \
+    "${PYTHON_BIN}" -m dataselector compare-min-distance-policies \
       --metadata-path data/new_all_tiles.csv \
       --distances "${DISTANCE}" \
       --seeds "${SEEDS[@]}" \

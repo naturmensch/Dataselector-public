@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LOG_OPTUNA=$(ls -1t outputs/experiments/optuna_seeded*.log 2>/dev/null | head -n1 || true)
+LOG_OPTUNA=$(ls -1t outputs/runs/optuna_seeded*.log 2>/dev/null | head -n1 || true)
 if [[ -z "$LOG_OPTUNA" ]]; then
   echo "No optuna log found"; exit 2
 fi

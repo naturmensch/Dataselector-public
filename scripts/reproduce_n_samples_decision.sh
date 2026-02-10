@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PYTHON_BIN="${PYTHON_BIN:-/opt/miniconda3/envs/dataselector/bin/python}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ENV_NAME="${DATASELECTOR_ENV_NAME:-dataselector}"
+PYTHON_BIN="${PYTHON_BIN:-python}"
+PY_CMD=("${PYTHON_BIN}")
+if command -v micromamba >/dev/null 2>&1; then
+  PY_CMD=(micromamba run -n "${ENV_NAME}" -- python)
+elif [ -x "${ROOT}/scripts/exec_in_env.sh" ]; then
+  PY_CMD=("${ROOT}/scripts/exec_in_env.sh" --env "${ENV_NAME}" -- python)
+fi
 DISTANCE="${DISTANCE:-28.5}"
 SEEDS=(${SEEDS:-42 43 44 45 46})
 CANDIDATES=(${CANDIDATES:-24 28 32 34 40})
 BASE_OUT="${ROOT}/reports_2026-02-09/n_samples"
 
-echo "[reproduce-n-samples] python=${PYTHON_BIN}"
+echo "[reproduce-n-samples] python=${PY_CMD[*]}"
 echo "[reproduce-n-samples] distance=${DISTANCE}"
 echo "[reproduce-n-samples] seeds=${SEEDS[*]}"
 echo "[reproduce-n-samples] candidates=${CANDIDATES[*]}"
@@ -18,7 +25,7 @@ for n in "${CANDIDATES[@]}"; do
   OUT_DIR="${BASE_OUT}/n_${n}"
   mkdir -p "${OUT_DIR}"
   echo "[reproduce-n-samples] n=${n} -> ${OUT_DIR}"
-  "${PYTHON_BIN}" scripts/compare_min_distance_policies.py \
+  "${PY_CMD[@]}" -m dataselector compare-min-distance-policies \
     --metadata-path data/new_all_tiles.csv \
     --distances "${DISTANCE}" \
     --seeds "${SEEDS[@]}" \
@@ -27,4 +34,3 @@ for n in "${CANDIDATES[@]}"; do
 done
 
 echo "[reproduce-n-samples] done"
-

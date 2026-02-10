@@ -39,16 +39,25 @@ scripts/phase4h/run_all.sh --force-wave wave2_distance
 
 ## Runtime
 
-The runner uses:
+Run Phase4H through the env wrapper using `DATASELECTOR_ENV_NAME` (defaults to `dataselector`):
 
 ```bash
-/opt/miniconda3/envs/dataselector/bin/python
+scripts/exec_in_env.sh --env "${DATASELECTOR_ENV_NAME:-dataselector}" -- \
+   scripts/phase4h/run_all.sh
 ```
 
-Override with:
+Resume from a wave with the same launcher:
 
 ```bash
-PYTHON_BIN=/path/to/python scripts/phase4h/run_all.sh
+scripts/exec_in_env.sh --env "${DATASELECTOR_ENV_NAME:-dataselector}" -- \
+   scripts/phase4h/run_all.sh --resume-from wave2_distance
+```
+
+Create the env on first run if needed:
+
+```bash
+scripts/exec_in_env.sh --env "${DATASELECTOR_ENV_NAME:-dataselector}" --create --yes -- \
+   scripts/phase4h/run_all.sh
 ```
 
 ## Manual Black Step

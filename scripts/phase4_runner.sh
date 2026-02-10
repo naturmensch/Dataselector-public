@@ -3,7 +3,13 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-PYBIN="/opt/miniconda3/envs/dataselector/bin/python"
+ENV_NAME="${DATASELECTOR_ENV_NAME:-dataselector}"
+RUNNER=()
+if command -v micromamba >/dev/null 2>&1; then
+  RUNNER=(micromamba run -n "${ENV_NAME}" --)
+elif [ -x "${REPO_ROOT}/scripts/exec_in_env.sh" ]; then
+  RUNNER=("${REPO_ROOT}/scripts/exec_in_env.sh" --env "${ENV_NAME}" --)
+fi
 RUNNER_NAME="$(basename "$0")"
 
 MODE="dry-run"
@@ -55,6 +61,14 @@ log() {
 die() {
   printf '[phase4-runner][error] %s\n' "$*" >&2
   exit 1
+}
+
+run_in_env() {
+  if [[ ${#RUNNER[@]} -gt 0 ]]; then
+    "${RUNNER[@]}" "$@"
+  else
+    "$@"
+  fi
 }
 
 parse_args() {
@@ -111,7 +125,14 @@ cmd_preflight() {
   gh auth status >/dev/null
 
   log "Checking authoritative python env"
-  [[ -x "${PYBIN}" ]] || die "Missing authoritative python: ${PYBIN}"
+  if [[ ${#RUNNER[@]} -gt 0 ]]; then
+    run_in_env python - <<'PY'
+import sys
+print(sys.executable)
+PY
+  else
+    command -v python >/dev/null 2>&1 || die "Missing python in PATH"
+  fi
 
   log "Checking clean tracked tree"
   git diff --quiet || die "Tracked unstaged changes present. Commit/stash before running."
@@ -161,7 +182,7 @@ cmd_collect_stability() {
     raw="$(gh run list --workflow "${wf}" --limit "${LIMIT}" --json conclusion,status,headBranch,createdAt)"
     printf '{"workflow":%q,"runs":%s}\n' "${wf}" "${raw}" >>"${report_json}"
 
-    out="$("${PYBIN}" - <<'PY' "${raw}"
+    out="$(run_in_env python - <<'PY' "${raw}"
 import json
 import sys
 
@@ -212,12 +233,12 @@ cmd_verify_safety() {
 cmd_gates() {
   cd "${REPO_ROOT}"
   log "Running mandatory Phase 4 gates"
-  "${PYBIN}" -m pytest -q tests/unit/test_no_legacy_script_references.py
-  "${PYBIN}" -m pytest -q tests -k "not real_images"
-  "${PYBIN}" -m pytest -q tests/unit/test_ci_nonblocking_allowlist.py
-  /opt/miniconda3/envs/dataselector/bin/ruff check .
-  /opt/miniconda3/envs/dataselector/bin/black --check .
-  /opt/miniconda3/envs/dataselector/bin/isort --check-only .
+  run_in_env python -m pytest -q tests/unit/test_no_legacy_script_references.py
+  run_in_env python -m pytest -q tests -k "not real_images"
+  run_in_env python -m pytest -q tests/unit/test_ci_nonblocking_allowlist.py
+  run_in_env ruff check .
+  run_in_env black --check .
+  run_in_env isort --check-only .
 }
 
 cmd_full() {

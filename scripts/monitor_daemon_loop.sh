@@ -4,7 +4,7 @@ IFS=$'\n\t'
 
 LOG="$1"
 INTERVAL=${2:-900}
-OUTDIR=outputs/experiments
+OUTDIR=outputs/runs
 TS_FMT="%Y%m%dT%H%M%SZ"
 
 if [[ -z "$LOG" ]]; then

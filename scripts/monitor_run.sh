@@ -17,7 +17,7 @@ usage() {
 Usage: $0 --log <path> [--interval N] [--tail N] [--once] [--filter '<regex>']
 
 Examples:
-  $0 --log outputs/experiments/run_adaptive_20260116T150717Z.session.log --interval 300
+  $0 --log outputs/runs/run_adaptive_20260116T150717Z.session.log --interval 300
   $0 --log outputs/optuna_n_samples_range.log --interval 60 --tail 50
 EOF
 }

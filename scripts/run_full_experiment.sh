@@ -16,7 +16,7 @@ N_SAMPLES=34
 MIN_DISTANCE_KM=28
 N_BOOT=200
 TIMESTAMP=$(date -u +%Y%m%dT%H%M%SZ)
-OUT_DIR="outputs/experiments/run_${TIMESTAMP}"
+OUT_DIR="outputs/runs/run_${TIMESTAMP}"
 mkdir -p "$OUT_DIR"
 
 SKIP_COARSE=0

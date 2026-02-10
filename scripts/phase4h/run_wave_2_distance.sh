@@ -18,7 +18,7 @@ append_status "${WAVE}" "running" "Starting min-distance policy comparison"
   cd "${REPO_ROOT}"
   print_phase4h_context "${WAVE}"
 
-  "${PYTHON_BIN}" scripts/compare_min_distance_policies.py \
+  "${PYTHON_BIN}" -m dataselector compare-min-distance-policies \
     --metadata-path data/new_all_tiles.csv \
     --distances 28.5 40 45 \
     --seeds 42 43 44 45 46 \

@@ -28,7 +28,7 @@ if [[ -f "${PREBLACK_STAMP}" ]]; then
   cat <<'MSG'
 [phase4h] wave7_final_gates is paused at manual black step.
 Run this command manually in your terminal:
-  /opt/miniconda3/envs/dataselector/bin/python -m black --check --fast --no-cache dataselector tests scripts docs
+  ./scripts/exec_in_env.sh --env dataselector -- python -m black --check --fast --no-cache dataselector tests scripts docs
 
 Then resume with:
   PHASE4H_BLACK_CONFIRMED=1 scripts/phase4h/run_all.sh --resume-from wave7_final_gates
@@ -73,7 +73,7 @@ append_status "${WAVE}" "paused" "Pre-black checks passed; awaiting manual black
 cat <<'MSG'
 [phase4h] wave7_final_gates pre-black checks passed.
 Manual step required:
-  /opt/miniconda3/envs/dataselector/bin/python -m black --check --fast --no-cache dataselector tests scripts docs
+  ./scripts/exec_in_env.sh --env dataselector -- python -m black --check --fast --no-cache dataselector tests scripts docs
 
 If black is green, resume with:
   PHASE4H_BLACK_CONFIRMED=1 scripts/phase4h/run_all.sh --resume-from wave7_final_gates

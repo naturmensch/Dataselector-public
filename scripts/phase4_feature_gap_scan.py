@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import ast
 import json
 import re
@@ -388,7 +389,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--python-bin",
-        default="/opt/miniconda3/envs/dataselector/bin/python",
+        default=os.environ.get("DATASELECTOR_PYTHON_BIN", "python"),
         help="Python executable used for command help checks",
     )
     parser.add_argument(
