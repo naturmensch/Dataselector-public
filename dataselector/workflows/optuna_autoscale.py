@@ -21,6 +21,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from dataselector.cli_decorators import cli_command
 from dataselector.data.spatial_schema import (
     normalize_spatial_schema,
 )
@@ -461,6 +462,129 @@ def run_autoscale(
     return summary_file, out_best
 
 
+def run_optuna_autoscale_workflow(
+    *,
+    n_trials: list[int] | None = None,
+    stages: list[str] | None = None,
+    n_candidates: int | None = None,
+    dim: int = 256,
+    seed: int = 42,
+    patience: int = 2,
+    pre_names: list[str] | None = None,
+    pre_indices: list[int] | None = None,
+    output_dir: str = "outputs",
+) -> int:
+    """Run autoscale workflow and persist artifacts under output_dir."""
+    trials = n_trials or [20, 40, 80, 160]
+    stage_values = stages or ["50", "100", "300", "full"]
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    features, metadata = load_or_create_data(
+        out_dir=out_dir,
+        n=n_candidates,
+        dim=dim,
+        seed=seed,
+        require_metadata=True,
+    )
+
+    actual_n = len(features)
+    parsed_stages: list[int] = []
+    for stage in stage_values:
+        if stage == "full":
+            parsed_stages.append(actual_n)
+        else:
+            parsed_stages.append(int(stage))
+
+    if len(trials) != len(parsed_stages):
+        if len(trials) == 1:
+            n_trials_per_stage = [trials[0]] * len(parsed_stages)
+        else:
+            raise SystemExit("Provide n-trials per stage or a single value.")
+    else:
+        n_trials_per_stage = trials
+
+    run_autoscale(
+        n_trials_per_stage,
+        parsed_stages,
+        features,
+        metadata,
+        patience=patience,
+        pre_selected_names=pre_names,
+        pre_selected_indices=np.array(pre_indices) if pre_indices else None,
+        out_dir=out_dir,
+    )
+
+    return 0
+
+
+@cli_command(
+    "optuna-autoscale",
+    help="Run staged Optuna autoscale and write compute artifacts",
+    args={
+        "n_trials": {
+            "type": int,
+            "nargs": "+",
+            "default": [20, 40, 80, 160],
+            "help": "Trials per stage, or one value reused for all stages",
+        },
+        "stages": {
+            "type": str,
+            "nargs": "+",
+            "default": ["50", "100", "300", "full"],
+            "help": "Stage sample counts (e.g. 50 100 300 full)",
+        },
+        "n_candidates": {
+            "type": int,
+            "default": None,
+            "help": "Candidate count override",
+        },
+        "dim": {"type": int, "default": 256, "help": "Feature dimension"},
+        "seed": {"type": int, "default": 42, "help": "Random seed"},
+        "patience": {"type": int, "default": 2, "help": "Early stop patience"},
+        "pre_names": {
+            "type": str,
+            "nargs": "*",
+            "default": None,
+            "help": "Optional pre-selected tile names",
+        },
+        "pre_indices": {
+            "type": int,
+            "nargs": "*",
+            "default": None,
+            "help": "Optional pre-selected tile indices",
+        },
+        "output_dir": {
+            "type": str,
+            "default": "outputs",
+            "help": "Output directory for autoscale artifacts",
+        },
+    },
+)
+def cli_optuna_autoscale(
+    n_trials: list[int] | None = None,
+    stages: list[str] | None = None,
+    n_candidates: int | None = None,
+    dim: int = 256,
+    seed: int = 42,
+    patience: int = 2,
+    pre_names: list[str] | None = None,
+    pre_indices: list[int] | None = None,
+    output_dir: str = "outputs",
+) -> int:
+    return run_optuna_autoscale_workflow(
+        n_trials=n_trials,
+        stages=stages,
+        n_candidates=n_candidates,
+        dim=dim,
+        seed=seed,
+        patience=patience,
+        pre_names=pre_names,
+        pre_indices=pre_indices,
+        output_dir=output_dir,
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point for Optuna autoscale."""
     parser = argparse.ArgumentParser()
@@ -520,6 +644,7 @@ def main(argv: list[str] | None = None) -> int:
         patience=args.patience,
         pre_selected_names=args.pre_names,
         pre_selected_indices=args.pre_indices,
+        out_dir=OUT,
     )
 
     return 0

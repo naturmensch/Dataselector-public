@@ -1,0 +1,102 @@
+version: 1
+description: >
+  Scientific parameter resolution contract for thesis orchestration.
+  Each critical parameter must satisfy its class contract before production run.
+
+parameters:
+  selection.alpha_visual:
+    class: computed_required
+    resolver: parameter_resolution.optuna_autoscale_best_latest
+    required_evidence: parameter_resolution/optuna_autoscale_best_latest.json
+    allowed_methods:
+      - computed_autoscale_artifact
+
+  selection.beta_spatial:
+    class: computed_required
+    resolver: parameter_resolution.optuna_autoscale_best_latest
+    required_evidence: parameter_resolution/optuna_autoscale_best_latest.json
+    allowed_methods:
+      - computed_autoscale_artifact
+
+  selection.gamma_temporal:
+    class: computed_required
+    resolver: parameter_resolution.optuna_autoscale_best_latest
+    required_evidence: parameter_resolution/optuna_autoscale_best_latest.json
+    allowed_methods:
+      - computed_autoscale_artifact
+
+  selection.optuna_sampler:
+    class: computed_required
+    resolver: sampler_resolution
+    required_evidence: sampler_resolution/selected_sampler.json
+    allowed_methods:
+      - config_policy
+      - snapshot_policy
+      - artifact:*
+      - auto_compare
+
+  selection.exploration_sampler:
+    class: computed_required
+    resolver: sampler_resolution
+    required_evidence: resolved_optuna_sampler
+    allowed_methods:
+      - mapped_from_optuna_sampler
+      - config_policy
+      - snapshot_policy
+
+  selection.n_samples:
+    class: policy_or_computed
+    resolver: selection_target
+    required_evidence: reports_2026-02-09/N_SAMPLES_DECISION_2026-02-09.md
+    allowed_methods:
+      - resolved:config
+      - resolved:snapshot_config
+      - resolved:computed_autoscale_artifact
+      - resolved:explicit
+      - resolved:resolver_artifact
+
+  selection.min_distance_km:
+    class: policy_or_computed
+    resolver: distance_policy
+    required_evidence: reports_2026-02-09/MIN_DISTANCE_DECISION_2026-02-09.md
+    allowed_methods:
+      - config_policy
+      - snapshot_policy
+      - computed_autoscale_artifact
+      - computed_from_metadata
+
+  clustering.n_clusters:
+    class: policy_or_computed
+    resolver: clustering_policy
+    required_evidence: docs/PARAMETER_POLICY_LEDGER.md
+    allowed_methods:
+      - config_policy
+      - snapshot_policy
+      - computed
+
+  clustering.umap_n_neighbors:
+    class: policy_or_computed
+    resolver: clustering_policy
+    required_evidence: docs/PARAMETER_POLICY_LEDGER.md
+    allowed_methods:
+      - config_policy
+      - snapshot_policy
+      - computed
+
+  clustering.umap_min_dist:
+    class: policy_or_computed
+    resolver: clustering_policy
+    required_evidence: docs/PARAMETER_POLICY_LEDGER.md
+    allowed_methods:
+      - config_policy
+      - snapshot_policy
+      - computed
+
+  feature_extraction.batch_size:
+    class: technical_or_computed
+    resolver: runtime_or_policy
+    required_evidence: docs/PARAMETER_POLICY_LEDGER.md
+    allowed_methods:
+      - config_policy
+      - snapshot_policy
+      - computed
