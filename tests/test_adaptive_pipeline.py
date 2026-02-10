@@ -33,6 +33,78 @@ def test_next_power_of_two():
     assert _next_power_of_two(100) == 128
 
 
+def test_normalize_n_initial_strategy_aliases():
+    """Legacy strategy names must map to the modern internal contract."""
+    from dataselector.workflows.adaptive_pipeline import _normalize_n_initial_strategy
+
+    assert _normalize_n_initial_strategy("modern") == "modern"
+    assert _normalize_n_initial_strategy("legacy") == "legacy"
+    assert _normalize_n_initial_strategy("conservative") == "legacy"
+    assert _normalize_n_initial_strategy("moderate") == "modern"
+    assert _normalize_n_initial_strategy("aggressive") == "modern"
+    assert _normalize_n_initial_strategy("  MODERATE  ") == "modern"
+
+
+def test_normalize_n_initial_strategy_rejects_unknown_value():
+    from dataselector.workflows.adaptive_pipeline import _normalize_n_initial_strategy
+
+    with pytest.raises(ValueError, match="Unknown n_initial_strategy"):
+        _normalize_n_initial_strategy("invalid")
+
+
+def test_adaptive_pipeline_fails_fast_when_metadata_missing(tmp_path):
+    """Missing metadata must fail immediately instead of using silent fallbacks."""
+    from dataselector.workflows.adaptive_pipeline import run_adaptive_pipeline
+
+    missing_csv = tmp_path / "missing.csv"
+    with pytest.raises(FileNotFoundError, match="Metadata not found"):
+        run_adaptive_pipeline(csv_path=missing_csv)
+
+
+def test_resolve_optuna_n_samples_prefers_explicit_value():
+    from dataselector.workflows.adaptive_pipeline import _resolve_optuna_n_samples
+
+    value, source = _resolve_optuna_n_samples(
+        13,
+        root=ROOT,
+        context="test.adaptive",
+    )
+    assert value == 13
+    assert source == "explicit"
+
+
+def test_resolve_optuna_n_samples_reads_config(tmp_path: Path):
+    from dataselector.workflows.adaptive_pipeline import _resolve_optuna_n_samples
+
+    (tmp_path / "config").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "config" / "pipeline_config.yaml").write_text(
+        "selection:\n  n_samples: 24\n",
+        encoding="utf-8",
+    )
+
+    value, source = _resolve_optuna_n_samples(
+        None,
+        root=tmp_path,
+        context="test.adaptive",
+    )
+    assert value == 24
+    assert source == "config"
+
+
+def test_resolve_optuna_n_samples_fails_without_source(tmp_path: Path):
+    from dataselector.workflows.adaptive_pipeline import _resolve_optuna_n_samples
+
+    with pytest.raises(
+        ValueError, match="could not resolve selection target n_samples"
+    ):
+        _resolve_optuna_n_samples(
+            None,
+            root=tmp_path,
+            context="test.adaptive",
+            experiment_run_dir=tmp_path / "missing_exp",
+        )
+
+
 @pytest.mark.skipif(
     not (ROOT / "data" / "new_all_tiles.csv").exists(),
     reason="Requires data/new_all_tiles.csv",
