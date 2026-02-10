@@ -403,6 +403,28 @@ def build_dataframe(
         )
 
     df = pd.DataFrame(rows)
+
+    # Keep a stable schema even when no images were discovered.
+    # CI smoke tests rely on build-tiles succeeding for empty directories.
+    required_columns = {
+        "image_path": "",
+        "image_filename": "",
+        "filename": "",
+        "year": None,
+        "ul_x": None,
+        "ul_y": None,
+        "lr_x": None,
+        "lr_y": None,
+        "width_px": None,
+        "height_px": None,
+        "pixel_width": None,
+        "pixel_height": None,
+        "data_quality": "unknown",
+    }
+    for col, default in required_columns.items():
+        if col not in df.columns:
+            df[col] = default
+
     if "shortName" not in df.columns:
         df["shortName"] = df["image_filename"].apply(
             lambda s: Path(str(s)).stem if pd.notna(s) else ""
