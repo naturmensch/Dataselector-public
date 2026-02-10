@@ -32,9 +32,9 @@ clustering:
 # Diversity Selection (Multi-Criteria Facility Location)
 # Updated: 2026-02-09 based on canonical dataset checks and policy gate
 # Dataset reference: canonical `data/new_all_tiles.csv` (currently 676 tiles)
-# Thesis default: 34 samples (historically ~5% of canonical set at 676 rows)
+# Thesis default: 24 samples (minimum-sufficient from Phase4H n-panel, 2026-02-09)
 selection:
-  n_samples: 34  # Explicit thesis production target. No implicit fallback is used in workflows.
+  n_samples: 24  # Explicit thesis production target. No implicit fallback is used in workflows.
   metric: "euclidean"
   
   # DEPRECATED: Legacy parameters (use multi-criteria instead)
@@ -64,13 +64,9 @@ selection:
   random_state: 42
   validation_seeds: [42, 43, 44, 45, 46]
   
-# Expected results with optimized config (for n=34):
-# - 34 Samples (≈5% of current canonical tile count)
-# - WWI-Anteil: ~23.5% (bei empfohlenen Gewichten)
-# - Temporal STD: ~6.3 Jahre
-# - Temporal Range: ~32 Jahre
-# - Spatial Mean Distance: ~415km
-# - Runtime: ~0.6s
+# Expected results are tracked in timestamped decision artifacts:
+# - reports_2026-02-09/MIN_DISTANCE_DECISION_2026-02-09.md
+# - reports_2026-02-09/N_SAMPLES_DECISION_2026-02-09.md
 
 # Output
 output:
