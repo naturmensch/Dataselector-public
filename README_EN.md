@@ -10,37 +10,38 @@ Scientifically rigorous method to objectively select training examples from 676 
 
 **For the full production pipeline (Sampler Suite + XXL Run + Bootstrap):**
 
+Canonical invocation rule: use `micromamba run -n dataselector <command>`
+for all local runs and checks.
+
+If examples below omit the prefix, run them inside an activated `dataselector`
+environment or prepend the canonical micromamba invocation.
+
 **Option A: CLI orchestration (RECOMMENDED):**
 
 ```bash
-# Activate environment (see Installation below)
-conda activate dataselector
-
-# STEP 1: Run sampler suite and autoscale
-python -m dataselector thesis-sampler-suite --autoscale
+# Runs inside managed env (see Installation below)
+micromamba run -n dataselector python -m dataselector thesis-sampler-suite --autoscale
 
 # STEP 2: Run XXL orchestration (Phases 0-5)
-python -m dataselector xxl
+micromamba run -n dataselector python -m dataselector xxl
 
 # Optional sampler override for XXL:
-python -m dataselector xxl --best-sampler cmaes  # cmaes, qmc, or tpe
+micromamba run -n dataselector python -m dataselector xxl --best-sampler cmaes  # cmaes, qmc, or tpe
 ```
 
 **Option B: Manual steps (if you want to inspect intermediate results):**
 
 ```bash
-conda activate dataselector
-
 # STEP 1: Thesis Sampler Suite (auto: 10 seeds, 1000 trials, Hamburg + KDR100)
-python -m dataselector thesis-sampler-suite
+micromamba run -n dataselector python -m dataselector thesis-sampler-suite
 
 # STEP 2: XXL Pipeline with integrated Bootstrap (Phases 0-5)
 # Phase 0: Convergence analysis (auto-detects best sampler from Suite)
 # Phase 1-4: Optimization (Hamburg + Reproducibility + Statistics + Summary)
 # Phase 5: Bootstrap UQ (500 resamples)
-python -m dataselector xxl
+micromamba run -n dataselector python -m dataselector xxl
 # Or override sampler explicitly:
-python -m dataselector xxl --best-sampler cmaes  # qmc, tpe, or cmaes
+micromamba run -n dataselector python -m dataselector xxl --best-sampler cmaes  # qmc, tpe, or cmaes
 ```
 
 ### ✨ Current status (2026-01-23)
@@ -82,7 +83,7 @@ python -m dataselector xxl --best-sampler cmaes  # qmc, tpe, or cmaes
 | Data | pandas, numpy, geopandas |
 | Dimensionality reduction / clustering | UMAP, scikit-learn |
 | Geospatial | geopandas, pyproj, shapely |
-| Environment / testing | mamba/conda, pytest |
+| Environment / testing | micromamba (canonical) + exec_in_env (compatibility), pytest |
 
 ---
 
@@ -95,33 +96,33 @@ git clone https://github.com/username/Dataselector.git
 cd Dataselector
 ```
 
-### 2. Create environment (recommended: mamba/conda)
+### 2. Create environment (recommended: micromamba)
 
 ```bash
-# Fast (mamba recommended)
-mamba env create -f environment.yml -n dataselector
-conda activate dataselector
+# Canonical runtime path
+micromamba create -n dataselector -f environment.yml -y
+micromamba run -n dataselector python -V
 
-# Equivalent with conda:
-conda env create -f environment.yml -n dataselector
+# Optional compatibility wrapper (delegates to micromamba/conda)
+./scripts/exec_in_env.sh --env dataselector --create --yes -- python -V
 ```
 
 ### 3. Install dependencies
 
 ```bash
 # CPU-only setup
-pip install -r requirements-cpu.txt
+micromamba run -n dataselector pip install -r requirements-cpu.txt
 
 # Or with CUDA/GPU support
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-pip install -r requirements.txt
+micromamba run -n dataselector pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+micromamba run -n dataselector pip install -r requirements.txt
 ```
 
 ### 4. Run tests
 
 ```bash
-pytest -v  # full test suite
-pytest --lf  # only last failures
+micromamba run -n dataselector pytest -v  # full test suite
+micromamba run -n dataselector pytest --lf  # only last failures
 ```
 
 **Known compatibility note:** NumPy / numba: numba requires NumPy <= 2.3.x. `environment.yml` pins NumPy accordingly.
@@ -220,14 +221,13 @@ python -m dataselector adaptive-pipeline \
 
 ```
 Dataselector/
-├── src/                                  # Python package
-│   ├── io.py                            # data loading / feature extraction
-│   ├── metrics.py                       # metric computations
-│   ├── metadata_processor.py            # CSV/DBF processing
-│   ├── clustering.py                    # UMAP + K-means
-│   ├── diversity_selector.py            # facility-location selection logic
-│   ├── experiment_manager.py            # run/version management
-│   └── visualizer.py                    # plotting helpers
+├── dataselector/                         # Canonical Python package
+│   ├── cli.py                           # Unified CLI entry point
+│   ├── data/                            # data loading / metadata build
+│   ├── features/                        # feature extraction
+│   ├── selection/                       # clustering + selection logic
+│   ├── pipeline/                        # run/version management helpers
+│   └── workflows/                       # canonical workflows
 ├── dataselector/workflows/              # Canonical workflow implementations
 │   ├── thesis_sampler_suite.py         # Sampler suite orchestrator (thesis-grade)
 │   ├── xxl.py                          # XXL orchestrator (Phase 0-5)
@@ -257,8 +257,8 @@ Main config: `config/pipeline_config.yaml`
 
 ```yaml
 selection:
-  n_samples: 34                # approximate target selection size (~5%)
-  min_distance_km: 50.0        # spatial minimum distance constraint
+  n_samples: 24                # current thesis policy baseline
+  min_distance_km: 28.5        # operational policy (geometric reference documented separately)
 
 optimization:
   n_trials: 440                # default optuna trials

@@ -11,23 +11,22 @@ For the full thesis workflow (including deterministic twin-run gate), use:
 ```bash
 git clone <repository-url> Dataselector
 cd Dataselector
-mamba env create -f environment.yml
-conda activate dataselector
-python -m pip install -e .
+micromamba create -f environment.yml -n dataselector
+./scripts/exec_in_env.sh --env dataselector -- pip install -e .
 ```
 
 ## 2) Verify CLI
 
 ```bash
-python -m dataselector --help
-python -m dataselector check-geo
-python -m dataselector check-env
+./scripts/exec_in_env.sh --env dataselector -- python -m dataselector --help
+./scripts/exec_in_env.sh --env dataselector -- python -m dataselector check-geo
+./scripts/exec_in_env.sh --env dataselector -- python -m dataselector check-env
 ```
 
 ## 3) Build metadata from images
 
 ```bash
-python -m dataselector build-tiles \
+./scripts/exec_in_env.sh --env dataselector -- python -m dataselector build-tiles \
   --image-dir data/images \
   --out data/new_all_tiles.csv
 ```
@@ -35,8 +34,8 @@ python -m dataselector build-tiles \
 ## 4) Run modern thesis flow
 
 ```bash
-python -m dataselector thesis-sampler-suite --autoscale
-python -m dataselector xxl
+./scripts/exec_in_env.sh --env dataselector -- python -m dataselector thesis-sampler-suite --autoscale
+./scripts/exec_in_env.sh --env dataselector -- python -m dataselector xxl
 ```
 
 For a single end-to-end thesis run with reproducibility controls, see:
@@ -46,7 +45,7 @@ For a single end-to-end thesis run with reproducibility controls, see:
 ## 5) Useful checks
 
 ```bash
-python -m dataselector align-audit --csv data/new_all_tiles.csv --base-dir data/images
-python -m pytest -q tests/unit/test_no_legacy_script_references.py
+./scripts/exec_in_env.sh --env dataselector -- python -m dataselector align-audit --csv data/new_all_tiles.csv --base-dir data/images
+./scripts/exec_in_env.sh --env dataselector -- python -m pytest -q tests/unit/test_no_legacy_script_references.py
 ```
 

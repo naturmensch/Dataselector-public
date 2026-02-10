@@ -2,7 +2,7 @@
 
 1. Activate env:
 ```bash
-conda activate dataselector
+./scripts/exec_in_env.sh --env dataselector --create --yes -- python -V
 ```
 2. Run a small LHS exploration:
 ```bash

@@ -11,7 +11,7 @@
 ### Prerequisites
 - Python 3.9+ (empfohlen: 3.11)
 - Git
-- mamba oder conda (für Lock-File Reproducibility)
+- micromamba (für Lock-File Reproducibility)
 
 ### Installation (Option 1: Lock-File - Empfohlen)
 
@@ -21,35 +21,33 @@ git clone <repository-url> Dataselector
 cd Dataselector
 
 # Install exact versions (reproduzierbar)
-mamba env create -f conda-lock.yml -n dataselector
-conda activate dataselector
+micromamba create -f conda-lock.yml -n dataselector
 
 # Pip extras (Testing, Dev Tools)
-pip install -r requirements.txt
-pip install -e .  # Editable install für lokale Entwicklung
+./scripts/exec_in_env.sh --env dataselector -- pip install -r requirements.txt
+./scripts/exec_in_env.sh --env dataselector -- pip install -e .  # Editable install für lokale Entwicklung
 ```
 
 ### Installation (Option 2: From Scratch)
 
 ```bash
 # Create fresh env
-mamba create -n dataselector python=3.11
-conda activate dataselector
+micromamba create -n dataselector python=3.11
 
 # Install all dependencies
-pip install -r requirements.txt
-pip install -r requirements-geo.txt  # Geo tools (optional)
-pip install -e .
+./scripts/exec_in_env.sh --env dataselector -- pip install -r requirements.txt
+./scripts/exec_in_env.sh --env dataselector -- pip install -r requirements-geo.txt  # Geo tools (optional)
+./scripts/exec_in_env.sh --env dataselector -- pip install -e .
 ```
 
 ### Verify Installation
 
 ```bash
 # Test imports
-python -c "import dataselector; print(dataselector.__version__)"
+./scripts/exec_in_env.sh --env dataselector -- python -c "import dataselector; print(dataselector.__version__)"
 
 # Run quick test
-pytest tests/test_smoke.py -v
+./scripts/exec_in_env.sh --env dataselector -- pytest tests/test_smoke.py -v
 ```
 
 ---

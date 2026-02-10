@@ -17,7 +17,13 @@ Use `thesis-pipeline` unless you explicitly need research-grade experimentation.
 1. Use the authoritative environment:
 
 ```bash
-/opt/miniconda3/envs/dataselector/bin/python -m dataselector --help
+micromamba run -n dataselector python -m dataselector --help
+```
+
+Compatibility wrapper (optional):
+
+```bash
+./scripts/exec_in_env.sh --env dataselector -- python -m dataselector --help
 ```
 
 2. Keep private images local-only (never commit image assets).
@@ -31,13 +37,13 @@ If `python -m dataselector ...` fails locally with
 ```bash
 which python
 python -c "import sys; print(sys.executable)"
-/opt/miniconda3/envs/dataselector/bin/python -c "import dataselector; print(dataselector.__file__)"
+micromamba run -n dataselector python -c "import dataselector; print(dataselector.__file__)"
 ```
 
 For all thesis gates, run commands explicitly with:
 
 ```bash
-/opt/miniconda3/envs/dataselector/bin/python
+micromamba run -n dataselector python
 ```
 
 ## 2) Required Runtime Gates
@@ -65,7 +71,7 @@ If Hamburg is already annotated and you want to justify starting with Hamburg as
 seed, create an explicit comparison artifact:
 
 ```bash
-/opt/miniconda3/envs/dataselector/bin/python - <<'PY'
+micromamba run -n dataselector python - <<'PY'
 from pathlib import Path
 from dataselector.workflows.compare_samplers import benchmark_seed
 
@@ -100,6 +106,46 @@ Evidence:
 
 ## 4) End-to-End Thesis Flow (Copy/Paste)
 
+### 4.A Parameter Resolution + Snapshot Contract
+
+The canonical thesis path now supports explicit resolver/snapshot flags:
+
+1. `--compute-params`: compute unresolved parameters and persist provenance.
+2. `--snapshot-config`: write `final_config_<timestamp>.yaml` into run output.
+3. `--use-params <snapshot.yaml>`: load + validate snapshot before execution.
+4. `--no-auto-continue`: stop after resolution/snapshot stage.
+5. `--force`: continue despite validation mismatch (flagged in `run_metadata.json`).
+
+Example (resolution-only preflight):
+
+```bash
+micromamba run -n dataselector python -m dataselector thesis-pipeline \
+  --execution-profile thesis_repro \
+  --seed 42 \
+  --n-samples 24 \
+  --compute-params \
+  --snapshot-config \
+  --no-auto-continue \
+  --output-dir outputs/runs/thesis_resolution_preflight
+```
+
+### 4.B Scientific Helper Commands (CLI-First)
+
+Scientific diagnostics are now centralized as CLI commands (no scientific core
+logic in top-level scripts):
+
+```bash
+micromamba run -n dataselector python -m dataselector sensitivity-sweep --config config/pipeline_config.yaml --variation-percent 20
+micromamba run -n dataselector python -m dataselector ablation-study --config config/pipeline_config.yaml
+micromamba run -n dataselector python -m dataselector compare-backbones --config config/pipeline_config.yaml
+micromamba run -n dataselector python -m dataselector validate-kmeans --config config/pipeline_config.yaml
+micromamba run -n dataselector python -m dataselector validate-umap --config config/pipeline_config.yaml
+micromamba run -n dataselector python -m dataselector snapshot-config --config config/pipeline_config.yaml --output-dir outputs/runs
+```
+
+Legacy script names still exist as compatibility wrappers and delegate to these
+CLI commands.
+
 ### 4.0 Selection Target Contract (No Silent Fallbacks)
 
 `n_samples` resolution in production is:
@@ -116,7 +162,7 @@ Current thesis policy baseline is `24` (minimum-sufficient decision):
 ### 4.1 Build metadata from local images
 
 ```bash
-/opt/miniconda3/envs/dataselector/bin/python -m dataselector build-tiles \
+micromamba run -n dataselector python -m dataselector build-tiles \
   --image-dir "$DATASELECTOR_IMAGE_DIR" \
   --name-source-csv data/KDR100_foliage_with_files_epsg3857.csv \
   --city-overrides data/city_overrides.csv \
@@ -129,7 +175,7 @@ you to update `data/city_overrides.csv` for the remaining IDs.
 ### 4.2 Validate raster/CSV alignment
 
 ```bash
-/opt/miniconda3/envs/dataselector/bin/python -m dataselector align-audit \
+micromamba run -n dataselector python -m dataselector align-audit \
   --csv data/new_all_tiles.csv \
   --base-dir "$DATASELECTOR_IMAGE_DIR" \
   --out outputs/align_audit.json
@@ -138,65 +184,65 @@ you to update `data/city_overrides.csv` for the remaining IDs.
 ### 4.3 Dry-run (safety check)
 
 ```bash
-/opt/miniconda3/envs/dataselector/bin/python -m dataselector thesis-pipeline \
+micromamba run -n dataselector python -m dataselector thesis-pipeline \
   --execution-profile thesis_repro \
   --seed 42 \
   --n-samples 24 \
   --dry-run \
-  --output-dir outputs/thesis_preflight
+  --output-dir outputs/runs/thesis_preflight
 ```
 
 ### 4.4 Production run A (quick gate)
 
 ```bash
 RUN_TAG="$(date -u +%Y%m%dT%H%M%SZ)"
-/opt/miniconda3/envs/dataselector/bin/python -m dataselector thesis-pipeline \
+micromamba run -n dataselector python -m dataselector thesis-pipeline \
   --execution-profile thesis_repro \
   --seed 42 \
   --n-samples 24 \
   --validation-seeds 42 \
   --validation-min-distances 28.5 \
-  --output-dir "outputs/thesis_run_A_${RUN_TAG}"
+  --output-dir "outputs/runs/thesis_run_A_${RUN_TAG}"
 ```
 
 ### 4.5 Production run B (determinism check, quick gate)
 
 ```bash
 RUN_TAG="$(date -u +%Y%m%dT%H%M%SZ)"
-/opt/miniconda3/envs/dataselector/bin/python -m dataselector thesis-pipeline \
+micromamba run -n dataselector python -m dataselector thesis-pipeline \
   --execution-profile thesis_repro \
   --seed 42 \
   --n-samples 24 \
   --validation-seeds 42 \
   --validation-min-distances 28.5 \
-  --output-dir "outputs/thesis_run_B_${RUN_TAG}"
+  --output-dir "outputs/runs/thesis_run_B_${RUN_TAG}"
 ```
 
 ### 4.6 Optional: Hamburg as start tile (separate output, no overwrite)
 
 ```bash
 RUN_TAG="$(date -u +%Y%m%dT%H%M%SZ)"
-/opt/miniconda3/envs/dataselector/bin/python -m dataselector thesis-pipeline \
+micromamba run -n dataselector python -m dataselector thesis-pipeline \
   --execution-profile thesis_repro \
   --seed 42 \
   --n-samples 24 \
   --validation-seeds 42 \
   --validation-min-distances 28.5 \
   --hamburg \
-  --output-dir "outputs/thesis_run_hamburg_${RUN_TAG}"
+  --output-dir "outputs/runs/thesis_run_hamburg_${RUN_TAG}"
 ```
 
 Equivalent explicit form:
 
 ```bash
-/opt/miniconda3/envs/dataselector/bin/python -m dataselector thesis-pipeline \
+micromamba run -n dataselector python -m dataselector thesis-pipeline \
   --execution-profile thesis_repro \
   --seed 42 \
   --n-samples 24 \
   --validation-seeds 42 \
   --validation-min-distances 28.5 \
   --pre-names Hamburg \
-  --output-dir "outputs/thesis_run_hamburg_explicit_${RUN_TAG}"
+  --output-dir "outputs/runs/thesis_run_hamburg_explicit_${RUN_TAG}"
 ```
 
 `--hamburg` and `--pre-names Hamburg` are intentionally equivalent.
@@ -234,14 +280,14 @@ documented anchor tile as long as canonical metadata remains unchanged.
 ### 5.1 E2E and real-image tests
 
 ```bash
-/opt/miniconda3/envs/dataselector/bin/python -m pytest -q -m e2e -rs
-/opt/miniconda3/envs/dataselector/bin/python -m pytest -q -m real_images -rs
+micromamba run -n dataselector python -m pytest -q -m e2e -rs
+micromamba run -n dataselector python -m pytest -q -m real_images -rs
 ```
 
 ### 5.2 Guard test
 
 ```bash
-/opt/miniconda3/envs/dataselector/bin/python -m pytest -q \
+micromamba run -n dataselector python -m pytest -q \
   tests/unit/test_no_legacy_script_references.py
 ```
 
@@ -249,7 +295,7 @@ documented anchor tile as long as canonical metadata remains unchanged.
 
 The annotation gate is only open when:
 
-1. timestamped run dirs for A and B both exist (e.g. `outputs/thesis_run_A_<RUN_TAG>`, `outputs/thesis_run_B_<RUN_TAG>`).
+1. timestamped run dirs for A and B both exist (e.g. `outputs/runs/thesis_run_A_<RUN_TAG>`, `outputs/runs/thesis_run_B_<RUN_TAG>`).
 2. selected tile IDs are identical in A and B.
 3. `run_metadata.json` exists in run outputs and includes:
    - commit SHA
@@ -292,15 +338,15 @@ Quick diagnosis:
 
 ```bash
 # 1) Inspect raw validation outcomes
-/opt/miniconda3/envs/dataselector/bin/python - <<'PY'
+micromamba run -n dataselector python - <<'PY'
 import pandas as pd
-df = pd.read_csv("outputs/thesis_run_A_<RUN_TAG>/validation/validation_results.csv")
+df = pd.read_csv("outputs/runs/thesis_run_A_<RUN_TAG>/validation/validation_results.csv")
 print(df[["n_selected"]].describe(include="all"))
 print(df.head(10))
 PY
 
 # 2) Re-run validation with explicit settings to test sensitivity
-/opt/miniconda3/envs/dataselector/bin/python - <<'PY'
+micromamba run -n dataselector python - <<'PY'
 from dataselector.workflows.validation import validate_pareto_candidates
 print("validate_pareto_candidates callable:", callable(validate_pareto_candidates))
 PY
@@ -326,9 +372,9 @@ Example:
 ```bash
 mkdir -p outputs/run_logs
 RUN_TAG="$(date -u +%Y%m%dT%H%M%SZ)"
-/opt/miniconda3/envs/dataselector/bin/python -m dataselector thesis-pipeline \
+micromamba run -n dataselector python -m dataselector thesis-pipeline \
   --execution-profile thesis_repro \
   --seed 42 \
-  --output-dir "outputs/thesis_run_A_${RUN_TAG}" \
+  --output-dir "outputs/runs/thesis_run_A_${RUN_TAG}" \
   | tee "outputs/run_logs/thesis_run_A_${RUN_TAG}.log"
 ```

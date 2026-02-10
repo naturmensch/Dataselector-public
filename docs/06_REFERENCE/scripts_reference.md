@@ -1,5 +1,11 @@
 # Scripts Reference & CLI Commands
 
+> Historical reference with compatibility context.
+> Authoritative runtime/CLI guidance is documented in:
+> `README.md`, `docs/ENV_SETUP.md`, `docs/DEVELOPER.md`,
+> `docs/OPERATIONS.md`, and `docs/03_USER_GUIDES/THESIS_PIPELINE_HOWTO.md`.
+> Legacy stack traces below may include `src/*` and `/opt/miniconda3` paths.
+
 This document provides a reference for all scripts and CLI commands.
 
 **Note:** After the migration (84→9 scripts), most functionality is now accessible via the `dataselector` CLI. This reference includes both legacy scripts (for reference) and new CLI commands.
@@ -362,7 +368,7 @@ usage: generate_experiment_report.py [-h] --outdir OUTDIR
 
 options:
   -h, --help       show this help message and exit
-  --outdir OUTDIR  Experiment run folder (outputs/experiments/run_...)
+  --outdir OUTDIR  Experiment run folder (outputs/runs/run_...)
 ``` |
 
 | `scripts/generate_monitor_report_from_existing_log.py` | Wrote report to: <dataselector-repo>/outputs/runs/20260123_T051600_thesis_xxl_hamburg_final/monitor_reports/monitor_report_20260123T140632Z.md (latest copies: <dataselector-repo>/outputs/runs/20260123_T051600_thesis_xxl_hamburg_final/monitor_reports/monitor_report.md, <dataselector-repo>/outputs/runs/20260123_T051600_thesis_xxl_hamburg_final/monitor_reports/monitor_meta.json) | ```

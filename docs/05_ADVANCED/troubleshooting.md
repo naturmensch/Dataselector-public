@@ -1,9 +1,21 @@
 # Troubleshooting & FAQ
 
-Common errors & fixes:
+Common issues and quick fixes for the current CLI-first architecture.
 
-- "wandb not installed": `pip install wandb`
-- Missing features: run `python -c "from src.io import load_or_extract_features; ..."`
-- Monitor resume failures: check `outputs/` and Optuna DB integrity (`PRAGMA integrity_check`)
+1. `wandb` not installed:
+   - `micromamba run -n dataselector pip install wandb`
+2. Missing feature cache or mismatch:
+   - run the canonical pipeline path and let it resolve/cache features:
+   - `micromamba run -n dataselector python -m dataselector thesis-pipeline --compute-params --no-auto-continue`
+3. Snapshot validation fails:
+   - inspect `run_metadata.json` and snapshot hashes
+   - only use `--force` when audit-signoff explicitly allows it
+4. Monitor resume failures:
+   - check run dir under `outputs/runs/`
+   - validate Optuna DB integrity (`PRAGMA integrity_check`)
 
-If you cannot fix an issue, open an issue describing steps to reproduce and include `pipeline.log` and relevant `outputs/` files.
+If unresolved, open an issue with:
+
+1. command used
+2. relevant `run_metadata.json`
+3. relevant log excerpt

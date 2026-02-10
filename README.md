@@ -32,36 +32,34 @@ git clone <repository-url>
 cd Dataselector
 ```
 
-### 2. Python-Umgebung einrichten
+### 2. Python-Umgebung einrichten (kanonisch)
 
 ```bash
-# Virtuelle Umgebung erstellen
-python -m venv venv
+# Kanonische Runtime: micromamba run
+micromamba create -n dataselector -f environment.yml -y
+micromamba run -n dataselector python -V
 
-# Aktivieren
-source venv/bin/activate  # Linux/Mac
-# oder
-venv\Scripts\activate  # Windows
+# Kompatibilitäts-Wrapper (optional, delegiert auf micromamba/conda)
+./scripts/exec_in_env.sh --env dataselector --create --yes -- python -V
 ```
 
 ### 3. Dependencies installieren
 
 ```bash
-pip install -r requirements.txt
+micromamba run -n dataselector pip install -r requirements-cpu.txt
 ```
 
 ## Projektstruktur
 
 ```
 Dataselector/
-├── src/                          # Hauptmodule
-│   ├── __init__.py
-│   ├── main.py                   # Haupt-Pipeline
-│   ├── metadata_processor.py    # CSV/DBF-Verarbeitung
-│   ├── feature_extractor.py     # Deep Learning Features
-│   ├── clustering.py             # UMAP + K-Means
-│   ├── diversity_selector.py    # Facility Location
-│   └── visualizer.py             # Visualisierungen
+├── dataselector/                 # Hauptmodule (kanonische API)
+│   ├── cli.py                    # Unified CLI
+│   ├── data/                     # Datenzugriff / Build-Tools
+│   ├── features/                 # Deep Learning Features
+│   ├── selection/                # UMAP/K-Means + Selection
+│   ├── pipeline/                 # ExperimentManager / Pipeline helpers
+│   └── workflows/                # Kanonische Workflows
 ├── data/                         # Datenverzeichnis
 │   ├── KDR100_foliage_with_files_epsg3857.csv
 │   └── images/                   # Kartenbilder
@@ -79,6 +77,11 @@ Dataselector/
 >
 > Diese Datei ist die zentrale Quelle fuer Setup, Gates, deterministische
 > Twin-Run-Pruefung und Go/No-Go vor Annotation.
+>
+> **Kanonische Ausfuehrung:** `micromamba run -n dataselector <command>`
+>
+> Hinweis: Falls unten Beispiele ohne Prefix stehen, fuehre sie im aktiven
+> `dataselector`-Env aus oder setze den Prefix explizit davor.
 
 ### Daten vorbereiten
 
@@ -126,7 +129,7 @@ python -m dataselector xxl --best-sampler tpe
 Hinweis: Die Orchestrator‑Skripte prüfen die Existenz von Artefakten im `outputs/`-Verzeichnis (`optuna_autoscale_*`, `selected_sampler.json`) und verwenden diese automatisiert. Die Skripte brauchen eine Umgebung mit `optuna` installiert, wenn Optuna‑Phasen ausgeführt werden.
 
 Provenance & Reproduzierbarkeit:
-- Das Orchestrator-Skript kopiert sämtliche relevanten Artefakte in `outputs/experiments/run_<TIMESTAMP>/`, darunter die `optuna_results.csv`, ggf. die `optuna_study.pkl`, eine `pipeline_config.optuna.yaml` (oder die Backup-Datei bei Injection) und die finalen CSV/Plots. So sind alle Eingaben dokumentiert.
+- Das Orchestrator-Skript kopiert sämtliche relevanten Artefakte in `outputs/runs/run_<TIMESTAMP>/`, darunter die `optuna_results.csv`, ggf. die `optuna_study.pkl`, eine `pipeline_config.optuna.yaml` (oder die Backup-Datei bei Injection) und die finalen CSV/Plots. So sind alle Eingaben dokumentiert.
 
 Schneller Smoke-Run (lokal / CI):
 
@@ -207,7 +210,7 @@ Bearbeiten Sie `config/pipeline_config.yaml`:
 ```yaml
 # Anzahl auszuwählender Samples ändern
 selection:
-  n_samples: 34  # Standard: 5% (~34 von 673)
+  n_samples: 24  # aktueller Thesis-Policy-Stand
   
 # Clustering-Parameter
 clustering:
@@ -215,7 +218,7 @@ clustering:
   
 # Räumliche Constraints
 selection:
-  min_distance_km: 50.0  # Minimale Distanz zwischen Samples
+  min_distance_km: 28.5  # Operative Policy; geometrische Referenz siehe Reports
 ```
 
 ## Ausgaben
@@ -236,7 +239,7 @@ Nach dem Durchlauf finden Sie im `outputs/` Verzeichnis:
 ### 1. Metadaten-Extraktion
 
 ```python
-from src.metadata_processor import MetadataProcessor
+from dataselector.data.metadata_processor import MetadataProcessor
 
 processor = MetadataProcessor("data/all_png_tiles.dbf")  # unterstützt auch .dbf
 df = processor.load_csv()
@@ -250,7 +253,7 @@ df = processor.add_temporal_metadata()  # Extrahiert Jahr aus Dateinamen
 ### 2. Feature Extraction
 
 ```python
-from src.feature_extractor import FeatureExtractor
+from dataselector.features.feature_extractor import FeatureExtractor
 
 extractor = FeatureExtractor(model_name='resnet50')
 features = extractor.extract_features_batch(
@@ -262,7 +265,7 @@ features = extractor.extract_features_batch(
 ### 3. Clustering
 
 ```python
-from src.clustering import ClusteringPipeline
+from dataselector.selection.clustering import ClusteringPipeline
 
 clustering = ClusteringPipeline(n_clusters=8)
 embeddings_2d, labels = clustering.fit_transform(features)
@@ -271,9 +274,9 @@ embeddings_2d, labels = clustering.fit_transform(features)
 ### 4. Diversity Selection
 
 ```python
-from src.diversity_selector import DiversitySelector
+from dataselector.selection.diversity_selector import DiversitySelector
 
-selector = DiversitySelector(n_samples=34)
+selector = DiversitySelector(n_samples=24)
 selected_indices = selector.select(
     features,
     metadata=df,
@@ -396,7 +399,7 @@ feature_extraction:
 ```python
 # Verringere Mindestdistanz
 selection:
-  min_distance_km: 25.0  # Statt 50.0
+  min_distance_km: 25.0  # Statt 28.5
 ```
 
 ## Entwicklungsrichtlinien
@@ -421,6 +424,6 @@ selection:
 - Submodular Optimization: Krause & Golovin, "Submodular Function Maximization" (2014)
 
 > **Hinweis:**
-> Der empfohlene Default für `min_distance_km` ist 50.0 km (siehe `config/pipeline_config.yaml`).
-> In Experimenten und Skripten sollte dieser Wert übernommen werden, um räumliche Diversität zu gewährleisten.
+> Der operative Default für `min_distance_km` ist 28.5 km (siehe `config/pipeline_config.yaml`).
+> Die geometrische Referenz liegt separat bei ~45.0 km und ist in den Decision-Reports dokumentiert.
 > Das Logging gibt explizit an, ob der räumliche Constraint aktiv ist (`min_dist=...km`) oder deaktiviert (`min_dist=0.0km (disabled)`).

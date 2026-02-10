@@ -12,6 +12,11 @@ Siehe [concepts.md](concepts.md) für:
 - Vollständige mathematische Formulierung
 - Greedy Algorithmus Pseudocode
 - Detaillierte Constraint-Behandlung
-- Links zu Implementierung in [src/lazy_facility_location.py](../../src/lazy_facility_location.py)
+- Links zur aktiven Implementierung in
+  [dataselector/selection/lazy_facility_location.py](../../dataselector/selection/lazy_facility_location.py)
 
 **Status:** Archived (Konsolidiert in 02_THEORY/concepts.md am 2. Februar 2026)
+
+**Legacy-Hinweis:** Alte `src/*`-Pfade sind historisch. Die aktive Implementierung
+liegt unter `dataselector/*` (z. B.
+`dataselector/selection/lazy_facility_location.py`).

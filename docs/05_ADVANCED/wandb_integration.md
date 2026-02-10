@@ -1,21 +1,38 @@
-# ✅ wandb Integration Complete (2026-01-23)
+# wandb Integration (Advanced)
 
-**Status:** wandb experiment tracking now fully integrated into KDR100 pipeline
+## Scope
 
----
+This guide describes the current wandb integration points in the
+`dataselector` package.
 
-## What Was Added
+## Runtime
 
-### 1. New Module: `src/wandb_logger.py`
-- Centralized Weights & Biases logging interface
-- Graceful fallback if wandb unavailable (continues without logging)
-- Methods for:
-  - `log_config()` – configuration parameters
-  - `log_trial()` – Optuna trial results
-  - `log_bootstrap()` – bootstrap iteration metrics
-  - `log_phase_completion()` – phase summary statistics
-  - `log_artifact()` – CSV/JSON/image artifacts
-  - `log_plot()` – matplotlib figures
-  - `finish()` – finalize wandb run
+Use micromamba-canonical invocation:
 
-(Full doc kept; see original for examples and troubleshooting.)
+```bash
+micromamba run -n dataselector \
+  python -m dataselector thesis-pipeline
+```
+
+## Code Location
+
+wandb logging utilities are provided by:
+
+1. `dataselector/analysis/wandb_logger.py`
+
+Example import:
+
+```python
+from dataselector.analysis.wandb_logger import WandBLogger
+```
+
+## Enable / Disable
+
+1. Enable by providing wandb credentials in the environment.
+2. Disable for local/offline runs by using the logger's disabled mode or
+   `WANDB_DISABLED=true`.
+
+## Notes
+
+1. This guide intentionally avoids legacy `src/*` paths.
+2. Scripts should call CLI/workflow paths rather than duplicating logging logic.

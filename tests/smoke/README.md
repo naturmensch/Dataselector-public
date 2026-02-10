@@ -8,14 +8,16 @@ Kurz: Diese Anleitung erklärt, wie man schnelle Smoke‑Runs startet und Logs d
 ## 1) Kurzer Smoke‑Run starten
 ```bash
 # moderate limits for quick smoke
-OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 nohup python -m dataselector xxl --smoke > outputs/experiments/run_smoke.log 2>&1 & echo $!
+OMP_NUM_THREADS=2 MKL_NUM_THREADS=2 nohup \
+  micromamba run -n dataselector -- python -m dataselector xxl --smoke \
+  > outputs/runs/run_smoke.log 2>&1 & echo $!
 ```
 Merke dir die ausgegebene PID (oder suche sie mit `pgrep -f "python -m dataselector xxl"`).
 
 ## 2) Schnell überwachen (empfohlen)
 - Folgen des Logs:
 ```bash
-tail -n 100 -f outputs/experiments/run_smoke.log
+tail -n 100 -f outputs/runs/run_smoke.log
 ```
 - Monitor-Zusammenfassung erzeugen:
 ```bash
@@ -25,7 +27,7 @@ python -m dataselector generate-monitor
 ## 3) Was prüfen (Quick‑Checks)
 - In Logs nachsehen auf: `FAILED`, `Traceback`, `Exception`, `ERROR` oder `FAILED (see`.
 - Schrittweise Marker: `=== [<label>] Starting` und `Completed:` zeigen Fortschritt an.
-- Nach Abschluss: prüfe `outputs/experiments/run_<TIMESTAMP>/` auf Artefakte:
+- Nach Abschluss: prüfe `outputs/runs/run_<TIMESTAMP>/` auf Artefakte:
   - `pipeline_config.used.yaml` (eingesetzte Konfiguration)
   - `optuna_results.csv` (falls Optuna lief)
   - `bootstrap_results.csv`, `final_selection/*`, `gen_report`-Ausgaben
@@ -38,7 +40,7 @@ python -m dataselector generate-monitor
 ## 5) Smoke‑Test Checklist (kurz)
 - [ ] Run gestartet (PID erhalten)
 - [ ] Logs zeigen keine `Traceback` / `FAILED` in den ersten ~2min
-- [ ] `outputs/experiments/run_<TIMESTAMP>/pipeline_config.used.yaml` vorhanden
+- [ ] `outputs/runs/run_<TIMESTAMP>/pipeline_config.used.yaml` vorhanden
 - [ ] Finaler Bericht (`gen_report`) wird erstellt oder es gibt Hinweise im Run‑Log
 
 ---
