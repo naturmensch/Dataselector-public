@@ -380,7 +380,7 @@ class MetadataProcessor:
         ]
         return self.df
 
-    def extract_year(self, filename: str) -> int:
+    def extract_year(self, filename: str | None) -> int | None:
         """
         Extrahiert das Jahr aus dem Dateinamen.
 
@@ -390,7 +390,14 @@ class MetadataProcessor:
         Returns:
             Jahr als Integer
         """
-        match = re.search(r"(\d{4})", filename)
+        if filename is None or pd.isna(filename):
+            return None
+
+        filename_str = str(filename).strip()
+        if not filename_str:
+            return None
+
+        match = re.search(r"(\d{4})", filename_str)
         if match:
             return int(match.group(1))
         return None
