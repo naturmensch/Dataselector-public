@@ -336,6 +336,7 @@ def run_thesis_pipeline(
     output_dir: Optional[Path] = None,
     execution_profile: str = "default",
     seed: int = 42,
+    strict_scientific: bool = True,
     pre_names: Optional[list[str]] = None,
     pre_indices: Optional[list[int]] = None,
     hamburg: bool = False,
@@ -452,6 +453,7 @@ def run_thesis_pipeline(
         computed_source_file: str | None = None,
         computed_source_hash: str | None = None,
         prefer_computed_when_requested: bool = False,
+        require_computed_when_requested: bool = False,
         notes: str | None = None,
     ) -> Any:
         raw_value = _config_first(parameters, paths)
@@ -492,6 +494,14 @@ def run_thesis_pipeline(
                     + (" or use --compute-params." if compute_fn is not None else ".")
                 )
         else:
+            if (
+                compute_params
+                and require_computed_when_requested
+                and computed_value is sentinel
+            ):
+                raise ValueError(
+                    f"{section}.{key} requires computed artifact when --compute-params is enabled."
+                )
             value = parser(raw_value)
 
         parameters.setdefault(section, {})[key] = value
@@ -577,6 +587,7 @@ def run_thesis_pipeline(
         computed_source_file=computed_selection_source_file,
         computed_source_hash=computed_selection_source_hash,
         prefer_computed_when_requested=True,
+        require_computed_when_requested=True,
     )
     resolve_param(
         section="selection",
@@ -588,6 +599,7 @@ def run_thesis_pipeline(
         computed_source_file=computed_selection_source_file,
         computed_source_hash=computed_selection_source_hash,
         prefer_computed_when_requested=True,
+        require_computed_when_requested=True,
     )
     resolve_param(
         section="selection",
@@ -599,6 +611,7 @@ def run_thesis_pipeline(
         computed_source_file=computed_selection_source_file,
         computed_source_hash=computed_selection_source_hash,
         prefer_computed_when_requested=True,
+        require_computed_when_requested=True,
     )
     resolve_param(
         section="selection",
@@ -642,6 +655,12 @@ def run_thesis_pipeline(
         key="umap_n_neighbors",
         paths=["clustering.umap_n_neighbors"],
         parser=int,
+    )
+    resolved_umap_min_dist = resolve_param(
+        section="clustering",
+        key="umap_min_dist",
+        paths=["clustering.umap_min_dist"],
+        parser=float,
     )
     resolved_umap_random_state = resolve_param(
         section="clustering",
@@ -927,6 +946,14 @@ def run_thesis_pipeline(
         )
         print(f"🧾 Wrote stable snapshot alias: {stable_snapshot_path}")
 
+    phase_status: dict[str, str] = {
+        "phase1_exploration": "pending",
+        "phase2_optimization": "pending",
+        "phase3_validation": "pending",
+        "phase4_summary": "pending",
+    }
+    strict_block_reason: str | None = None
+
     if no_auto_continue:
         print("⏹️  Resolution finished; stopping due to --no-auto-continue.")
         resolved_snapshot_sha256 = (
@@ -960,10 +987,15 @@ def run_thesis_pipeline(
                     "resolved_snapshot_sha256": resolved_snapshot_sha256,
                     "snapshot_validation_errors": snapshot_errors,
                     "snapshot_forced": snapshot_forced,
+                    "force_override_used": bool(force),
+                    "strict_scientific": bool(strict_scientific),
+                    "phase_status": phase_status,
+                    "strict_block_reason": strict_block_reason,
                     "resolved_n_clusters": resolved_n_clusters,
                     "resolved_batch_size": resolved_batch_size,
                     "resolved_umap_components": resolved_umap_components,
                     "resolved_umap_n_neighbors": resolved_umap_n_neighbors,
+                    "resolved_umap_min_dist": resolved_umap_min_dist,
                     "resolved_umap_random_state": resolved_umap_random_state,
                     "resolved_umap_n_jobs": resolved_umap_n_jobs,
                     "computed_selection_method": computed_selection_method,
@@ -1024,6 +1056,7 @@ def run_thesis_pipeline(
 
         if dry_run:
             print(f"[DRY-RUN] Would run: Exploration with n_lhs={n_lhs}")
+            phase_status["phase1_exploration"] = "skipped_dry_run"
         else:
             t0 = time.time()
             try:
@@ -1043,22 +1076,36 @@ def run_thesis_pipeline(
                 )
                 elapsed = time.time() - t0
                 print(f"✅ Phase 1 erfolgreich (Dauer: {elapsed:.1f}s)")
+                phase_status["phase1_exploration"] = "success"
             except Exception as e:
                 print(f"❌ FEHLER in Phase 1: {e}")
                 all_success = False
-                if not skip_optimization and not skip_validation:
+                phase_status["phase1_exploration"] = "failed"
+                if strict_scientific:
+                    strict_block_reason = (
+                        "strict_scientific=true and Phase 1 failed; subsequent phases blocked"
+                    )
+                elif not skip_optimization and not skip_validation:
                     print("⚠️ Nachfolgende Phasen könnten fehlschlagen")
     else:
         print("\n⏭️  ÜBERSPRINGE Phase 1: Exploration")
+        phase_status["phase1_exploration"] = "skipped"
 
     # Phase 2: Optimization (Optuna)
-    if not skip_optimization:
+    if strict_block_reason is not None and strict_scientific:
+        print(
+            "\n⛔ STRICT MODE: Überspringe Phase 2 aufgrund vorherigem Fehler "
+            f"({strict_block_reason})."
+        )
+        phase_status["phase2_optimization"] = "skipped_due_to_prior_failure"
+    elif not skip_optimization:
         print("\n" + "=" * 80)
         print("PHASE 2: OPTIMIZATION (Optuna Bayesian)")
         print("=" * 80)
 
         if dry_run:
             print(f"[DRY-RUN] Would run: Optuna with n_trials={n_trials}")
+            phase_status["phase2_optimization"] = "skipped_dry_run"
         else:
             t0 = time.time()
             try:
@@ -1077,22 +1124,36 @@ def run_thesis_pipeline(
                 )
                 elapsed = time.time() - t0
                 print(f"✅ Phase 2 erfolgreich (Dauer: {elapsed:.1f}s)")
+                phase_status["phase2_optimization"] = "success"
             except Exception as e:
                 print(f"❌ FEHLER in Phase 2: {e}")
                 all_success = False
-                if not skip_validation:
+                phase_status["phase2_optimization"] = "failed"
+                if strict_scientific:
+                    strict_block_reason = (
+                        "strict_scientific=true and Phase 2 failed; subsequent phases blocked"
+                    )
+                elif not skip_validation:
                     print("⚠️ Validation könnte fehlschlagen")
     else:
         print("\n⏭️  ÜBERSPRINGE Phase 2: Optimization")
+        phase_status["phase2_optimization"] = "skipped"
 
     # Phase 3: Validation
-    if not skip_validation:
+    if strict_block_reason is not None and strict_scientific:
+        print(
+            "\n⛔ STRICT MODE: Überspringe Phase 3 aufgrund vorherigem Fehler "
+            f"({strict_block_reason})."
+        )
+        phase_status["phase3_validation"] = "skipped_due_to_prior_failure"
+    elif not skip_validation:
         print("\n" + "=" * 80)
         print("PHASE 3: VALIDATION (Pareto Candidate Robustness)")
         print("=" * 80)
 
         if dry_run:
             print("[DRY-RUN] Would run: validation over exploration Pareto candidates")
+            phase_status["phase3_validation"] = "skipped_dry_run"
         else:
             t0 = time.time()
             try:
@@ -1104,7 +1165,7 @@ def run_thesis_pipeline(
                 if not pareto_csv.exists():
                     raise FileNotFoundError(
                         "Validation requires Pareto candidates at "
-                        f"{pareto_csv}. Run exploration first."
+                        f"{pareto_csv}. Exploration failed or was not executed."
                     )
 
                 print(f"Running validation for Pareto candidates: {pareto_csv}")
@@ -1126,11 +1187,14 @@ def run_thesis_pipeline(
                 )
                 elapsed = time.time() - t0
                 print(f"✅ Phase 3 erfolgreich (Dauer: {elapsed:.1f}s)")
+                phase_status["phase3_validation"] = "success"
             except Exception as e:
                 print(f"❌ FEHLER in Phase 3: {e}")
                 all_success = False
+                phase_status["phase3_validation"] = "failed"
     else:
         print("\n⏭️  ÜBERSPRINGE Phase 3: Validation")
+        phase_status["phase3_validation"] = "skipped"
 
     # Phase 4: Summary (always run unless dry-run)
     if not dry_run:
@@ -1147,9 +1211,13 @@ def run_thesis_pipeline(
             )
             elapsed = time.time() - t0
             print(f"✅ Phase 4 erfolgreich (Dauer: {elapsed:.1f}s)")
+            phase_status["phase4_summary"] = "success"
         except Exception as e:
             print(f"❌ FEHLER in Phase 4: {e}")
             all_success = False
+            phase_status["phase4_summary"] = "failed"
+    else:
+        phase_status["phase4_summary"] = "skipped_dry_run"
 
     # Final summary
     print("\n" + "=" * 80)
@@ -1192,11 +1260,16 @@ def run_thesis_pipeline(
                 "resolved_snapshot_sha256": resolved_snapshot_sha256,
                 "snapshot_validation_errors": snapshot_errors,
                 "snapshot_forced": snapshot_forced,
+                "force_override_used": bool(force),
+                "strict_scientific": bool(strict_scientific),
+                "phase_status": phase_status,
+                "strict_block_reason": strict_block_reason,
                 "n_trials": n_trials,
                 "resolved_n_clusters": resolved_n_clusters,
                 "resolved_batch_size": resolved_batch_size,
                 "resolved_umap_components": resolved_umap_components,
                 "resolved_umap_n_neighbors": resolved_umap_n_neighbors,
+                "resolved_umap_min_dist": resolved_umap_min_dist,
                 "resolved_umap_random_state": resolved_umap_random_state,
                 "resolved_umap_n_jobs": resolved_umap_n_jobs,
                 "computed_selection_method": computed_selection_method,
@@ -1299,6 +1372,11 @@ def run_thesis_pipeline(
             "default": 42,
             "help": "Global random seed for reproducible runs",
         },
+        "strict_scientific": {
+            "type": bool,
+            "default": True,
+            "help": "Fail-fast after phase errors and enforce strict scientific sequencing",
+        },
         "pre_names": {
             "type": str,
             "nargs": "*",
@@ -1346,6 +1424,7 @@ def main(
     output_dir: Optional[str] = None,
     execution_profile: str = "default",
     seed: int = 42,
+    strict_scientific: bool = True,
     pre_names: Optional[list[str]] = None,
     pre_indices: Optional[list[int]] = None,
     hamburg: bool = False,
@@ -1373,6 +1452,7 @@ def main(
         output_dir=output_dir_path,
         execution_profile=execution_profile,
         seed=seed,
+        strict_scientific=strict_scientific,
         pre_names=pre_names,
         pre_indices=pre_indices,
         hamburg=hamburg,

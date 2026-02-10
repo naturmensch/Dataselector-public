@@ -35,6 +35,7 @@ import dataselector.workflows.sampler_suite
 import dataselector.workflows.scientific_tools
 import dataselector.workflows.script_convergence_tools
 import dataselector.workflows.thesis_pipeline
+import dataselector.workflows.thesis_orchestrate
 import dataselector.workflows.thesis_sampler_suite
 import dataselector.workflows.tune_weights
 import dataselector.workflows.validation

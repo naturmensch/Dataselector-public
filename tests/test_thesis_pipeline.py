@@ -24,6 +24,7 @@ def _minimal_resolved_config(
         "  n_clusters: 8\n"
         "  umap_components: 2\n"
         "  umap_n_neighbors: 15\n"
+        "  umap_min_dist: 0.1\n"
         "  umap_random_state: 42\n"
         "  umap_n_jobs: 1\n"
         "selection:\n"
