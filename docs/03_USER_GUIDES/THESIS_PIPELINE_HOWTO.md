@@ -96,7 +96,7 @@ Interpretation target:
 Evidence:
 
 - `reports_2026-02-09/MIN_DISTANCE_DECISION_2026-02-09.md`
-- `reports_2026-02-09/min_distance_policy_summary_20260209T165422Z.md`
+- `reports_2026-02-09/min_distance_policy_summary_20260209T233849Z.md`
 
 ## 4) End-to-End Thesis Flow (Copy/Paste)
 
@@ -110,14 +110,21 @@ Evidence:
 4. fail-fast (error)
 
 For thesis runs, pass `--n-samples` explicitly in commands below.
+Current thesis policy baseline is `24` (minimum-sufficient decision):
+`reports_2026-02-09/N_SAMPLES_DECISION_2026-02-09.md`.
 
 ### 4.1 Build metadata from local images
 
 ```bash
 /opt/miniconda3/envs/dataselector/bin/python -m dataselector build-tiles \
   --image-dir "$DATASELECTOR_IMAGE_DIR" \
+  --name-source-csv data/KDR100_foliage_with_files_epsg3857.csv \
+  --city-overrides data/city_overrides.csv \
   --out data/new_all_tiles.csv
 ```
+
+If canonical city resolution is incomplete, `build-tiles` now fails fast and tells
+you to update `data/city_overrides.csv` for the remaining IDs.
 
 ### 4.2 Validate raster/CSV alignment
 
@@ -134,7 +141,7 @@ For thesis runs, pass `--n-samples` explicitly in commands below.
 /opt/miniconda3/envs/dataselector/bin/python -m dataselector thesis-pipeline \
   --execution-profile thesis_repro \
   --seed 42 \
-  --n-samples 34 \
+  --n-samples 24 \
   --dry-run \
   --output-dir outputs/thesis_preflight
 ```
@@ -146,7 +153,7 @@ RUN_TAG="$(date -u +%Y%m%dT%H%M%SZ)"
 /opt/miniconda3/envs/dataselector/bin/python -m dataselector thesis-pipeline \
   --execution-profile thesis_repro \
   --seed 42 \
-  --n-samples 34 \
+  --n-samples 24 \
   --validation-seeds 42 \
   --validation-min-distances 28.5 \
   --output-dir "outputs/thesis_run_A_${RUN_TAG}"
@@ -159,7 +166,7 @@ RUN_TAG="$(date -u +%Y%m%dT%H%M%SZ)"
 /opt/miniconda3/envs/dataselector/bin/python -m dataselector thesis-pipeline \
   --execution-profile thesis_repro \
   --seed 42 \
-  --n-samples 34 \
+  --n-samples 24 \
   --validation-seeds 42 \
   --validation-min-distances 28.5 \
   --output-dir "outputs/thesis_run_B_${RUN_TAG}"
@@ -172,7 +179,7 @@ RUN_TAG="$(date -u +%Y%m%dT%H%M%SZ)"
 /opt/miniconda3/envs/dataselector/bin/python -m dataselector thesis-pipeline \
   --execution-profile thesis_repro \
   --seed 42 \
-  --n-samples 34 \
+  --n-samples 24 \
   --validation-seeds 42 \
   --validation-min-distances 28.5 \
   --hamburg \
@@ -185,7 +192,7 @@ Equivalent explicit form:
 /opt/miniconda3/envs/dataselector/bin/python -m dataselector thesis-pipeline \
   --execution-profile thesis_repro \
   --seed 42 \
-  --n-samples 34 \
+  --n-samples 24 \
   --validation-seeds 42 \
   --validation-min-distances 28.5 \
   --pre-names Hamburg \
@@ -205,8 +212,19 @@ Preselection name resolution follows this chain:
 
 Data provenance for `city`:
 
-1. Primary extraction from `longName` in build pipeline.
-2. Fallback extraction from `longName` pattern if `city` is missing.
+1. For canonical `build-tiles` output (`data/new_all_tiles.csv`), the builder
+   loads legacy name metadata from `data/KDR100_foliage_with_files_epsg3857.csv`
+   when available.
+2. `city` is derived from `longName` pattern (`KDR_<id>_<city>_<year>.png`) if
+   not already present in the source.
+3. Key variants are normalized (`KDR_079a` vs `KDR_079A`, optional letter
+   suffixes like `KDR_155b -> KDR_155`) before matching source rows.
+4. If still unresolved, deterministic backup fill is applied from the best
+   matching `new_all_tiles.backup_*.csv` in `data/`.
+5. Final unresolved rest cases are filled from `data/city_overrides.csv`
+   (`manual_override`), and every row gets a trace in `city_source`
+   (`longname_parse`, `variant_base`, `backup_fill`, `manual_override`).
+6. Stable alias fallback remains: `Hamburg -> KDR_146`.
 
 This guarantees that `--hamburg` and `--pre-names Hamburg` resolve to the
 documented anchor tile as long as canonical metadata remains unchanged.

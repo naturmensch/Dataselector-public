@@ -42,7 +42,7 @@ The following CLI commands call external scripts (Phase 3R migration candidates)
 | `dataselector xxl` | `scripts/xxl_KDR146_run_thesis_complete_modern.py` | 🔄 Wrapper | [WRAPPER_STATUS.md](../IMPLEMENTATION_DETAILS/WRAPPER_STATUS.md) |
 | `dataselector xxl-monitor` | `scripts/xxl_full_run_monitor.py` | 🔄 Wrapper | [WRAPPER_STATUS.md](../IMPLEMENTATION_DETAILS/WRAPPER_STATUS.md) |
 | `dataselector adaptive-pipeline` | `scripts/run_adaptive_pipeline.py` | 🔄 Wrapper | [WRAPPER_STATUS.md](../IMPLEMENTATION_DETAILS/WRAPPER_STATUS.md) |
-| `dataselector benchmark-sampling` | `scripts/seed_benchmark.py` | 🔄 Wrapper | [WRAPPER_STATUS.md](../IMPLEMENTATION_DETAILS/WRAPPER_STATUS.md) |
+| `dataselector benchmark-sampling` | `dataselector/workflows/benchmark_sampling.py` | ✅ Direct workflow | [WRAPPER_STATUS.md](../IMPLEMENTATION_DETAILS/WRAPPER_STATUS.md) |
 
 **Note:** These commands work reliably via subprocess but are candidates for direct Python implementation in Phase 3R (planned after thesis).
 
@@ -50,7 +50,7 @@ See [IMPLEMENTATION_DETAILS/WRAPPER_STATUS.md](../IMPLEMENTATION_DETAILS/WRAPPER
 
 ## Legacy Scripts Reference
 
-After cleanup (84→9), only the following 9 scripts remain in `/scripts`:
+After cleanup (84→9), thesis closeout restored 3 evidence wrappers. The following 12 scripts currently remain in `/scripts`:
 
 | Script | Purpose | Status |
 |---|---|---|
@@ -62,6 +62,9 @@ After cleanup (84→9), only the following 9 scripts remain in `/scripts`:
 | `extract_kdr100_selection.py` | Thesis data extraction | ✅ Thesis (temporary) |
 | `test_temporal_sensitivity.py` | Sensitivity analysis | ✅ Thesis (temporary) |
 | `uncertainty_quantification.py` | UQ analysis | ✅ Thesis (temporary) |
+| `compare_seed_vs_unseed.py` | Seeded vs unseeded thesis evidence | ✅ Thesis (temporary) |
+| `seed_benchmark.py` | Seed/runtime benchmark evidence | ✅ Thesis (temporary) |
+| `compare_min_distance_policies.py` | Distance policy evidence sweep | ✅ Thesis (temporary) |
 | `profile_selection.py` | Performance profiling | ⚠️ Optional |
 
 These scripts support infrastructure or thesis-specific analyses and are not directly called via CLI.
