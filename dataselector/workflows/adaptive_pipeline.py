@@ -37,6 +37,49 @@ def _next_power_of_two(x: int) -> int:
     return p
 
 
+_N_INITIAL_STRATEGY_ALIASES = {
+    "modern": "modern",
+    "legacy": "legacy",
+    # Backward-compatible aliases from older CLI docs/config.
+    "conservative": "legacy",
+    "moderate": "modern",
+    "aggressive": "modern",
+}
+
+
+def _normalize_n_initial_strategy(strategy: str | None) -> str:
+    """Normalize n_initial strategy names to the compute_adaptive_n_initial contract."""
+    if strategy is None:
+        return "modern"
+    key = str(strategy).strip().lower()
+    if key not in _N_INITIAL_STRATEGY_ALIASES:
+        allowed = ", ".join(sorted(_N_INITIAL_STRATEGY_ALIASES))
+        raise ValueError(
+            f"Unknown n_initial_strategy '{strategy}'. Allowed values: {allowed}"
+        )
+    return _N_INITIAL_STRATEGY_ALIASES[key]
+
+
+def _resolve_optuna_n_samples(
+    explicit_n_samples: int | None,
+    *,
+    context: str = "adaptive_pipeline",
+    root: Path | None = None,
+    experiment_run_dir: Path | str | None = None,
+) -> tuple[int, str]:
+    """Resolve Optuna n_samples using the shared strict contract."""
+    from dataselector.workflows._selection_target import resolve_selection_n_samples
+
+    resolved_root = root if root is not None else ROOT
+    return resolve_selection_n_samples(
+        explicit_n_samples,
+        context=context,
+        root=resolved_root,
+        config_path=resolved_root / "config" / "pipeline_config.yaml",
+        experiment_run_dir=experiment_run_dir,
+    )
+
+
 def run_cmd(cmd: str) -> None:
     """Execute a shell command, printing output; do not fail on nonzero exit."""
     print(f"🔧 Running: {cmd}")
@@ -62,7 +105,7 @@ def run_adaptive_pipeline(
     sampler: str = "lhs",
     optuna_sampler: str = "TPESampler",
     seed: int = 42,
-    n_initial_strategy: str = "conservative",
+    n_initial_strategy: str = "modern",
     n_samples: int | None = None,
     n_samples_min: int | None = None,
     n_samples_max: int | None = None,
@@ -104,7 +147,8 @@ def run_adaptive_pipeline(
     seed : int
         Random seed
     n_initial_strategy : str
-        Strategy for adaptive n_lhs: 'conservative', 'moderate', 'aggressive'
+        Strategy for adaptive n_lhs: 'modern' or 'legacy'
+        (aliases: conservative->legacy, moderate/aggressive->modern)
     n_samples : int | None
         Fixed n_samples for Optuna
     n_samples_min : int | None
@@ -151,17 +195,19 @@ def run_adaptive_pipeline(
         csv_path = ROOT / "data" / "new_all_tiles.csv"
     csv_path = Path(csv_path)
 
-    if csv_path.exists():
-        try:
-            import pandas as pd
+    if not csv_path.exists():
+        raise FileNotFoundError(
+            f"Metadata not found for adaptive pipeline: {csv_path}. "
+            "Provide --csv-path or ensure canonical metadata exists."
+        )
+    try:
+        import pandas as pd
 
-            df = pd.read_csv(csv_path)
-            n_tiles = len(df)
-            print(f"📊 Loaded metadata: {n_tiles} tiles from {csv_path}")
-        except Exception as e:
-            print(f"⚠️  Could not read metadata from {csv_path}: {e}")
-    else:
-        print(f"⚠️  Metadata not found: {csv_path}")
+        df = pd.read_csv(csv_path)
+        n_tiles = len(df)
+        print(f"📊 Loaded metadata: {n_tiles} tiles from {csv_path}")
+    except Exception as e:
+        raise RuntimeError(f"Could not read metadata from {csv_path}: {e}") from e
 
     # Initialize experiment manager
     em = ExperimentManager(
@@ -233,26 +279,25 @@ def run_adaptive_pipeline(
             n_candidates = n_tiles
             print(f"📊 Using full dataset size for n_candidates: {n_candidates}")
         else:
-            n_candidates = 673  # Fallback
-            print(f"⚠️  Metadata not found; defaulting n_candidates to {n_candidates}")
+            raise ValueError(
+                "Could not resolve n_candidates: metadata tile count unavailable."
+            )
+
+    normalized_strategy = _normalize_n_initial_strategy(n_initial_strategy)
+    if normalized_strategy != str(n_initial_strategy).strip().lower():
+        print(
+            "ℹ️  Normalized n_initial_strategy "
+            f"'{n_initial_strategy}' -> '{normalized_strategy}'"
+        )
 
     # Resolve n_lhs adaptively if not set
     if n_lhs is None:
         n_lhs = compute_adaptive_n_initial(
-            n_dimensions, n_tiles=n_tiles, strategy=n_initial_strategy
+            n_dimensions, n_tiles=n_tiles, strategy=normalized_strategy
         )
-        print(f"📊 Adaptive n_lhs: {n_lhs} (strategy={n_initial_strategy})")
+        print(f"📊 Adaptive n_lhs: {n_lhs} (strategy={normalized_strategy})")
     else:
         print(f"📊 Using user-specified n_lhs: {n_lhs}")
-
-    # LONG-TERM SOLUTION: No fallback - sampler must be provided explicitly
-    if sampler is None:
-        raise ValueError(
-            "Sampler not specified. Either:\n"
-            "1. Run 'dataselector benchmark-sampling' first (sets DATASELECTOR_EXPLORATION_PLAN)\n"
-            "2. Provide --sampler {lhs,sobol} explicitly via CLI\n"
-            "No hardcoded fallback is provided (long-term solution)."
-        )
 
     # Adjust for Sobol sampler (prefer power of two)
     if sampler == "sobol":
@@ -273,6 +318,8 @@ def run_adaptive_pipeline(
                 "n_candidates": n_candidates,
                 "sampler": sampler,
                 "seed": seed,
+                "n_initial_strategy_requested": n_initial_strategy,
+                "n_initial_strategy": normalized_strategy,
             },
         )
         em.log(
@@ -301,17 +348,16 @@ def run_adaptive_pipeline(
 
     print("=== Computing Initial Spatial Constraint ===")
     try:
-        _initial_min_distance = compute_min_distance_km(
+        initial_min_distance = compute_min_distance_km(
             str(csv_path),
             strategy="median_nn",
             safety_margin=1.0,
         )
     except Exception as e:
-        print(
-            f"⚠️  Could not compute min_distance from data ({e}). "
-            f"Using conservative default: 28.0 km"
+        raise RuntimeError(
+            "Could not compute min_distance from metadata for adaptive pipeline: "
+            f"{e}"
         )
-        _initial_min_distance = 28.0
 
     # ========================================================================
     # PHASE 1: EXPLORATION (LHS/Sobol)
@@ -331,6 +377,9 @@ def run_adaptive_pipeline(
             sampler=sampler,
             seed=seed,
             metadata_path=str(csv_path),
+            min_distance_km=initial_min_distance,
+            pre_names=pre_names_list if pre_names_list else None,
+            pre_indices=pre_indices_list if pre_indices_list else None,
             output_dir=OUT / "tuning_weights",
         )
 
@@ -409,31 +458,31 @@ def run_adaptive_pipeline(
             else:
                 print("=== Phase 3: Optimization (Optuna) ===")
 
-                # Decide n_samples
-                if n_samples is not None:
-                    chosen_n_samples = n_samples
-                else:
-                    try:
-                        cfg_n = (
-                            em.manifest.get("config", {})
-                            .get("selection", {})
-                            .get("n_samples")
-                            if hasattr(em, "manifest")
-                            else None
+                n_samples_range = None
+                if n_samples_min is not None or n_samples_max is not None:
+                    if n_samples_min is None or n_samples_max is None:
+                        raise ValueError(
+                            "adaptive_pipeline: provide both --n-samples-min and "
+                            "--n-samples-max for range mode."
                         )
-                    except Exception:
-                        cfg_n = None
+                    n_samples_range = (int(n_samples_min), int(n_samples_max))
 
-                    if cfg_n:
-                        chosen_n_samples = int(cfg_n)
-                    elif n_samples_min is not None and n_samples_max is not None:
-                        chosen_n_samples = None  # range mode
-                    else:
-                        chosen_n_samples = compute_adaptive_n_initial(n_dimensions)
+                chosen_n_samples, chosen_n_source = _resolve_optuna_n_samples(
+                    n_samples,
+                    context="adaptive_pipeline.optuna",
+                    root=ROOT,
+                    experiment_run_dir=Path(em.run_dir),
+                )
 
+                range_text = (
+                    f"{n_samples_range[0]}-{n_samples_range[1]}"
+                    if n_samples_range is not None
+                    else "disabled"
+                )
                 print(
                     f"Running Optuna with min_distance range: {opt_lo}-{opt_hi} km "
-                    f'(center {center}km); n_samples={chosen_n_samples or "range mode"}'
+                    f"(center {center}km); n_samples={chosen_n_samples} "
+                    f"(source={chosen_n_source}), n_samples_range={range_text}"
                 )
 
                 # Import and call Optuna optimization directly
@@ -445,15 +494,11 @@ def run_adaptive_pipeline(
                     "min_dist_max": int(opt_hi),
                 }
 
-                n_samples_range = None
-                if n_samples_min is not None and n_samples_max is not None:
-                    n_samples_range = (int(n_samples_min), int(n_samples_max))
-
                 try:
                     run_optuna(
                         n_trials=n_trials,
                         n_candidates=n_candidates,
-                        n_samples=int(chosen_n_samples) if chosen_n_samples else 34,
+                        n_samples=int(chosen_n_samples),
                         n_samples_range=n_samples_range,
                         metadata_path=str(csv_path),
                         seed=seed,
@@ -496,11 +541,16 @@ def run_adaptive_pipeline(
                     )
 
         except Exception as e:
-            print(
-                "Warning while running Optuna or analysis. "
-                "Proceeding to Bootstrap stage. Error:"
-            )
-            print(repr(e))
+            if continue_on_analysis_failure:
+                print(
+                    "Warning while running Optuna or analysis. "
+                    "Proceeding to Bootstrap stage. Error:"
+                )
+                print(repr(e))
+            else:
+                print("Error while running Optuna or analysis. Aborting pipeline.")
+                print(repr(e))
+                raise SystemExit(1)
 
     # ========================================================================
     # PHASE 4: BOOTSTRAP VALIDATION
@@ -647,9 +697,9 @@ def run_adaptive_pipeline(
         },
         "n_initial_strategy": {
             "type": str,
-            "default": "conservative",
-            "choices": ["conservative", "moderate", "aggressive"],
-            "help": "Strategy for adaptive n_lhs computation",
+            "default": "modern",
+            "choices": ["modern", "legacy", "conservative", "moderate", "aggressive"],
+            "help": "Strategy for adaptive n_lhs computation (aliases supported)",
         },
         "n_samples": {
             "type": int,
@@ -736,7 +786,7 @@ def main(
     sampler: str | None = None,
     optuna_sampler: str = "TPESampler",
     seed: int = 42,
-    n_initial_strategy: str = "conservative",
+    n_initial_strategy: str = "modern",
     n_samples: int | None = None,
     n_samples_min: int | None = None,
     n_samples_max: int | None = None,
