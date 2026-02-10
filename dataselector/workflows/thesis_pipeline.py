@@ -167,7 +167,7 @@ def _resolve_optuna_sampler(
         compare_multi_seed(
             samplers=["qmc", "tpe", "cmaes"],
             seeds=validation_seeds,
-            n_trials=max(20, min(int(n_trials), 100)),
+            n_trials=max(1, int(n_trials)),
             datasets=["kdr100"],
             output=str(compare_out),
             n_samples=int(n_samples),
@@ -222,6 +222,102 @@ def _resolve_exploration_sampler(
             return sampler, "mapped_from_optuna_sampler"
 
     return None, "unresolved"
+
+
+def _read_autoscale_best_payload(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _extract_selection_values_from_autoscale_payload(
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    params = payload.get("params")
+    user_attrs = payload.get("user_attrs")
+    if not isinstance(params, dict):
+        params = {}
+    if not isinstance(user_attrs, dict):
+        user_attrs = {}
+
+    out: dict[str, Any] = {}
+
+    # Prefer explicitly persisted normalized values.
+    alpha = user_attrs.get("alpha")
+    beta = user_attrs.get("beta")
+    gamma = user_attrs.get("gamma")
+    if alpha is None or beta is None or gamma is None:
+        a = params.get("a")
+        b = params.get("b")
+        c = params.get("c")
+        if a is not None and b is not None and c is not None:
+            a = float(a)
+            b = float(b)
+            c = float(c)
+            total = a + b + c
+            if total > 0:
+                alpha = a / total
+                beta = b / total
+                gamma = c / total
+
+    if alpha is not None:
+        out["alpha_visual"] = float(alpha)
+    if beta is not None:
+        out["beta_spatial"] = float(beta)
+    if gamma is not None:
+        out["gamma_temporal"] = float(gamma)
+
+    min_distance_km = user_attrs.get("min_distance_km", params.get("min_distance_km"))
+    if min_distance_km is not None:
+        out["min_distance_km"] = float(min_distance_km)
+
+    n_samples = user_attrs.get("n_samples")
+    if n_samples is not None:
+        out["n_samples"] = int(n_samples)
+
+    return out
+
+
+def _resolve_computed_selection_values(
+    *,
+    compute_params: bool,
+    output_dir: Path,
+) -> tuple[dict[str, Any], str | None, str | None, str | None]:
+    """Resolve computed selection values from canonical autoscale artifacts.
+
+    Returns:
+        (values, method, source_file, source_hash)
+    """
+    if not compute_params:
+        return {}, None, None, None
+
+    artifact_candidates = [
+        output_dir / "parameter_resolution" / "optuna_autoscale_best_latest.json",
+        output_dir / "optuna_autoscale_best_latest.json",
+        output_dir / "parameter_resolution" / "autoscale_best_latest.json",
+        output_dir / "autoscale_best_latest.json",
+        Path("outputs") / "optuna_autoscale_best_latest.json",
+        Path("outputs") / "autoscale_best_latest.json",
+    ]
+
+    for candidate in artifact_candidates:
+        payload = _read_autoscale_best_payload(candidate)
+        if payload is None:
+            continue
+        values = _extract_selection_values_from_autoscale_payload(payload)
+        if values:
+            return (
+                values,
+                "computed_autoscale_artifact",
+                str(candidate),
+                compute_file_sha256(candidate),
+            )
+
+    return {}, None, None, None
 
 
 def run_thesis_pipeline(
@@ -335,6 +431,11 @@ def run_thesis_pipeline(
     )
     policy_method = "snapshot_policy" if snapshot_input_path is not None else "config_policy"
 
+    computed_selection_values, computed_selection_method, computed_selection_source_file, computed_selection_source_hash = _resolve_computed_selection_values(
+        compute_params=compute_params,
+        output_dir=output_dir,
+    )
+
     sentinel = object()
 
     def resolve_param(
@@ -346,6 +447,11 @@ def run_thesis_pipeline(
         default: Any = sentinel,
         compute_fn=None,
         compute_method: str | None = None,
+        computed_value: Any = sentinel,
+        computed_method: str | None = None,
+        computed_source_file: str | None = None,
+        computed_source_hash: str | None = None,
+        prefer_computed_when_requested: bool = False,
         notes: str | None = None,
     ) -> Any:
         raw_value = _config_first(parameters, paths)
@@ -354,7 +460,17 @@ def run_thesis_pipeline(
         source_hash = policy_source_hash
         compute_args: dict[str, Any] = {"paths": paths}
 
-        if raw_value is None:
+        if (
+            compute_params
+            and computed_value is not sentinel
+            and (prefer_computed_when_requested or raw_value is None)
+        ):
+            value = parser(computed_value)
+            method = computed_method or "computed"
+            source_file = computed_source_file
+            source_hash = computed_source_hash
+            compute_args["computed_from_artifact"] = True
+        elif raw_value is None:
             if compute_fn is not None and compute_params:
                 value = parser(compute_fn())
                 method = compute_method or "computed"
@@ -395,6 +511,15 @@ def run_thesis_pipeline(
     if n_samples is not None:
         resolved_n_samples = _parse_positive_int(n_samples, label="n_samples")
         n_samples_source = "explicit"
+    elif compute_params and computed_selection_values.get("n_samples") is not None:
+        resolved_n_samples = _parse_positive_int(
+            computed_selection_values["n_samples"], label="selection.n_samples"
+        )
+        n_samples_source = (
+            computed_selection_method
+            if computed_selection_method is not None
+            else "computed"
+        )
     else:
         cfg_n_samples = _config_get(parameters, "selection.n_samples")
         if cfg_n_samples is not None:
@@ -418,8 +543,20 @@ def run_thesis_pipeline(
         "selection",
         "n_samples",
         method=f"resolved:{n_samples_source}",
-        source_file=policy_source_file if n_samples_source in {"config", "snapshot_config"} else None,
-        source_hash=policy_source_hash if n_samples_source in {"config", "snapshot_config"} else None,
+        source_file=(
+            policy_source_file
+            if n_samples_source in {"config", "snapshot_config"}
+            else computed_selection_source_file
+            if n_samples_source == "computed_autoscale_artifact"
+            else None
+        ),
+        source_hash=(
+            policy_source_hash
+            if n_samples_source in {"config", "snapshot_config"}
+            else computed_selection_source_hash
+            if n_samples_source == "computed_autoscale_artifact"
+            else None
+        ),
         compute_args={"explicit_cli": n_samples is not None},
     )
 
@@ -435,18 +572,33 @@ def run_thesis_pipeline(
         key="alpha_visual",
         paths=["selection.alpha_visual", "selection.weights.alpha"],
         parser=float,
+        computed_value=computed_selection_values.get("alpha_visual", sentinel),
+        computed_method=computed_selection_method,
+        computed_source_file=computed_selection_source_file,
+        computed_source_hash=computed_selection_source_hash,
+        prefer_computed_when_requested=True,
     )
     resolve_param(
         section="selection",
         key="beta_spatial",
         paths=["selection.beta_spatial", "selection.weights.beta"],
         parser=float,
+        computed_value=computed_selection_values.get("beta_spatial", sentinel),
+        computed_method=computed_selection_method,
+        computed_source_file=computed_selection_source_file,
+        computed_source_hash=computed_selection_source_hash,
+        prefer_computed_when_requested=True,
     )
     resolve_param(
         section="selection",
         key="gamma_temporal",
         paths=["selection.gamma_temporal", "selection.weights.gamma"],
         parser=float,
+        computed_value=computed_selection_values.get("gamma_temporal", sentinel),
+        computed_method=computed_selection_method,
+        computed_source_file=computed_selection_source_file,
+        computed_source_hash=computed_selection_source_hash,
+        prefer_computed_when_requested=True,
     )
     resolve_param(
         section="selection",
@@ -533,8 +685,21 @@ def run_thesis_pipeline(
     )
 
     # Resolve min_distance policy from config/snapshot or compute (if requested).
+    computed_min_distance_km = computed_selection_values.get("min_distance_km", sentinel)
     config_min_distance_km = _config_get(parameters, "selection.min_distance_km")
-    if config_min_distance_km is not None:
+    if compute_params and computed_min_distance_km is not sentinel:
+        config_min_distance_km = float(computed_min_distance_km)
+        parameters.setdefault("selection", {})["min_distance_km"] = config_min_distance_km
+        _record_param_provenance(
+            parameters,
+            "selection",
+            "min_distance_km",
+            method=computed_selection_method or "computed",
+            source_file=computed_selection_source_file,
+            source_hash=computed_selection_source_hash,
+            compute_args={"source": "autoscale_artifact"},
+        )
+    elif config_min_distance_km is not None:
         config_min_distance_km = float(config_min_distance_km)
         _record_param_provenance(
             parameters,
@@ -732,6 +897,14 @@ def run_thesis_pipeline(
             "path": sampler_artifact_path,
             "sha256": compute_file_sha256(Path(sampler_artifact_path)),
         }
+    if (
+        computed_selection_source_file
+        and Path(computed_selection_source_file).exists()
+    ):
+        source_files["selection_compute_artifact"] = {
+            "path": computed_selection_source_file,
+            "sha256": compute_file_sha256(Path(computed_selection_source_file)),
+        }
 
     snapshot = build_snapshot(
         parameters=parameters,
@@ -791,6 +964,9 @@ def run_thesis_pipeline(
                     "resolved_umap_n_neighbors": resolved_umap_n_neighbors,
                     "resolved_umap_random_state": resolved_umap_random_state,
                     "resolved_umap_n_jobs": resolved_umap_n_jobs,
+                    "computed_selection_method": computed_selection_method,
+                    "computed_selection_source_file": computed_selection_source_file,
+                    "computed_selection_source_hash": computed_selection_source_hash,
                 },
             )
         except Exception as exc:
@@ -1021,6 +1197,9 @@ def run_thesis_pipeline(
                 "resolved_umap_n_neighbors": resolved_umap_n_neighbors,
                 "resolved_umap_random_state": resolved_umap_random_state,
                 "resolved_umap_n_jobs": resolved_umap_n_jobs,
+                "computed_selection_method": computed_selection_method,
+                "computed_selection_source_file": computed_selection_source_file,
+                "computed_selection_source_hash": computed_selection_source_hash,
                 "skip_exploration": skip_exploration,
                 "skip_optimization": skip_optimization,
                 "skip_validation": skip_validation,

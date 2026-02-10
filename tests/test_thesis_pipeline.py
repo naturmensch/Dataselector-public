@@ -384,6 +384,116 @@ def test_run_thesis_pipeline_writes_central_parameter_provenance(tmp_path, monke
     assert "batch_size" in params["feature_extraction"]["_provenance"]
 
 
+def test_run_thesis_pipeline_compute_params_uses_autoscale_artifact(tmp_path, monkeypatch):
+    """compute-params should prefer autoscale artifact values for critical selection params."""
+    from dataselector.workflows import thesis_pipeline as mod
+
+    ws = tmp_path
+    (ws / "data").mkdir(parents=True, exist_ok=True)
+    (ws / "config").mkdir(parents=True, exist_ok=True)
+    (ws / "outputs" / "parameter_resolution").mkdir(parents=True, exist_ok=True)
+
+    (ws / "data" / "new_all_tiles.csv").write_text(
+        "ul_x,ul_y,lr_x,lr_y,year\n1,2,3,4,1900\n",
+        encoding="utf-8",
+    )
+    (ws / "config" / "pipeline_config.yaml").write_text(
+        _minimal_resolved_config(n_samples=24, min_distance_km=28.5),
+        encoding="utf-8",
+    )
+    (ws / "outputs" / "parameter_resolution" / "optuna_autoscale_best_latest.json").write_text(
+        json.dumps(
+            {
+                "value": 1.0,
+                "params": {"a": 0.2, "b": 0.3, "c": 0.5, "min_distance_km": 33},
+                "user_attrs": {
+                    "alpha": 0.2,
+                    "beta": 0.3,
+                    "gamma": 0.5,
+                    "n_samples": 29,
+                    "min_distance_km": 33,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(ws)
+    monkeypatch.setattr(
+        "dataselector.workflows.generate_reports.generate_thesis_final_report",
+        lambda **_kwargs: None,
+    )
+
+    success = mod.run_thesis_pipeline(
+        n_lhs=5,
+        n_trials=2,
+        compute_params=True,
+        skip_exploration=True,
+        skip_optimization=True,
+        skip_validation=True,
+        dry_run=True,
+        no_auto_continue=True,
+        output_dir=ws / "outputs",
+        execution_profile="thesis_repro",
+        seed=11,
+        snapshot_config=True,
+    )
+
+    assert success is True
+    run_meta = json.loads((ws / "outputs" / "run_metadata.json").read_text("utf-8"))
+    assert run_meta["extra"]["computed_selection_method"] == "computed_autoscale_artifact"
+
+    import yaml
+
+    snapshot_path = Path(run_meta["extra"]["resolved_snapshot_path"])
+    resolved = yaml.safe_load(snapshot_path.read_text(encoding="utf-8"))
+    params = resolved["parameters"]
+    assert params["selection"]["alpha_visual"] == pytest.approx(0.2)
+    assert params["selection"]["beta_spatial"] == pytest.approx(0.3)
+    assert params["selection"]["gamma_temporal"] == pytest.approx(0.5)
+    assert params["selection"]["min_distance_km"] == pytest.approx(33.0)
+    assert params["selection"]["_provenance"]["alpha_visual"]["method"] == "computed_autoscale_artifact"
+    assert (
+        params["selection"]["_provenance"]["min_distance_km"]["method"]
+        == "computed_autoscale_artifact"
+    )
+
+
+def test_resolve_optuna_sampler_uses_requested_trials_without_clamp(tmp_path, monkeypatch):
+    """Auto sampler determination should forward requested n_trials budget unchanged."""
+    from dataselector.workflows import thesis_pipeline as mod
+
+    captured: dict[str, int] = {}
+
+    def fake_compare_multi_seed(**kwargs):
+        captured["n_trials"] = int(kwargs["n_trials"])
+        out = Path(kwargs["output"])
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "selected_sampler.json").write_text(
+            json.dumps({"best": "tpe"}), encoding="utf-8"
+        )
+
+    monkeypatch.setattr(
+        "dataselector.workflows.compare_samplers.compare_multi_seed",
+        fake_compare_multi_seed,
+    )
+    monkeypatch.chdir(tmp_path)
+
+    sampler, source, artifact = mod._resolve_optuna_sampler(
+        config={},
+        output_dir=tmp_path,
+        n_trials=7,
+        n_samples=24,
+        validation_seeds=[42, 43],
+        compute_params=True,
+        dry_run=False,
+    )
+
+    assert sampler == "tpe"
+    assert source == "auto_compare"
+    assert artifact is not None
+    assert captured["n_trials"] == 7
+
+
 @pytest.mark.skipif(
     True, reason="Requires full pipeline setup (data, features, config)"
 )
