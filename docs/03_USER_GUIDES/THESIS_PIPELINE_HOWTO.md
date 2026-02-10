@@ -106,6 +106,24 @@ Evidence:
 
 ## 4) End-to-End Thesis Flow (Copy/Paste)
 
+### 4.0 Trigger-All Orchestration (Recommended)
+
+Use the canonical orchestrator to enforce scientific precompute -> snapshot ->
+validated run in one flow:
+
+```bash
+micromamba run -n dataselector python -m dataselector thesis-orchestrate \
+  --config config/pipeline_config.yaml \
+  --output-dir outputs/runs/thesis_orchestrated_$(date -u +%Y%m%dT%H%M%SZ)
+```
+
+This command performs:
+
+1. precompute artifacts under `parameter_resolution/`
+2. resolver snapshot stage (`--compute-params --snapshot-config --no-auto-continue`)
+3. snapshot + contract validation
+4. production run via `--use-params <final_config.yaml>`
+
 ### 4.A Parameter Resolution + Snapshot Contract
 
 The canonical thesis path now supports explicit resolver/snapshot flags:
