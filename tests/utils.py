@@ -66,7 +66,9 @@ class FakeMetadataProcessor:
 def create_dummy_script(path: Path, marker: str = "DUMMY_RUN_DONE"):
     """Creates a standalone dummy python script for testing monitors."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(textwrap.dedent(f"""
+    path.write_text(
+        textwrap.dedent(
+            f"""
             #!/usr/bin/env python3
             import os, sys, time
             
@@ -83,5 +85,7 @@ def create_dummy_script(path: Path, marker: str = "DUMMY_RUN_DONE"):
             sys.stdout.flush()
             time.sleep(0.1)
             sys.exit(0)
-            """))
+            """
+        )
+    )
     path.chmod(0o755)

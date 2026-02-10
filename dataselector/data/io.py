@@ -203,6 +203,9 @@ def load_or_extract_features(
             except Exception:
                 pass
         else:
+            print(
+                f"[INFO] ✓ Feature cache hit (hash: {meta_hash[:8]}..., shape: {cached.shape})"
+            )
             return cached
 
     # If not found, check for legacy features.npy and attempt safe migration
@@ -239,6 +242,9 @@ def load_or_extract_features(
             )
 
     # No usable cache found: extract and create a new hash-named cache
+    print(
+        f"[INFO] Feature cache miss (hash: {meta_hash[:8]}...) - extracting features with batch_size={batch_size}..."
+    )
     meta = load_metadata(csv_meta)
     feats = extract_features(meta, batch_size=batch_size)
 
