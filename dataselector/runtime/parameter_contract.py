@@ -40,9 +40,16 @@ def validate_snapshot_against_contract(
     *,
     snapshot: dict[str, Any],
     contract: dict[str, Any],
-    repo_root: Path,
+    run_root: Path,
+    repo_root: Path | None = None,
+    evidence_scope: str = "run_dir",
 ) -> list[str]:
     errors: list[str] = []
+    repo_base = repo_root or run_root
+    if evidence_scope not in {"run_dir", "repo_root"}:
+        raise ValueError(
+            f"Unknown evidence_scope '{evidence_scope}'. Expected run_dir|repo_root."
+        )
 
     params = snapshot.get("parameters")
     if not isinstance(params, dict):
@@ -101,7 +108,12 @@ def validate_snapshot_against_contract(
                         f"'{dotted}' requires compute_args.resolved_optuna_sampler evidence"
                     )
             else:
-                ev_path = repo_root / evidence
+                if evidence.startswith("repo:"):
+                    ev_path = repo_base / evidence[len("repo:") :]
+                elif evidence_scope == "repo_root":
+                    ev_path = repo_base / evidence
+                else:
+                    ev_path = run_root / evidence
                 if not ev_path.exists():
                     # Also allow run-relative evidence if source_file exists and matches suffix.
                     source_file = str(entry.get("source_file", "")).strip()

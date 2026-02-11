@@ -57,8 +57,14 @@ def run_thesis_orchestrate(
     precompute_only: bool = False,
     run_after_precompute: bool = True,
     strict_scientific: bool = True,
+    cache_mode: str = "read_write",
+    strict_evidence_root: str = "run_dir",
+    strict_real_data: bool = True,
     force: bool = False,
+    force_override_reason: str | None = None,
 ) -> int:
+    if force and not force_override_reason:
+        raise ValueError("--force requires --force-override-reason")
     runtime_state = activate_repro_mode(profile=execution_profile, seed=seed)
     config_path = Path(config)
     if not config_path.exists():
@@ -89,6 +95,9 @@ def run_thesis_orchestrate(
         seed=seed,
         patience=autoscale_patience,
         output_dir=str(resolution_dir),
+        config_path=str(config_path),
+        cache_mode=cache_mode,
+        strict_real_data=strict_real_data,
     )
 
     # 2) Resolver + snapshot stage only.
@@ -105,6 +114,8 @@ def run_thesis_orchestrate(
         validation_seeds=validation_seeds,
         validation_min_distances=validation_min_distances,
         strict_scientific=strict_scientific,
+        config_path=config_path,
+        cache_mode=cache_mode,
     )
     if not resolution_ok:
         raise RuntimeError("Resolver/snapshot phase failed.")
@@ -116,7 +127,9 @@ def run_thesis_orchestrate(
     contract_errors = validate_snapshot_against_contract(
         snapshot=snapshot,
         contract=contract,
+        run_root=out_dir,
         repo_root=Path.cwd(),
+        evidence_scope=strict_evidence_root,
     )
     validation_errors = snapshot_errors + contract_errors
     if validation_errors and not force:
@@ -132,11 +145,14 @@ def run_thesis_orchestrate(
             runtime_state=runtime_state,
             extra={
                 "orchestrator_mode": "precompute_only",
-                "snapshot_path": str(snapshot_path),
-                "validation_errors": validation_errors,
-                "force_override_used": bool(force),
-            },
-        )
+                    "snapshot_path": str(snapshot_path),
+                    "validation_errors": validation_errors,
+                    "contract_validation_scope": strict_evidence_root,
+                    "contract_validation_errors": contract_errors,
+                    "force_override_used": bool(force),
+                    "force_override_reason": force_override_reason if force else None,
+                },
+            )
         return 0
 
     # 3) Production thesis run from validated snapshot.
@@ -153,6 +169,8 @@ def run_thesis_orchestrate(
         validation_seeds=validation_seeds,
         validation_min_distances=validation_min_distances,
         strict_scientific=strict_scientific,
+        config_path=config_path,
+        cache_mode=cache_mode,
     )
 
     write_run_metadata(
@@ -166,7 +184,10 @@ def run_thesis_orchestrate(
             "snapshot_path": str(snapshot_path),
             "snapshot_validated": len(validation_errors) == 0,
             "snapshot_validation_errors": validation_errors,
+            "contract_validation_scope": strict_evidence_root,
+            "contract_validation_errors": contract_errors,
             "force_override_used": bool(force),
+            "force_override_reason": force_override_reason if force else None,
             "run_after_precompute": bool(run_after_precompute),
             "strict_scientific": bool(strict_scientific),
             "run_success": bool(run_ok),
@@ -197,7 +218,19 @@ def run_thesis_orchestrate(
         "precompute_only": {"type": bool, "action": "store_true"},
         "run_after_precompute": {"type": bool, "default": True},
         "strict_scientific": {"type": bool, "default": True},
+        "cache_mode": {
+            "type": str,
+            "default": "read_write",
+            "choices": ["off", "read_only", "write_only", "read_write"],
+        },
+        "strict_evidence_root": {
+            "type": str,
+            "default": "run_dir",
+            "choices": ["run_dir", "repo_root"],
+        },
+        "strict_real_data": {"type": bool, "default": True},
         "force": {"type": bool, "action": "store_true"},
+        "force_override_reason": {"type": str, "default": None},
     },
 )
 def cli_thesis_orchestrate(
@@ -215,7 +248,11 @@ def cli_thesis_orchestrate(
     precompute_only: bool = False,
     run_after_precompute: bool = True,
     strict_scientific: bool = True,
+    cache_mode: str = "read_write",
+    strict_evidence_root: str = "run_dir",
+    strict_real_data: bool = True,
     force: bool = False,
+    force_override_reason: str | None = None,
 ) -> int:
     return run_thesis_orchestrate(
         config=config,
@@ -232,6 +269,9 @@ def cli_thesis_orchestrate(
         precompute_only=precompute_only,
         run_after_precompute=run_after_precompute,
         strict_scientific=strict_scientific,
+        cache_mode=cache_mode,
+        strict_evidence_root=strict_evidence_root,
+        strict_real_data=strict_real_data,
         force=force,
+        force_override_reason=force_override_reason,
     )
-

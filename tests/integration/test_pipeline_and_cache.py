@@ -3,7 +3,6 @@ import pandas as pd
 import pytest
 
 from dataselector.data import io as io_mod
-from dataselector.pipeline import cache as cache_mod
 from dataselector.pipeline import experiments as experiments_mod
 
 
@@ -23,8 +22,8 @@ def test_cache_migration_and_load(tmp_path, monkeypatch):
     monkeypatch.setattr(io_mod, "load_metadata", lambda _csv: meta)
     monkeypatch.setattr(
         io_mod,
-        "extract_features",
-        lambda _metadata, batch_size=16: (_ for _ in ()).throw(
+        "_extract_features_with_provenance",
+        lambda _metadata, **_: (_ for _ in ()).throw(
             AssertionError("extract_features should not run during migration path")
         ),
     )
@@ -34,11 +33,10 @@ def test_cache_migration_and_load(tmp_path, monkeypatch):
     )
     assert np.array_equal(loaded, feats)
 
-    meta_hash = cache_mod.compute_meta_hash(str(csv), params={"batch_size": 4})
-    migrated_file = out / f"features-{meta_hash}.npy"
+    migrated_files = list(out.glob("features-*.npy"))
     backup_files = list((out / "backups").glob("features_legacy_backup_*.npy"))
 
-    assert migrated_file.exists()
+    assert migrated_files
     assert not (out / "features.npy").exists()
     assert backup_files
 
@@ -66,8 +64,8 @@ def test_feature_cache_validation_reextracts(tmp_path, monkeypatch):
     monkeypatch.setattr(io_mod, "load_metadata", lambda _csv: meta)
     monkeypatch.setattr(
         io_mod,
-        "extract_features",
-        lambda metadata, batch_size=16: np.zeros((len(metadata), 16), dtype=np.float32),
+        "_extract_features_with_provenance",
+        lambda metadata, **_: (np.zeros((len(metadata), 16), dtype=np.float32), {}),
     )
 
     feats = io_mod.load_or_extract_features(
@@ -75,8 +73,7 @@ def test_feature_cache_validation_reextracts(tmp_path, monkeypatch):
     )
     assert feats.shape == (4, 16)
 
-    meta_hash = cache_mod.compute_meta_hash(str(csv), params={"batch_size": 4})
-    assert (out / f"features-{meta_hash}.npy").exists()
+    assert list(out.glob("features-*.npy"))
 
 
 @pytest.mark.integration
@@ -106,9 +103,10 @@ def test_pipeline_smoke_small(tmp_path, monkeypatch):
     monkeypatch.setattr(io_mod, "load_metadata", lambda _csv: metadata.copy())
     monkeypatch.setattr(
         io_mod,
-        "extract_features",
-        lambda _metadata, batch_size=16: np.zeros(
-            (len(_metadata), 16), dtype=np.float32
+        "_extract_features_with_provenance",
+        lambda _metadata, **_: (
+            np.zeros((len(_metadata), 16), dtype=np.float32),
+            {},
         ),
     )
 

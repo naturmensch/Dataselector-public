@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import sys
 import time
 from datetime import datetime, timezone
@@ -374,6 +375,8 @@ def run_thesis_pipeline(
     skip_validation: bool = False,
     dry_run: bool = False,
     output_dir: Optional[Path] = None,
+    config_path: Optional[Path] = None,
+    cache_mode: str = "read_write",
     execution_profile: str = "default",
     seed: int = 42,
     strict_scientific: bool = True,
@@ -424,7 +427,42 @@ def run_thesis_pipeline(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     metadata_path = Path("data/new_all_tiles.csv")
-    config_path = Path("config/pipeline_config.yaml")
+    config_path = Path(config_path) if config_path is not None else Path("config/pipeline_config.yaml")
+    os.environ["DATASELECTOR_ACTIVE_CONFIG"] = str(config_path)
+    os.environ["DATASELECTOR_FEATURE_CACHE_MODE"] = str(cache_mode)
+    if execution_profile == "thesis_repro":
+        os.environ["DATASELECTOR_STRICT_CRS"] = "1"
+        os.environ["DATASELECTOR_METRIC_EPSG"] = "25832"
+    else:
+        os.environ.setdefault("DATASELECTOR_STRICT_CRS", "0")
+        os.environ.setdefault("DATASELECTOR_METRIC_EPSG", "25832")
+
+    metadata_crs_info: dict[str, Any] = {}
+    try:
+        from dataselector.data.io import load_metadata
+
+        md_preview = load_metadata(
+            metadata_path,
+            resolve_images=False,
+            strict_metric_crs=(execution_profile == "thesis_repro"),
+        )
+        metadata_crs_info = {
+            "source_crs": md_preview.attrs.get("source_crs") if hasattr(md_preview, "attrs") else None,
+            "metric_crs": md_preview.attrs.get("metric_crs") if hasattr(md_preview, "attrs") else None,
+            "transform_applied": bool(md_preview.attrs.get("transform_applied"))
+            if hasattr(md_preview, "attrs")
+            else False,
+        }
+    except Exception as exc:
+        metadata_crs_info = {
+            "source_crs": None,
+            "metric_crs": None,
+            "transform_applied": None,
+            "error": str(exc),
+        }
+        if execution_profile == "thesis_repro":
+            raise
+        print(f"⚠️ Could not resolve metadata CRS info: {exc}")
 
     snapshot_errors: list[str] = []
     snapshot_forced = False
@@ -1102,6 +1140,7 @@ def run_thesis_pipeline(
                     "computed_selection_method": computed_selection_method,
                     "computed_selection_source_file": computed_selection_source_file,
                     "computed_selection_source_hash": computed_selection_source_hash,
+                    "metadata_crs": metadata_crs_info,
                 },
             )
         except Exception as exc:
@@ -1339,7 +1378,7 @@ def run_thesis_pipeline(
             execution_profile=execution_profile,
             seed=seed,
             command=sys.argv,
-            config_path=Path("config/pipeline_config.yaml"),
+            config_path=config_path,
             runtime_state=runtime_state,
             extra={
                 "n_lhs": n_lhs,
@@ -1387,11 +1426,13 @@ def run_thesis_pipeline(
                 "skip_optimization": skip_optimization,
                 "skip_validation": skip_validation,
                 "dry_run": dry_run,
+                "cache_mode": str(cache_mode),
                 "validation_seeds": validation_seeds,
                 "validation_min_distances": validation_min_distances,
                 "pre_selected_names": pre_names_list if pre_names_list else None,
                 "pre_selected_indices": pre_indices_list if pre_indices_list else None,
                 "hamburg_shortcut": bool(hamburg),
+                "metadata_crs": metadata_crs_info,
             },
         )
     except Exception as exc:
@@ -1469,6 +1510,17 @@ def run_thesis_pipeline(
             "default": None,
             "help": "Output directory (default: outputs/runs/thesis_pipeline_<timestamp>)",
         },
+        "config_path": {
+            "type": str,
+            "default": "config/pipeline_config.yaml",
+            "help": "Configuration path used for parameter resolution and feature extraction",
+        },
+        "cache_mode": {
+            "type": str,
+            "default": "read_write",
+            "choices": ["off", "read_only", "write_only", "read_write"],
+            "help": "Feature cache mode for downstream workflows",
+        },
         "execution_profile": {
             "type": str,
             "default": "default",
@@ -1530,6 +1582,8 @@ def main(
     skip_validation: bool = False,
     dry_run: bool = False,
     output_dir: Optional[str] = None,
+    config_path: str = "config/pipeline_config.yaml",
+    cache_mode: str = "read_write",
     execution_profile: str = "default",
     seed: int = 42,
     strict_scientific: bool = True,
@@ -1558,6 +1612,8 @@ def main(
         skip_validation=skip_validation,
         dry_run=dry_run,
         output_dir=output_dir_path,
+        config_path=Path(config_path),
+        cache_mode=cache_mode,
         execution_profile=execution_profile,
         seed=seed,
         strict_scientific=strict_scientific,

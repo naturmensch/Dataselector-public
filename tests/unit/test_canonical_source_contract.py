@@ -40,8 +40,11 @@ def test_io_uses_canonical_metadata_when_csv_meta_is_none(tmp_path, monkeypatch)
     monkeypatch.setattr(io_mod, "load_metadata", _fake_load_metadata)
     monkeypatch.setattr(
         io_mod,
-        "extract_features",
-        lambda metadata, batch_size=16: np.zeros((len(metadata), 4), dtype=np.float32),
+        "_extract_features_with_provenance",
+        lambda metadata, **_: (
+            np.zeros((len(metadata), 4), dtype=np.float32),
+            {},
+        ),
     )
 
     feats = io_mod.load_or_extract_features(

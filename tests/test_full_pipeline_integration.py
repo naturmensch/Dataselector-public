@@ -104,8 +104,11 @@ def test_feature_cache_validation(tmp_path, monkeypatch):
     # monkeypatch the heavy extractor to a fast deterministic stub (extra safety)
     monkeypatch.setattr(
         io_mod,
-        "extract_features",
-        lambda metadata, batch_size=16: np.zeros((len(metadata), 16), dtype=np.float32),
+        "_extract_features_with_provenance",
+        lambda metadata, **_: (
+            np.zeros((len(metadata), 16), dtype=np.float32),
+            {},
+        ),
     )
 
     feats = io_mod.load_or_extract_features(
@@ -113,7 +116,7 @@ def test_feature_cache_validation(tmp_path, monkeypatch):
     )
 
     assert feats.shape[0] == 4
-    assert (tmp_out / "features.npy").exists()
+    assert (tmp_out / "features.npy").exists() or list(tmp_out.glob("features-*.npy"))
 
 
 def test_multicriteria_fit_guard_raises_on_mismatch(monkeypatch):

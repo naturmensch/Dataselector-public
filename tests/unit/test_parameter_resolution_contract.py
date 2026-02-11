@@ -67,6 +67,7 @@ def test_validate_snapshot_against_contract_success(tmp_path: Path) -> None:
     errors = validate_snapshot_against_contract(
         snapshot=snapshot,
         contract=contract,
+        run_root=tmp_path,
         repo_root=tmp_path,
     )
     assert errors == []
@@ -96,6 +97,7 @@ def test_validate_snapshot_against_contract_missing_provenance_fails(
     errors = validate_snapshot_against_contract(
         snapshot=snapshot,
         contract=contract,
+        run_root=tmp_path,
         repo_root=tmp_path,
     )
     assert any("missing provenance entry" in err.lower() for err in errors)
@@ -129,6 +131,7 @@ def test_validate_snapshot_against_contract_missing_evidence_fails(
     errors = validate_snapshot_against_contract(
         snapshot=snapshot,
         contract=contract,
+        run_root=tmp_path,
         repo_root=tmp_path,
     )
     assert any("requires evidence" in err.lower() for err in errors)
@@ -166,6 +169,94 @@ def test_validate_snapshot_against_contract_missing_source_file_fails(
     errors = validate_snapshot_against_contract(
         snapshot=snapshot,
         contract=contract,
+        run_root=tmp_path,
         repo_root=tmp_path,
     )
     assert any("does not exist" in err.lower() for err in errors)
+
+
+def test_validate_snapshot_against_contract_run_relative_scope(tmp_path: Path) -> None:
+    contract = {
+        "parameters": {
+            "selection.alpha_visual": {
+                "allowed_methods": ["computed_autoscale_artifact"],
+                "required_evidence": "parameter_resolution/optuna_autoscale_best_latest.json",
+            }
+        }
+    }
+    run_dir = tmp_path / "run"
+    repo_dir = tmp_path / "repo"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    repo_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "parameter_resolution").mkdir(parents=True, exist_ok=True)
+    (run_dir / "parameter_resolution" / "optuna_autoscale_best_latest.json").write_text(
+        "{}",
+        encoding="utf-8",
+    )
+    snapshot = {
+        "parameters": {
+            "selection": {
+                "alpha_visual": 0.4,
+                "_provenance": {
+                    "alpha_visual": {
+                        "method": "computed_autoscale_artifact",
+                        "source_file": str(
+                            run_dir
+                            / "parameter_resolution"
+                            / "optuna_autoscale_best_latest.json"
+                        ),
+                    }
+                },
+            }
+        }
+    }
+    errors = validate_snapshot_against_contract(
+        snapshot=snapshot,
+        contract=contract,
+        run_root=run_dir,
+        repo_root=repo_dir,
+        evidence_scope="run_dir",
+    )
+    assert errors == []
+
+
+def test_validate_snapshot_against_contract_repo_prefix(tmp_path: Path) -> None:
+    contract = {
+        "parameters": {
+            "selection.alpha_visual": {
+                "allowed_methods": ["computed_autoscale_artifact"],
+                "required_evidence": "repo:docs/PARAMETER_POLICY_LEDGER.md",
+            }
+        }
+    }
+    run_dir = tmp_path / "run"
+    repo_dir = tmp_path / "repo"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (repo_dir / "docs").mkdir(parents=True, exist_ok=True)
+    (repo_dir / "docs" / "PARAMETER_POLICY_LEDGER.md").write_text(
+        "ok",
+        encoding="utf-8",
+    )
+    snapshot = {
+        "parameters": {
+            "selection": {
+                "alpha_visual": 0.4,
+                "_provenance": {
+                    "alpha_visual": {
+                        "method": "computed_autoscale_artifact",
+                        "source_file": str(
+                            repo_dir / "docs" / "PARAMETER_POLICY_LEDGER.md"
+                        ),
+                    }
+                },
+            }
+        }
+    }
+    errors = validate_snapshot_against_contract(
+        snapshot=snapshot,
+        contract=contract,
+        run_root=run_dir,
+        repo_root=repo_dir,
+        evidence_scope="run_dir",
+    )
+    assert errors == []

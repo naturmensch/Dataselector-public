@@ -76,16 +76,38 @@ def load_features_by_hash(out_dir: str | Path, meta_hash: str) -> Optional[np.nd
     return np.load(path)
 
 
+def load_meta_by_hash(out_dir: str | Path, meta_hash: str) -> Optional[Dict[str, Any]]:
+    meta_path = meta_path_for_hash(out_dir, meta_hash)
+    if not meta_path.exists():
+        return None
+    try:
+        return json.loads(meta_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
 def list_all_feature_caches(out_dir: str | Path) -> list[Path]:
     out_dir = Path(out_dir)
     return sorted(out_dir.glob("features-*.npy"))
 
 
 def create_meta_info(
-    csv_path: str, params: Optional[Dict[str, Any]] = None
+    csv_path: str,
+    params: Optional[Dict[str, Any]] = None,
+    *,
+    feature_identity: Optional[Dict[str, Any]] = None,
+    model_provenance: Optional[Dict[str, Any]] = None,
+    config_sha256: Optional[str] = None,
 ) -> Dict[str, Any]:
-    return {
+    payload: Dict[str, Any] = {
         "metadata_csv": str(Path(csv_path).resolve()),
         "params": params or {},
         "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
+    if feature_identity is not None:
+        payload["feature_identity"] = feature_identity
+    if model_provenance is not None:
+        payload["model_provenance"] = model_provenance
+    if config_sha256:
+        payload["config_sha256"] = config_sha256
+    return payload

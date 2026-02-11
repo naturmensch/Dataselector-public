@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+from pathlib import Path
 
 import pytest
 
@@ -40,3 +41,20 @@ def test_default_profile_keeps_contract_metadata():
     state = activate_repro_mode(profile="default", seed=7)
     assert state["profile"] == "default"
     assert state["seed"] == 7
+
+
+def test_thesis_repro_marks_parallelism_degraded_when_dev_shm_missing(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    original_exists = Path.exists
+
+    def _fake_exists(self: Path) -> bool:
+        if str(self) == "/dev/shm":
+            return False
+        return original_exists(self)
+
+    monkeypatch.setattr(Path, "exists", _fake_exists)
+    state = activate_repro_mode(profile="thesis_repro", seed=123)
+    assert state["parallelism_degraded"] is True
+    assert state["repro_degraded"] is True
+    assert any("dev_shm_missing" in w for w in state["repro_warnings"])

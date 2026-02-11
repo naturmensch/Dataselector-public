@@ -54,6 +54,8 @@ class DiversitySelector:
         use_constraint_integration: bool = False,
         use_multi_criteria: bool = True,
         use_lazy_greedy: bool = False,
+        anchor_aliases: Optional[dict[str, list[str]]] = None,
+        temporal_dim_ratio: float = 0.025,
     ):
         """
         Initialisiert den Diversity Selector.
@@ -74,9 +76,15 @@ class DiversitySelector:
         self.use_constraint_integration = use_constraint_integration
         self.use_multi_criteria = use_multi_criteria
         self.use_lazy_greedy = use_lazy_greedy
+        self.temporal_dim_ratio = float(temporal_dim_ratio)
+        self.anchor_aliases = {
+            str(k).lower(): [str(v) for v in vals]
+            for k, vals in (anchor_aliases or {"hamburg": ["KDR_146"]}).items()
+        }
 
         self.selector = None
         self.selected_indices: Optional[np.ndarray] = None
+        self.selection_backend: str = "unknown"
 
     def select(
         self,
@@ -113,39 +121,20 @@ class DiversitySelector:
         Returns:
             Array von ausgewählten Indizes
         """
-        """
-        Führt die Diversity Selection aus.
-
-        Args:
-            features: Feature-Matrix (n_samples, n_features)
-            metadata: Optional DataFrame mit year und spatial Schema (ul/lr)
-            temporal_weight: Gewichtung für zeitliche Diversität (Legacy/Constraint mode)
-            spatial_constraint: Ob räumlicher Sperrfilter angewandt wird
-            min_distance_km: Minimale Distanz zwischen Samples (km)
-            alpha_visual: Gewicht für visuelle Ähnlichkeit (Multi-Criteria mode)
-            beta_spatial: Gewicht für räumliche Diversität (Multi-Criteria mode)
-            gamma_temporal: Gewicht für zeitliche Diversität (Multi-Criteria mode)
-
-        Returns:
-            Array von ausgewählten Indizes
-        """
-
         # Anzahl der verfügbaren Kandidaten und effektive Auswahlgröße
         n_candidates = features.shape[0]
         # Resolve effective number of samples: explicit override wins, then instance attribute
-        effective_n = (
+        target_n = (
             int(override_n_samples)
             if override_n_samples is not None
             else self.n_samples
         )
-        if effective_n is None:
+        if target_n is None:
             raise ValueError(
                 "n_samples ist nicht gesetzt. Bitte übergeben Sie `n_samples` (z.B. via `select(..., override_n_samples=...)`) "
                 "oder setzen Sie `n_samples` beim Konstruktor; alternativ verwenden Sie `src.pipeline_utils.compute_adaptive_n_initial`."
             )
-        # Persist resolved n_samples to ensure internal helpers (spatial constraints) can access it
-        self.n_samples = int(effective_n)
-        n_to_select = min(self.n_samples, n_candidates)
+        n_to_select = min(int(target_n), n_candidates)
 
         # Resolve pre-selected indices once so all selection backends can enforce them.
         preselected_indices: list[int] = []
@@ -157,10 +146,8 @@ class DiversitySelector:
                 if not nm_str:
                     continue
 
-                # Keep user-facing shortcut stable: Hamburg anchor maps to KDR_146.
                 alias_terms = [nm_str]
-                if nm_str.lower() == "hamburg":
-                    alias_terms.append("KDR_146")
+                alias_terms.extend(self.anchor_aliases.get(nm_str.lower(), []))
 
                 # Match shortName exact, city exact (if present), or longName substring.
                 mask = pd.Series(False, index=metadata.index)
@@ -189,8 +176,10 @@ class DiversitySelector:
                     )
                 else:
                     preselected_indices.extend(idxs)
-                    if nm_str.lower() == "hamburg":
-                        print("  [INFO] Hamburg shortcut resolved via alias 'KDR_146'")
+                    if nm_str.lower() in self.anchor_aliases:
+                        print(
+                            f"  [INFO] Anchor alias for '{nm_str}' resolved via {self.anchor_aliases[nm_str.lower()]}"
+                        )
 
             # Preserve order while removing duplicates from alias expansion.
             preselected_indices = list(
@@ -248,6 +237,7 @@ class DiversitySelector:
             # NO feature augmentation for multi-criteria
             self.selector.fit(features)
             self.selected_indices = self.selector.ranking
+            self.selection_backend = "multi_criteria"
 
         elif (
             self.use_constraint_integration
@@ -274,6 +264,7 @@ class DiversitySelector:
             )
             self.selector.fit(features)
             self.selected_indices = self.selector.ranking
+            self.selection_backend = "spatial_facility_location"
 
         else:
             # Legacy: Facility Location + Post-Processing-Filter
@@ -296,6 +287,7 @@ class DiversitySelector:
                     )
                     self.selector.fit(features)
                     self.selected_indices = self.selector.ranking
+                    self.selection_backend = "lazy_facility_location"
                 except Exception as e:
                     print(
                         f"[WARN] LazyFacilityLocation unavailable or failed: {e}; falling back to simple greedy selection"
@@ -309,6 +301,7 @@ class DiversitySelector:
                     # Fit the selected selector (both expose `ranking`)
                     self.selector.fit(features)
                     self.selected_indices = self.selector.ranking
+                    self.selection_backend = "apricot_facility_location"
                 else:
                     # Fallback greedy diversity selection (farthest-point greedy on normalized features)
                     print(
@@ -343,9 +336,11 @@ class DiversitySelector:
                                 cand = remaining[0]
                             selected.append(cand)
                         self.selected_indices = np.array(selected, dtype=int)
+                        self.selection_backend = "greedy_farthest_point"
                     except Exception as e:
                         print(f"[ERROR] Greedy fallback selection failed: {e}")
                         self.selected_indices = np.array([], dtype=int)
+                        self.selection_backend = "greedy_farthest_point_failed"
 
             # Wende räumlichen Constraint an, falls aktiviert
             if spatial_constraint and metadata is not None:
@@ -356,10 +351,14 @@ class DiversitySelector:
                         min_distance_km=min_distance_km,
                         step_km=adaptive_step_km,
                         min_allowed_km=adaptive_min_allowed_km,
+                        required_n=n_to_select,
                     )
                 else:
                     self.selected_indices = self._apply_spatial_constraint(
-                        self.selected_indices, metadata, min_distance_km=min_distance_km
+                        self.selected_indices,
+                        metadata,
+                        min_distance_km=min_distance_km,
+                        required_n=n_to_select,
                     )
 
         # Enforce preselection in all modes (multi-criteria, constraint-integration, legacy).
@@ -416,10 +415,9 @@ class DiversitySelector:
         else:
             years_normalized = (years - years.min()) / denom
 
-        # NEUE STRATEGIE: Repliziere temporal dimension mehrfach
-        # Grund: 1 temporal dim vs 2048 visual dims → temporal wird ignoriert
-        # Lösung: Repliziere 50x → effektiv ~2.5% der Feature-Dimensionalität
-        n_temporal_dims = 50  # Tunable parameter
+        # Scale temporal replication relative to visual feature dimensionality.
+        # Default ratio 2.5% keeps contribution stable across backbones (e.g. 2048 vs 384 dims).
+        n_temporal_dims = max(1, int(round(features.shape[1] * self.temporal_dim_ratio)))
         years_replicated = np.tile(
             years_normalized.reshape(-1, 1), (1, n_temporal_dims)
         )
@@ -431,7 +429,11 @@ class DiversitySelector:
         return augmented
 
     def _apply_spatial_constraint(
-        self, indices: np.ndarray, metadata: pd.DataFrame, min_distance_km: float = 50.0
+        self,
+        indices: np.ndarray,
+        metadata: pd.DataFrame,
+        min_distance_km: float = 50.0,
+        required_n: Optional[int] = None,
     ) -> np.ndarray:
         """
         Wendet räumlichen Sperrfilter auf die Auswahl an.
@@ -461,7 +463,12 @@ class DiversitySelector:
         else:
             candidate_pool = list(indices)
 
-        required = min(self.n_samples, len(candidate_pool))
+        if required_n is None:
+            if self.n_samples is None:
+                required_n = len(candidate_pool)
+            else:
+                required_n = int(self.n_samples)
+        required = min(int(required_n), len(candidate_pool))
         if min_distance_km is None:
             # Explicit "no hard constraint" mode.
             return np.array(candidate_pool[:required])
@@ -532,6 +539,7 @@ class DiversitySelector:
         min_distance_km: float = 50.0,
         step_km: float = 5.0,
         min_allowed_km: float = 0.0,
+        required_n: Optional[int] = None,
     ) -> np.ndarray:
         """
         Adaptive spatial constraint: reduziert schrittweise `min_distance_km` um `step_km`
@@ -545,14 +553,21 @@ class DiversitySelector:
         # Try progressively relaxing the constraint
         while current_min >= min_allowed_km:
             valid = self._apply_spatial_constraint(
-                indices, metadata, min_distance_km=current_min
+                indices,
+                metadata,
+                min_distance_km=current_min,
+                required_n=required_n,
             )
-            if len(valid) >= min(self.n_samples, len(indices)):
+            required = min(
+                int(required_n) if required_n is not None else len(indices),
+                len(indices),
+            )
+            if len(valid) >= required:
                 if current_min != min_distance_km:
                     print(
                         f"ℹ️  adaptive fallback: reduced min_distance from {min_distance_km}km to {current_min}km to reach required samples"
                     )
-                return valid[: min(self.n_samples, len(indices))]
+                return valid[:required]
             current_min = max(current_min - float(step_km), min_allowed_km)
 
         # If still not enough, return the best feasible set at min_allowed_km.
@@ -560,7 +575,10 @@ class DiversitySelector:
             f"⚠️  adaptive fallback: reached min_allowed_km={min_allowed_km}km and still insufficient; returning feasible subset only"
         )
         return self._apply_spatial_constraint(
-            indices, metadata, min_distance_km=min_allowed_km
+            indices,
+            metadata,
+            min_distance_km=min_allowed_km,
+            required_n=required_n,
         )
 
     def get_selection_scores(self) -> np.ndarray:

@@ -34,6 +34,9 @@ class MetadataProcessor:
         self.crs_unit: Literal["degree", "meter", "unknown"] = "unknown"
         # Optional GeoPandas GeoDataFrame (set when geopandas is available)
         self.gdf = None
+        self.source_crs: str | None = None
+        self.metric_crs: str | None = None
+        self.transform_applied: bool = False
 
     def load_csv(self) -> pd.DataFrame:
         """
@@ -195,7 +198,7 @@ class MetadataProcessor:
                     df["image_path"].astype(str).apply(lambda x: Path(x).name)
                 )
             else:
-                df["longName"] = df.index.astype(str).apply(lambda i: f"img_{i}.png")
+                df["longName"] = [f"img_{i}.png" for i in df.index.astype(str)]
 
         # Normalize numeric coordinate strings (comma -> dot) and convert to float.
         for col in ("ul_x", "ul_y", "lr_x", "lr_y", "center_x", "center_y"):
@@ -205,40 +208,101 @@ class MetadataProcessor:
 
         return df
 
-    def ensure_metric_crs(self, target_epsg: int = 25832):
+    def _infer_source_epsg(self) -> int | None:
+        """Infer source EPSG from metadata context when no explicit CRS object exists."""
+        if "epsg3857" in str(self.csv_path).lower():
+            return 3857
+        if self.crs_unit == "meter":
+            return 3857
+        if self.crs_unit == "degree":
+            return 4326
+        return None
+
+    def ensure_metric_crs(self, target_epsg: int = 25832, strict: bool = False):
         """
         Ensure that a metric GeoDataFrame exists. If GeoPandas is available,
         reproject `self.gdf` into `target_epsg` and cache it as `self.gdf_metric`.
         Returns the metric GeoDataFrame or None if not available.
         """
-        if getattr(self, "gdf", None) is None:
-            return None
-
         if getattr(self, "gdf_metric", None) is not None:
             return self.gdf_metric
 
-        try:
-            gdf = self.gdf
-            # If CRS missing, set heuristically
-            if gdf.crs is None:
-                if self.crs_unit == "meter":
-                    try:
-                        gdf.set_crs(epsg=3857, inplace=True, allow_override=True)
-                    except Exception:
-                        gdf.crs = "EPSG:3857"
-                else:
-                    try:
-                        gdf.set_crs(epsg=4326, inplace=True, allow_override=True)
-                    except Exception:
-                        gdf.crs = "EPSG:4326"
+        # Preferred path: GeoPandas-backed reprojection.
+        if getattr(self, "gdf", None) is not None:
+            try:
+                gdf = self.gdf
+                # If CRS missing, set heuristically
+                if gdf.crs is None:
+                    if self.crs_unit == "meter":
+                        try:
+                            gdf.set_crs(epsg=3857, inplace=True, allow_override=True)
+                        except Exception:
+                            gdf.crs = "EPSG:3857"
+                    else:
+                        try:
+                            gdf.set_crs(epsg=4326, inplace=True, allow_override=True)
+                        except Exception:
+                            gdf.crs = "EPSG:4326"
 
-            gdf_metric = gdf.to_crs(epsg=target_epsg)
-            gdf_metric["_proj_x"] = gdf_metric.geometry.x
-            gdf_metric["_proj_y"] = gdf_metric.geometry.y
+                gdf_metric = gdf.to_crs(epsg=target_epsg)
+                gdf_metric["_proj_x"] = gdf_metric.geometry.x
+                gdf_metric["_proj_y"] = gdf_metric.geometry.y
+                self.gdf_metric = gdf_metric
+                self.source_crs = str(gdf.crs) if gdf.crs is not None else None
+                self.metric_crs = f"EPSG:{target_epsg}"
+                self.transform_applied = (
+                    self.source_crs is not None
+                    and self.source_crs.upper() != self.metric_crs.upper()
+                )
+                self.metric_epsg = target_epsg
+                return self.gdf_metric
+            except Exception as exc:
+                if strict:
+                    raise RuntimeError(
+                        f"Could not reproject metadata to EPSG:{target_epsg}: {exc}"
+                    ) from exc
+
+        # Fallback path without GeoPandas: transform center coordinates with pyproj.
+        try:
+            from pyproj import Transformer
+
+            source_epsg = self._infer_source_epsg()
+            if source_epsg is None:
+                if strict:
+                    raise RuntimeError(
+                        "Unable to infer source CRS for strict metric projection."
+                    )
+                self.gdf_metric = None
+                return None
+
+            centers_x = self.df["center_x"].to_numpy(dtype=float)
+            centers_y = self.df["center_y"].to_numpy(dtype=float)
+
+            if source_epsg == target_epsg:
+                proj_x = centers_x
+                proj_y = centers_y
+            else:
+                transformer = Transformer.from_crs(
+                    f"EPSG:{source_epsg}",
+                    f"EPSG:{target_epsg}",
+                    always_xy=True,
+                )
+                proj_x, proj_y = transformer.transform(centers_x, centers_y)
+
+            gdf_metric = self.df.copy()
+            gdf_metric["_proj_x"] = proj_x
+            gdf_metric["_proj_y"] = proj_y
             self.gdf_metric = gdf_metric
+            self.source_crs = f"EPSG:{source_epsg}"
+            self.metric_crs = f"EPSG:{target_epsg}"
+            self.transform_applied = source_epsg != target_epsg
             self.metric_epsg = target_epsg
             return self.gdf_metric
-        except Exception:
+        except Exception as exc:
+            if strict:
+                raise RuntimeError(
+                    f"Strict metric CRS enforcement failed for EPSG:{target_epsg}: {exc}"
+                ) from exc
             self.gdf_metric = None
             return None
 

@@ -25,6 +25,10 @@ from dataselector.data.spatial_schema import (
     normalize_spatial_schema,
 )
 from dataselector.data.spatial_schema import spatial_spread as compute_spatial_spread
+from dataselector.workflows.objective_scoring import (
+    compute_baselines,
+    normalized_objective,
+)
 
 
 def clamp(v, lo, hi):
@@ -39,6 +43,9 @@ def load_or_create_data(
     seed=123,
     out_dir=None,
     require_metadata: bool = False,
+    config_path: str | None = None,
+    cache_mode: str = "read_write",
+    strict_real_data: bool = False,
 ):
     """Load features and metadata from cache or extract/generate them.
 
@@ -76,6 +83,8 @@ def load_or_create_data(
             csv_meta=str(metadata_path),
             batch_size=16,
             cache=True,
+            cache_mode=cache_mode,
+            config_path=config_path,
             enforce_canonical=True,
         )
         metadata = load_metadata(str(metadata_path))
@@ -85,10 +94,16 @@ def load_or_create_data(
             csv_meta=str(metadata_path),
             batch_size=16,
             cache=True,
+            cache_mode=cache_mode,
+            config_path=config_path,
             enforce_canonical=True,
         )
         metadata = load_metadata(str(metadata_path))
     else:
+        if strict_real_data:
+            raise FileNotFoundError(
+                "Strict real-data mode forbids synthetic fallback in autoscale."
+            )
         # Fallback: generate synthetic data
         rng = np.random.RandomState(seed)
         if n is None:
@@ -118,6 +133,8 @@ def make_objective(
     min_distance_bounds,
     pre_selected_names=None,
     pre_selected_indices=None,
+    score_weights: tuple[float, float] = (0.5, 0.5),
+    infeasible_penalty: float = 0.1,
 ):
     """Create objective function for Optuna trial.
 
@@ -132,6 +149,12 @@ def make_objective(
     Returns:
         objective function callable
     """
+
+    baseline_diversity, baseline_spread = compute_baselines(
+        features=features,
+        metadata=metadata,
+        metric="euclidean",
+    )
 
     def objective(trial):
         a = trial.suggest_float("a", *min_distance_bounds["a"])
@@ -163,6 +186,8 @@ def make_objective(
 
         n_selected = len(selected)
         if n_selected == 0:
+            trial.set_user_attr("infeasible", True)
+            trial.set_user_attr("feasibility_ratio", 0.0)
             return 0.0
 
         diversity = selector._calculate_diversity_score(features[selected])
@@ -170,18 +195,34 @@ def make_objective(
             metadata, require_bounds=True, copy=True
         )
         spread = compute_spatial_spread(spatial_meta, selected)
-        score = diversity * spread
+        objective_score = normalized_objective(
+            diversity=float(diversity),
+            spread=float(spread),
+            baseline_diversity=baseline_diversity,
+            baseline_spread=baseline_spread,
+            n_selected=int(n_selected),
+            target_n=int(n_samples),
+            weight_diversity=float(score_weights[0]),
+            weight_spread=float(score_weights[1]),
+            infeasible_penalty=float(infeasible_penalty),
+        )
 
         trial.set_user_attr("alpha", float(alpha))
         trial.set_user_attr("beta", float(beta))
         trial.set_user_attr("gamma", float(gamma))
         trial.set_user_attr("min_distance_km", int(min_dist))
         trial.set_user_attr("n_selected", int(n_selected))
+        trial.set_user_attr("selection_backend", str(selector.selection_backend))
         trial.set_user_attr("diversity", float(diversity))
         trial.set_user_attr("spatial_spread", float(spread))
+        trial.set_user_attr("diversity_norm", float(objective_score.diversity_norm))
+        trial.set_user_attr("spatial_spread_norm", float(objective_score.spread_norm))
+        trial.set_user_attr("objective_score_raw", float(objective_score.raw_score))
+        trial.set_user_attr("infeasible", bool(objective_score.infeasible))
+        trial.set_user_attr("feasibility_ratio", float(objective_score.feasibility_ratio))
         trial.set_user_attr("n_samples", int(n_samples))
 
-        return float(score)
+        return float(objective_score.score)
 
     return objective
 
@@ -531,6 +572,17 @@ def run_autoscale(
             "default": None,
             "help": "Optional pre-selected tile indices",
         },
+        "config_path": {
+            "type": str,
+            "default": "config/pipeline_config.yaml",
+            "help": "Feature config path propagated to extraction",
+        },
+        "cache_mode": {
+            "type": str,
+            "default": "read_write",
+            "choices": ["off", "read_only", "write_only", "read_write"],
+        },
+        "strict_real_data": {"type": bool, "default": False},
     },
 )
 def main(
@@ -544,6 +596,9 @@ def main(
     patience: int = 2,
     pre_names: list[str] | None = None,
     pre_indices: list[int] | None = None,
+    config_path: str = "config/pipeline_config.yaml",
+    cache_mode: str = "read_write",
+    strict_real_data: bool = False,
 ) -> int:
     """Entry point for autoscale command.
 
@@ -564,6 +619,9 @@ def main(
         seed=seed,
         out_dir=output_dir,
         require_metadata=csv is not None,
+        config_path=config_path,
+        cache_mode=cache_mode,
+        strict_real_data=strict_real_data,
     )
 
     actual_n = len(features)

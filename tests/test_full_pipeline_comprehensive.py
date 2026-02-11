@@ -3,6 +3,7 @@ import types
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from tests.utils import (
@@ -174,8 +175,11 @@ def test_full_pipeline_simulation(tmp_dirs, repo_root, inject_src_stub, monkeypa
     setattr(inject_src_stub, "cache", cache_mod)
     monkeypatch.setattr(
         io_mod,
-        "extract_features",
-        lambda metadata, batch_size=16: np.zeros((len(metadata), 64), dtype=np.float32),
+        "_extract_features_with_provenance",
+        lambda metadata, **_: (
+            np.zeros((len(metadata), 64), dtype=np.float32),
+            {},
+        ),
     )
 
     io_mod.load_or_extract_features(
@@ -213,6 +217,31 @@ def test_full_pipeline_simulation(tmp_dirs, repo_root, inject_src_stub, monkeypa
 
     # 8) Now test Optuna checkpointing quickly by running a small Optuna run
     from dataselector.workflows import optuna_optimize as opt_mod
+
+    def _fake_load_or_create_data(
+        _out_dir,
+        n=500,
+        dim=512,
+        seed=123,
+        require_metadata=False,
+        feature_cache_dir=None,
+    ):
+        rng = np.random.RandomState(seed)
+        features = rng.randn(n, dim).astype("float32")
+        cx = rng.uniform(500000, 501000, n)
+        cy = rng.uniform(5900000, 5901000, n)
+        metadata = pd.DataFrame(
+            {
+                "ul_x": cx - 50,
+                "ul_y": cy + 50,
+                "lr_x": cx + 50,
+                "lr_y": cy - 50,
+                "year": rng.randint(1880, 1945, n),
+            }
+        )
+        return features, metadata
+
+    monkeypatch.setattr(opt_mod, "load_or_create_data", _fake_load_or_create_data)
 
     # run small optimization (n_trials=4) with checkpoint_every=2
     opt_mod.run_optuna(
@@ -276,8 +305,11 @@ def test_feature_cache_write_permission_error(tmp_dirs, repo_root, monkeypatch):
     )
     monkeypatch.setattr(
         io_mod,
-        "extract_features",
-        lambda metadata, batch_size=16: np.zeros((len(metadata), 8), dtype=np.float32),
+        "_extract_features_with_provenance",
+        lambda metadata, **_: (
+            np.zeros((len(metadata), 8), dtype=np.float32),
+            {},
+        ),
     )
     monkeypatch.setattr(
         "numpy.save",

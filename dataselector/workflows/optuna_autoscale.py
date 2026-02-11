@@ -26,9 +26,25 @@ from dataselector.data.spatial_schema import (
     normalize_spatial_schema,
 )
 from dataselector.data.spatial_schema import spatial_spread as compute_spatial_spread
+from dataselector.workflows.objective_scoring import (
+    compute_baselines,
+    normalized_objective,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = Path("outputs")
+
+
+def _select_best_production_trial(study):
+    """Return best non-diagnostic trial, fallback to study.best_trial."""
+    production_trials = [
+        t
+        for t in study.trials
+        if t.value is not None and not bool(t.user_attrs.get("full_coverage_mode", False))
+    ]
+    if production_trials:
+        return max(production_trials, key=lambda t: float(t.value)), True
+    return study.best_trial, False
 
 
 def load_or_create_data(
@@ -37,6 +53,9 @@ def load_or_create_data(
     dim: int = 256,
     seed: int = 123,
     require_metadata: bool = False,
+    config_path: str | None = None,
+    cache_mode: str = "read_write",
+    strict_real_data: bool = False,
 ):
     """Load features and metadata, or create synthetic data for testing."""
     from dataselector.data.io import load_or_extract_features
@@ -58,7 +77,9 @@ def load_or_create_data(
             out_dir=out_dir,
             csv_meta=str(metadata_path),
             batch_size=16,
-            cache=False,
+            cache=True,
+            cache_mode=cache_mode,
+            config_path=config_path,
             enforce_canonical=True,
         )
         from dataselector.data.io import load_metadata
@@ -69,13 +90,19 @@ def load_or_create_data(
             out_dir=out_dir,
             csv_meta=str(metadata_path),
             batch_size=16,
-            cache=False,
+            cache=True,
+            cache_mode=cache_mode,
+            config_path=config_path,
             enforce_canonical=True,
         )
         from dataselector.data.io import load_metadata
 
         metadata = load_metadata(str(metadata_path))
     else:
+        if strict_real_data:
+            raise FileNotFoundError(
+                "Strict real-data mode forbids synthetic fallback in autoscale."
+            )
         rng = np.random.RandomState(seed)
         if n is None:
             n = 673
@@ -109,8 +136,15 @@ def make_objective(
     min_distance_bounds,
     pre_selected_names=None,
     pre_selected_indices=None,
+    score_weights: tuple[float, float] = (0.5, 0.5),
+    infeasible_penalty: float = 0.1,
 ):
     """Create Optuna objective function for given stage."""
+    baseline_diversity, baseline_spread = compute_baselines(
+        features=features,
+        metadata=metadata,
+        metric="euclidean",
+    )
 
     def objective(trial):
         # Lazy import to avoid module-level side effects
@@ -151,6 +185,8 @@ def make_objective(
 
         n_selected = len(selected)
         if n_selected == 0:
+            trial.set_user_attr("infeasible", True)
+            trial.set_user_attr("feasibility_ratio", 0.0)
             return 0.0
 
         diversity = selector._calculate_diversity_score(features[selected])
@@ -158,19 +194,36 @@ def make_objective(
             metadata, require_bounds=True, copy=True
         )
         spread = compute_spatial_spread(spatial_meta, selected)
-        score = diversity * spread
+        objective_score = normalized_objective(
+            diversity=float(diversity),
+            spread=float(spread),
+            baseline_diversity=baseline_diversity,
+            baseline_spread=baseline_spread,
+            n_selected=int(n_selected),
+            target_n=int(n_samples),
+            weight_diversity=float(score_weights[0]),
+            weight_spread=float(score_weights[1]),
+            infeasible_penalty=float(infeasible_penalty),
+        )
 
         trial.set_user_attr("alpha", float(alpha))
         trial.set_user_attr("beta", float(beta))
         trial.set_user_attr("gamma", float(gamma))
         trial.set_user_attr("min_distance_km", int(min_dist))
         trial.set_user_attr("n_selected", int(n_selected))
+        trial.set_user_attr("selection_backend", str(selector.selection_backend))
         trial.set_user_attr("diversity", float(diversity))
         trial.set_user_attr("spatial_spread", float(spread))
+        trial.set_user_attr("diversity_norm", float(objective_score.diversity_norm))
+        trial.set_user_attr("spatial_spread_norm", float(objective_score.spread_norm))
+        trial.set_user_attr("objective_score_raw", float(objective_score.raw_score))
+        trial.set_user_attr("infeasible", bool(objective_score.infeasible))
+        trial.set_user_attr("feasibility_ratio", float(objective_score.feasibility_ratio))
         trial.set_user_attr("n_samples", int(n_samples))
         trial.set_user_attr("full_coverage_mode", bool(full_coverage_mode))
+        trial.set_user_attr("diagnostic_only", bool(full_coverage_mode))
 
-        return float(score)
+        return float(objective_score.score)
 
     return objective
 
@@ -427,8 +480,9 @@ def run_autoscale(
     report_md.write_text("\n".join(lines))
     print("Report written to", report_md)
 
-    # Save best trial
-    best_overall = study.best_trial
+    # Save best trial from production stages only (exclude diagnostic full-coverage).
+    best_overall, best_from_production = _select_best_production_trial(study)
+
     out_best = out_dir / f"optuna_autoscale_best_{date}.json"
     with out_best.open("w") as fh:
         json.dump(
@@ -436,6 +490,7 @@ def run_autoscale(
                 "value": best_overall.value,
                 "params": best_overall.params,
                 "user_attrs": best_overall.user_attrs,
+                "best_from_production_stage": bool(best_from_production),
             },
             fh,
             indent=2,
@@ -449,6 +504,7 @@ def run_autoscale(
                 "value": best_overall.value,
                 "params": best_overall.params,
                 "user_attrs": best_overall.user_attrs,
+                "best_from_production_stage": bool(best_from_production),
             },
             fh,
             indent=2,
@@ -493,6 +549,9 @@ def run_optuna_autoscale_workflow(
     pre_names: list[str] | None = None,
     pre_indices: list[int] | None = None,
     output_dir: str = "outputs",
+    config_path: str | None = None,
+    cache_mode: str = "read_write",
+    strict_real_data: bool = True,
 ) -> int:
     """Run autoscale workflow and persist artifacts under output_dir."""
     trials = n_trials or [20, 40, 80, 160]
@@ -506,6 +565,9 @@ def run_optuna_autoscale_workflow(
         dim=dim,
         seed=seed,
         require_metadata=True,
+        config_path=config_path,
+        cache_mode=cache_mode,
+        strict_real_data=strict_real_data,
     )
 
     actual_n = len(features)
@@ -579,6 +641,17 @@ def run_optuna_autoscale_workflow(
             "default": "outputs",
             "help": "Output directory for autoscale artifacts",
         },
+        "config_path": {
+            "type": str,
+            "default": "config/pipeline_config.yaml",
+            "help": "Feature config path propagated to extraction",
+        },
+        "cache_mode": {
+            "type": str,
+            "default": "read_write",
+            "choices": ["off", "read_only", "write_only", "read_write"],
+        },
+        "strict_real_data": {"type": bool, "default": True},
     },
 )
 def cli_optuna_autoscale(
@@ -591,6 +664,9 @@ def cli_optuna_autoscale(
     pre_names: list[str] | None = None,
     pre_indices: list[int] | None = None,
     output_dir: str = "outputs",
+    config_path: str = "config/pipeline_config.yaml",
+    cache_mode: str = "read_write",
+    strict_real_data: bool = True,
 ) -> int:
     return run_optuna_autoscale_workflow(
         n_trials=n_trials,
@@ -602,6 +678,9 @@ def cli_optuna_autoscale(
         pre_names=pre_names,
         pre_indices=pre_indices,
         output_dir=output_dir,
+        config_path=config_path,
+        cache_mode=cache_mode,
+        strict_real_data=strict_real_data,
     )
 
 

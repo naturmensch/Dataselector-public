@@ -25,6 +25,10 @@ from dataselector.data.spatial_schema import (
     normalize_spatial_schema,
 )
 from dataselector.data.spatial_schema import spatial_spread as compute_spatial_spread
+from dataselector.workflows.objective_scoring import (
+    compute_baselines,
+    normalized_objective,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
@@ -200,6 +204,12 @@ def objective_factory(
         Optuna objective function
     """
 
+    baseline_diversity, baseline_spread = compute_baselines(
+        features=features,
+        metadata=metadata,
+        metric="euclidean",
+    )
+
     # Lazy import to avoid sklearn dependency at module import time
     def objective(trial: "optuna.trial.Trial"):
         try:
@@ -281,8 +291,17 @@ def objective_factory(
             )
             spread = compute_spatial_spread(spatial_meta, selected)
 
-            # Composite objective (maximize)
-            score = diversity * spread
+            objective_score = normalized_objective(
+                diversity=float(diversity),
+                spread=float(spread),
+                baseline_diversity=baseline_diversity,
+                baseline_spread=baseline_spread,
+                n_selected=int(n_selected),
+                target_n=int(n_samp),
+                weight_diversity=0.5,
+                weight_spread=0.5,
+                infeasible_penalty=0.1,
+            )
 
             # Log intermediate values
             trial.set_user_attr("alpha", float(alpha))
@@ -293,10 +312,16 @@ def objective_factory(
             trial.set_user_attr("n_samples", int(n_samp))
             trial.set_user_attr("selection_shortfall", int(shortfall))
             trial.set_user_attr("hardcut_target_met", shortfall == 0)
+            trial.set_user_attr("selection_backend", str(selector.selection_backend))
             trial.set_user_attr("diversity", float(diversity))
             trial.set_user_attr("spatial_spread", float(spread))
+            trial.set_user_attr("diversity_norm", float(objective_score.diversity_norm))
+            trial.set_user_attr("spatial_spread_norm", float(objective_score.spread_norm))
+            trial.set_user_attr("objective_score_raw", float(objective_score.raw_score))
+            trial.set_user_attr("infeasible", bool(objective_score.infeasible))
+            trial.set_user_attr("feasibility_ratio", float(objective_score.feasibility_ratio))
 
-            return float(score)
+            return float(objective_score.score)
         except Exception as e:
             import traceback
 

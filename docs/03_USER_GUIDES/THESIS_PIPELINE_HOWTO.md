@@ -124,6 +124,26 @@ This command performs:
 3. snapshot + contract validation
 4. production run via `--use-params <final_config.yaml>`
 
+### 4.0.1 Scientific Hardening Flags (v5)
+
+Use these flags when you need explicit scientific contracts:
+
+```bash
+micromamba run -n dataselector python -m dataselector thesis-orchestrate \
+  --config config/pipeline_config.yaml \
+  --cache-mode read_write \
+  --strict-evidence-root run_dir \
+  --strict-real-data true \
+  --output-dir outputs/runs/thesis_orchestrated_$(date -u +%Y%m%dT%H%M%SZ)
+```
+
+Flag semantics:
+
+1. `--cache-mode`: `off|read_only|write_only|read_write`.
+2. `--strict-evidence-root`: evidence lookup scope (`run_dir` recommended).
+3. `--strict-real-data`: forbids synthetic autoscale fallback in production.
+4. `--force` requires `--force-override-reason "<reason>"` and is recorded in metadata.
+
 Sampler evidence for contract validation is persisted run-locally at:
 `outputs/runs/<run_id>/parameter_resolution/sampler_resolution/selected_sampler.json`.
 
@@ -143,6 +163,11 @@ Feature-extraction provenance is pinned in the snapshot for scientific traceabil
 3. `feature_extraction.dinov2_repo`
 4. `feature_extraction.dinov2_ref`
 5. `feature_extraction.pooling`
+6. `feature_extraction.preprocess_pipeline_id`
+
+Feature cache identity is validated against:
+`model_name`, `model_variant`, `dinov2_repo`, `dinov2_ref`, `pooling`,
+`input_size`, `crop_size`, `preprocess_pipeline_id`, optional `config_sha256`.
 
 Example (resolution-only preflight):
 
@@ -192,6 +217,18 @@ When a stage uses full candidate coverage (`n_samples == total candidates`), the
 autoscale objective enforces `min_distance_km = 0` for that stage to avoid
 cardinality infeasibility artifacts. This stage is diagnostic and should not be
 interpreted as the production min-distance policy by itself.
+
+Additional production rule:
+`diagnostic_only=true` stages are excluded from final production parameter
+selection in hardening profile.
+
+### 4.0.2 CRS and Distance Strictness
+
+In `thesis_repro` profile, metric distance context is enforced:
+
+1. target metric CRS defaults to `EPSG:25832`
+2. unknown/unresolved CRS is treated as hard error
+3. run metadata must include: `source_crs`, `metric_crs`, `transform_applied`
 
 ### 4.1 Build metadata from local images
 

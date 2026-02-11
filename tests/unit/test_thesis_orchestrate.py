@@ -93,3 +93,71 @@ def test_thesis_orchestrate_validation_errors_fail_without_force(
             run_after_precompute=False,
             force=False,
         )
+
+
+def test_thesis_orchestrate_force_requires_reason(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dataselector.workflows import thesis_orchestrate as mod
+
+    _write_minimal_inputs(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValueError, match="force-override-reason"):
+        mod.run_thesis_orchestrate(
+            config="config/pipeline_config.yaml",
+            output_dir=str(tmp_path / "outputs" / "runs" / "orch_force"),
+            precompute_only=True,
+            run_after_precompute=False,
+            force=True,
+            force_override_reason=None,
+        )
+
+
+def test_thesis_orchestrate_passes_config_and_cache_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dataselector.workflows import thesis_orchestrate as mod
+
+    _write_minimal_inputs(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    observed: dict[str, dict] = {}
+    monkeypatch.setattr(mod, "_require_torch", lambda: None)
+
+    def _fake_autoscale(**kwargs):
+        observed["autoscale"] = kwargs
+        return 0
+
+    def _fake_run_thesis_pipeline(**kwargs):
+        observed.setdefault("pipeline_calls", {})
+        observed["pipeline_calls"] = kwargs
+        out_dir = Path(kwargs["output_dir"])
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "final_config.yaml").write_text("parameters: {}\n", encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(mod, "run_optuna_autoscale_workflow", _fake_autoscale)
+    monkeypatch.setattr(mod, "run_thesis_pipeline", _fake_run_thesis_pipeline)
+    monkeypatch.setattr(mod, "validate_snapshot_file", lambda _p: [])
+    monkeypatch.setattr(mod, "load_snapshot", lambda _p: {"parameters": {}})
+    monkeypatch.setattr(mod, "load_parameter_contract", lambda _p: {"parameters": {}})
+    monkeypatch.setattr(mod, "validate_snapshot_against_contract", lambda **_: [])
+
+    rc = mod.run_thesis_orchestrate(
+        config="config/pipeline_config.yaml",
+        output_dir=str(tmp_path / "outputs" / "runs" / "orch_cfg"),
+        precompute_only=True,
+        run_after_precompute=False,
+        cache_mode="write_only",
+    )
+
+    assert rc == 0
+    assert observed["autoscale"]["config_path"] == "config/pipeline_config.yaml"
+    assert observed["autoscale"]["cache_mode"] == "write_only"
+    assert str(observed["pipeline_calls"]["config_path"]).endswith(
+        "config/pipeline_config.yaml"
+    )
+    assert observed["pipeline_calls"]["cache_mode"] == "write_only"

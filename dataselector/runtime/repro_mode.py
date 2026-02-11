@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import random
+import tempfile
+from pathlib import Path
 from typing import Any
 
 THREAD_ENV_VARS = {
@@ -45,6 +47,9 @@ def activate_repro_mode(profile: str = "default", seed: int = 42) -> dict[str, A
         "thread_env": {},
         "torch": {"available": False},
         "numpy": {"available": False},
+        "repro_degraded": False,
+        "parallelism_degraded": False,
+        "repro_warnings": [],
     }
 
     # Export profile/seed for child processes started via subprocess.
@@ -56,6 +61,19 @@ def activate_repro_mode(profile: str = "default", seed: int = 42) -> dict[str, A
         for key, value in THREAD_ENV_VARS.items():
             os.environ[key] = value
             result["thread_env"][key] = value
+        shm_dir = Path("/dev/shm")
+        if not shm_dir.exists():
+            result["parallelism_degraded"] = True
+            result["repro_degraded"] = True
+            result["repro_warnings"].append("dev_shm_missing")
+        else:
+            try:
+                with tempfile.NamedTemporaryFile(dir=shm_dir, delete=True):
+                    pass
+            except Exception as exc:
+                result["parallelism_degraded"] = True
+                result["repro_degraded"] = True
+                result["repro_warnings"].append(f"dev_shm_not_writable:{exc}")
 
     random.seed(seed)
 
@@ -75,14 +93,49 @@ def activate_repro_mode(profile: str = "default", seed: int = 42) -> dict[str, A
             torch.cuda.manual_seed_all(seed)
 
         if profile == "thesis_repro":
-            torch.set_num_threads(1)
-            torch.set_num_interop_threads(1)
+            try:
+                torch.set_num_threads(1)
+            except Exception as exc:
+                result["repro_degraded"] = True
+                result["repro_warnings"].append(f"set_num_threads_failed:{exc}")
+            try:
+                torch.set_num_interop_threads(1)
+            except Exception as exc:
+                result["repro_degraded"] = True
+                result["repro_warnings"].append(f"set_num_interop_threads_failed:{exc}")
+
+            try:
+                if hasattr(torch.backends, "cudnn"):
+                    torch.backends.cudnn.deterministic = True
+                    torch.backends.cudnn.benchmark = False
+            except Exception as exc:
+                result["repro_degraded"] = True
+                result["repro_warnings"].append(f"cudnn_flags_failed:{exc}")
+
+            try:
+                torch.use_deterministic_algorithms(True, warn_only=True)
+            except Exception as exc:
+                result["repro_degraded"] = True
+                result["repro_warnings"].append(
+                    f"use_deterministic_algorithms_failed:{exc}"
+                )
 
         result["torch"] = {
             "available": True,
             "seed": int(seed),
             "cuda_available": bool(torch.cuda.is_available()),
             "num_threads": int(torch.get_num_threads()),
+            "deterministic_algorithms": bool(
+                torch.are_deterministic_algorithms_enabled()
+            )
+            if hasattr(torch, "are_deterministic_algorithms_enabled")
+            else None,
+            "cudnn_deterministic": bool(getattr(torch.backends.cudnn, "deterministic", False))
+            if hasattr(torch.backends, "cudnn")
+            else None,
+            "cudnn_benchmark": bool(getattr(torch.backends.cudnn, "benchmark", False))
+            if hasattr(torch.backends, "cudnn")
+            else None,
         }
     except Exception as exc:  # pragma: no cover - torch may be optional in some envs
         result["torch"] = {"available": False, "error": str(exc)}

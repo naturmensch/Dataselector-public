@@ -2,6 +2,7 @@ import os
 import time
 from inspect import signature
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -13,6 +14,10 @@ from dataselector.data.metadata_source import (
     assert_canonical_metadata,
     canonical_metadata_path,
 )
+from dataselector.runtime.parameter_snapshot import compute_file_sha256
+
+PREPROCESS_PIPELINE_ID = "historical_grayscale_autocontrast_rgb_v1"
+CACHE_MODES = {"off", "read_only", "write_only", "read_write"}
 
 
 def load_metadata(
@@ -20,6 +25,8 @@ def load_metadata(
     image_dir: str | Path | None = None,
     resolve_images: bool = True,
     strict_image_resolution: bool = False,
+    strict_metric_crs: bool | None = None,
+    metric_epsg: int | None = None,
 ) -> pd.DataFrame:
     mp = MetadataProcessor(str(csv_path))
     df = mp.load_csv()
@@ -54,8 +61,26 @@ def load_metadata(
 
     # Ensure metric CRS (UTM) is available for precise spatial calculations
     # Attach into DataFrame.attrs to avoid fragile attribute access and to persist through copies
-    gdf_metric = mp.ensure_metric_crs()
+    strict_crs_flag = (
+        bool(strict_metric_crs)
+        if strict_metric_crs is not None
+        else os.getenv("DATASELECTOR_STRICT_CRS", "0") == "1"
+    )
+    target_epsg = (
+        int(metric_epsg)
+        if metric_epsg is not None
+        else int(os.getenv("DATASELECTOR_METRIC_EPSG", "25832"))
+    )
+    gdf_metric = mp.ensure_metric_crs(target_epsg=target_epsg, strict=strict_crs_flag)
     attach_metric_gdf(df, gdf_metric)
+    if hasattr(df, "attrs"):
+        df.attrs["source_crs"] = mp.source_crs
+        df.attrs["metric_crs"] = mp.metric_crs
+        df.attrs["transform_applied"] = bool(mp.transform_applied)
+    if strict_crs_flag and gdf_metric is None:
+        raise RuntimeError(
+            "Strict CRS mode requires metric reprojection, but no metric coordinates were produced."
+        )
 
     # ensure placeholder for missing images
     if "image_path" not in df.columns:
@@ -99,6 +124,113 @@ def get_metric_gdf(df):
 
 
 def extract_features(metadata: pd.DataFrame, batch_size: int = 16) -> np.ndarray:
+    # Backward-compatible wrapper: use default config discovery.
+    features, _ = _extract_features_with_provenance(
+        metadata,
+        batch_size=batch_size,
+        config_path=None,
+        resolved_feature_config=None,
+    )
+    return features
+
+
+def _normalize_cache_mode(cache_mode: str) -> str:
+    normalized = str(cache_mode).strip().lower()
+    if normalized not in CACHE_MODES:
+        raise ValueError(
+            f"Unknown cache_mode '{cache_mode}'. Expected one of: {sorted(CACHE_MODES)}"
+        )
+    return normalized
+
+
+def _resolve_feature_config(
+    *,
+    config_path: str | Path | None,
+    resolved_feature_config: dict[str, Any] | None,
+) -> tuple[dict[str, Any], Path | None]:
+    defaults: dict[str, Any] = {
+        "model": "dinov2",
+        "input_size": 392,
+        "crop_size": [2048, 2048],
+        "pooling": "cls",
+        "model_variant": "dinov2_vits14",
+        "dinov2_repo": "facebookresearch/dinov2",
+        "dinov2_ref": "main",
+        "device": "auto",
+        "preprocess_pipeline_id": PREPROCESS_PIPELINE_ID,
+    }
+
+    if isinstance(resolved_feature_config, dict):
+        merged = dict(defaults)
+        merged.update(resolved_feature_config)
+        return merged, None
+
+    # Config path precedence: explicit arg > env-var > canonical default.
+    path: Path | None
+    if config_path is not None:
+        path = Path(config_path)
+    else:
+        env_cfg = os.getenv("DATASELECTOR_ACTIVE_CONFIG")
+        path = Path(env_cfg) if env_cfg else Path("config/pipeline_config.yaml")
+
+    if path is not None and path.exists():
+        try:
+            payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            feat_cfg = payload.get("feature_extraction", {})
+            merged = dict(defaults)
+            if isinstance(feat_cfg, dict):
+                merged.update(feat_cfg)
+            return merged, path
+        except Exception as exc:
+            print(
+                f"Warnung: Konnte Feature-Config nicht lesen ({exc}), nutze Defaults"
+            )
+    return dict(defaults), path if path is not None and path.exists() else None
+
+
+def build_feature_identity(
+    *,
+    feature_cfg: dict[str, Any],
+    batch_size: int,
+    config_sha256: str | None,
+) -> dict[str, Any]:
+    model = str(feature_cfg.get("model", "dinov2")).strip().lower()
+    input_size = int(feature_cfg.get("input_size", 392 if model == "dinov2" else 224))
+    # Keep identity aligned with FeatureExtractor behavior.
+    if model == "dinov2" and input_size == 224:
+        input_size = 392
+
+    raw_crop = feature_cfg.get("crop_size", [2048, 2048])
+    if isinstance(raw_crop, (list, tuple)) and len(raw_crop) == 2:
+        crop_size = [int(raw_crop[0]), int(raw_crop[1])]
+    else:
+        crop_size = [int(input_size), int(input_size)]
+
+    identity: dict[str, Any] = {
+        "model_name": model,
+        "model_variant": str(feature_cfg.get("model_variant", "dinov2_vits14")).strip(),
+        "dinov2_repo": str(feature_cfg.get("dinov2_repo", "facebookresearch/dinov2")).strip(),
+        "dinov2_ref": str(feature_cfg.get("dinov2_ref", "main")).strip(),
+        "pooling": str(feature_cfg.get("pooling", "cls")).strip().lower(),
+        "input_size": int(input_size),
+        "crop_size": crop_size,
+        "preprocess_pipeline_id": str(
+            feature_cfg.get("preprocess_pipeline_id", PREPROCESS_PIPELINE_ID)
+        ).strip(),
+        "batch_size": int(batch_size),
+    }
+    if config_sha256:
+        identity["config_sha256"] = config_sha256
+    return identity
+
+
+def _extract_features_with_provenance(
+    metadata: pd.DataFrame,
+    *,
+    batch_size: int = 16,
+    config_path: str | Path | None,
+    resolved_feature_config: dict[str, Any] | None,
+) -> tuple[np.ndarray, dict[str, Any]]:
     # Lazy import: keep basic I/O paths independent from torch.
     from dataselector.features.feature_extractor import FeatureExtractor
 
@@ -120,36 +252,25 @@ def extract_features(metadata: pd.DataFrame, batch_size: int = 16) -> np.ndarray
             f"Missing image files (sample): {sample}"
         )
 
-    # Lade Modell-Konfiguration aus pipeline_config.yaml
-    config_path = Path("config/pipeline_config.yaml")
-    model_name = "dinov2"  # Fallback auf neuen Standard
-    input_size = 392
-    crop_size = (2048, 2048)
-    pooling = "cls"
-    model_variant = "dinov2_vits14"
-    dinov2_repo = "facebookresearch/dinov2"
-    dinov2_ref = "main"
-    device = None
-    if config_path.exists():
-        try:
-            with open(config_path, "r") as f:
-                cfg = yaml.safe_load(f)
-                feat_cfg = cfg.get("feature_extraction", {})
-                model_name = feat_cfg.get("model", "dinov2")
-                input_size = int(feat_cfg.get("input_size", input_size))
-                raw_crop = feat_cfg.get("crop_size", list(crop_size))
-                if isinstance(raw_crop, (list, tuple)) and len(raw_crop) == 2:
-                    crop_size = (int(raw_crop[0]), int(raw_crop[1]))
-                pooling = str(feat_cfg.get("pooling", pooling)).strip().lower()
-                model_variant = str(feat_cfg.get("model_variant", model_variant)).strip()
-                dinov2_repo = str(feat_cfg.get("dinov2_repo", dinov2_repo)).strip()
-                dinov2_ref = str(feat_cfg.get("dinov2_ref", dinov2_ref)).strip()
-                cfg_device = str(feat_cfg.get("device", "auto")).strip().lower()
-                device = None if cfg_device == "auto" else cfg_device
-        except Exception as e:
-            print(
-                f"Warnung: Konnte Config nicht lesen ({e}), nutze Default: {model_name}"
-            )
+    feature_cfg, cfg_path = _resolve_feature_config(
+        config_path=config_path,
+        resolved_feature_config=resolved_feature_config,
+    )
+    model_name = str(feature_cfg.get("model", "dinov2")).strip().lower()
+    input_size = int(
+        feature_cfg.get("input_size", 392 if model_name == "dinov2" else 224)
+    )
+    raw_crop = feature_cfg.get("crop_size", [2048, 2048])
+    if isinstance(raw_crop, (list, tuple)) and len(raw_crop) == 2:
+        crop_size = (int(raw_crop[0]), int(raw_crop[1]))
+    else:
+        crop_size = (2048, 2048)
+    pooling = str(feature_cfg.get("pooling", "cls")).strip().lower()
+    model_variant = str(feature_cfg.get("model_variant", "dinov2_vits14")).strip()
+    dinov2_repo = str(feature_cfg.get("dinov2_repo", "facebookresearch/dinov2")).strip()
+    dinov2_ref = str(feature_cfg.get("dinov2_ref", "main")).strip()
+    cfg_device = str(feature_cfg.get("device", "auto")).strip().lower()
+    device = None if cfg_device == "auto" else cfg_device
 
     fe = FeatureExtractor(
         model_name=model_name,
@@ -168,7 +289,22 @@ def extract_features(metadata: pd.DataFrame, batch_size: int = 16) -> np.ndarray
         batch_size=batch_size,
         crop_size=crop_size,
     )
-    return features
+    model_provenance = fe.get_model_provenance()
+    config_sha256 = compute_file_sha256(cfg_path) if cfg_path and cfg_path.exists() else None
+    feature_identity = build_feature_identity(
+        feature_cfg=feature_cfg,
+        batch_size=batch_size,
+        config_sha256=config_sha256,
+    )
+    # Align identity with effective model provenance values (e.g. input_size override).
+    if "input_size" in model_provenance:
+        feature_identity["input_size"] = int(model_provenance["input_size"])
+    return features, {
+        "feature_identity": feature_identity,
+        "model_provenance": model_provenance,
+        "config_sha256": config_sha256,
+        "config_path": str(cfg_path) if cfg_path else None,
+    }
 
 
 def load_or_extract_features(
@@ -177,6 +313,11 @@ def load_or_extract_features(
     batch_size: int = 16,
     cache: bool = True,
     enforce_canonical: bool = False,
+    cache_mode: str = "read_write",
+    config_path: str | Path | None = None,
+    resolved_feature_config: dict[str, Any] | None = None,
+    strict_cache_identity: bool = False,
+    force_extract: bool = False,
 ) -> np.ndarray:
     """Load features from a hash-identified cache or extract and create a new cache."""
     from dataselector.pipeline.cache import (
@@ -185,9 +326,19 @@ def load_or_extract_features(
         create_meta_info,
         features_path_for_hash,
         load_features_by_hash,
+        load_meta_by_hash,
     )
 
     out_dir = Path(out_dir)
+
+    # Environment fallback for orchestration-driven runs.
+    if cache_mode == "read_write":
+        cache_mode = os.getenv("DATASELECTOR_FEATURE_CACHE_MODE", cache_mode)
+    cache_mode = _normalize_cache_mode(cache_mode)
+    if cache is False and cache_mode == "read_write":
+        # Backward-compatible behavior: no cache writes when cache=False.
+        # Explicitly avoid strict read-only hard-fail on cache miss.
+        cache_mode = "off"
 
     # Resolve metadata CSV path (production default is canonical source only).
     csv_meta = _resolve_feature_metadata_csv(
@@ -197,7 +348,17 @@ def load_or_extract_features(
     )
 
     # Compute deterministic hash for this metadata + extraction params
-    params = {"batch_size": batch_size}
+    feature_cfg, cfg_path = _resolve_feature_config(
+        config_path=config_path,
+        resolved_feature_config=resolved_feature_config,
+    )
+    config_sha256 = compute_file_sha256(cfg_path) if cfg_path and cfg_path.exists() else None
+    feature_identity = build_feature_identity(
+        feature_cfg=feature_cfg,
+        batch_size=batch_size,
+        config_sha256=config_sha256,
+    )
+    params = {"batch_size": batch_size, "feature_identity": feature_identity}
     try:
         meta_hash = compute_meta_hash(csv_meta, params=params)
     except Exception:
@@ -214,39 +375,84 @@ def load_or_extract_features(
         )
 
     # Try to find existing hash-named cache
-    cached = load_features_by_hash(out_dir, meta_hash)
+    cached = None
+    if cache_mode in {"read_only", "read_write"} and not force_extract:
+        cached = load_features_by_hash(out_dir, meta_hash)
+
     if cached is not None:
         # Basic shape validation
         meta = load_metadata(csv_meta)
         if cached.shape[0] != len(meta):
-            print(
-                "[WARN] Cache for hash {} has {} rows but metadata has {}; removing cache and re-extracting.".format(
+            msg = (
+                "[WARN] Cache for hash {} has {} rows but metadata has {}.".format(
                     meta_hash, cached.shape[0], len(meta)
                 )
             )
-            try:
-                fpath = features_path_for_hash(out_dir, meta_hash)
-                fpath.unlink()
-                mpath = out_dir / f"features-{meta_hash}.meta.json"
-                if mpath.exists():
-                    mpath.unlink()
-            except Exception:
-                pass
+            if cache_mode == "read_only":
+                raise ValueError(msg + " read_only mode forbids re-extraction.")
+            print(msg + " Re-extracting.")
         else:
-            print(
-                f"[INFO] ✓ Feature cache hit (hash: {meta_hash[:8]}..., shape: {cached.shape})"
-            )
-            return cached
+            cached_meta = load_meta_by_hash(out_dir, meta_hash) or {}
+            cached_identity = cached_meta.get("feature_identity")
+            if strict_cache_identity and not isinstance(cached_identity, dict):
+                msg = (
+                    f"[WARN] Cache meta for hash {meta_hash[:8]}... misses feature_identity"
+                )
+                if cache_mode == "read_only":
+                    raise ValueError(msg + " strict read_only mode forbids fallback.")
+                print(msg + " Re-extracting with current identity.")
+            elif isinstance(cached_identity, dict) and cached_identity != feature_identity:
+                msg = (
+                    f"[WARN] Feature identity mismatch for cache hash {meta_hash[:8]}..."
+                )
+                if strict_cache_identity and cache_mode == "read_only":
+                    raise ValueError(msg + " strict read_only mode forbids fallback.")
+                print(msg + " Re-extracting with current identity.")
+            else:
+                print(
+                    f"[INFO] ✓ Feature cache hit (hash: {meta_hash[:8]}..., shape: {cached.shape})"
+                )
+                return cached
+
+    if cache_mode == "read_only":
+        raise FileNotFoundError(
+            "Feature cache miss in read_only mode for identity hash "
+            f"{meta_hash[:8]}... (csv={csv_meta})."
+        )
+
+    if cache_mode == "off":
+        print("[INFO] cache_mode=off -> extracting features without cache read/write")
+        meta = load_metadata(csv_meta)
+        feats, _ = _extract_features_with_provenance(
+            meta,
+            batch_size=batch_size,
+            config_path=config_path,
+            resolved_feature_config=resolved_feature_config,
+        )
+        return feats
+
+    # In strict scientific mode, do not silently migrate/remove legacy caches.
+    legacy = out_dir / "features.npy"
+    if legacy.exists() and strict_cache_identity and not force_extract:
+        raise RuntimeError(
+            "Legacy cache file features.npy detected. "
+            "Strict scientific mode forbids silent migration. "
+            "Delete it manually or rerun with force_extract=True."
+        )
 
     # If not found, check for legacy features.npy and attempt safe migration
-    legacy = out_dir / "features.npy"
-    if legacy.exists():
+    if legacy.exists() and cache_mode == "read_write":
         try:
             legacy_feats = np.load(legacy)
             meta = load_metadata(csv_meta)
             if legacy_feats.shape[0] == len(meta):
                 # Safe to migrate
-                meta_info = create_meta_info(csv_meta, params=params)
+                meta_info = create_meta_info(
+                    csv_meta,
+                    params=params,
+                    feature_identity=feature_identity,
+                    config_sha256=config_sha256,
+                )
                 atomic_write_features_with_meta(
                     out_dir, legacy_feats, meta_hash, meta_info
                 )
@@ -276,10 +482,23 @@ def load_or_extract_features(
         f"[INFO] Feature cache miss (hash: {meta_hash[:8]}...) - extracting features with batch_size={batch_size}..."
     )
     meta = load_metadata(csv_meta)
-    feats = extract_features(meta, batch_size=batch_size)
+    feats, provenance = _extract_features_with_provenance(
+        meta,
+        batch_size=batch_size,
+        config_path=config_path,
+        resolved_feature_config=resolved_feature_config,
+    )
+    provenance.setdefault("feature_identity", feature_identity)
+    provenance.setdefault("config_sha256", config_sha256)
 
-    if cache:
-        meta_info = create_meta_info(csv_meta, params=params)
+    if cache and cache_mode in {"write_only", "read_write"}:
+        meta_info = create_meta_info(
+            csv_meta,
+            params=params,
+            feature_identity=provenance.get("feature_identity"),
+            model_provenance=provenance.get("model_provenance"),
+            config_sha256=provenance.get("config_sha256"),
+        )
         try:
             atomic_write_features_with_meta(out_dir, feats, meta_hash, meta_info)
         except Exception:
@@ -347,7 +566,12 @@ def load_or_extract_features_legacy(
     )
 
     meta = load_metadata(csv_meta)
-    feats = extract_features(meta, batch_size=batch_size)
+    feats, _ = _extract_features_with_provenance(
+        meta,
+        batch_size=batch_size,
+        config_path=None,
+        resolved_feature_config=None,
+    )
 
     if cache:
         out_dir.mkdir(parents=True, exist_ok=True)

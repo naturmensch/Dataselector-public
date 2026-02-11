@@ -47,7 +47,7 @@ parameters:
   selection.n_samples:
     class: policy_or_computed
     resolver: selection_target
-    required_evidence: reports_2026-02-09/N_SAMPLES_DECISION_2026-02-09.md
+    required_evidence: repo:reports_2026-02-09/N_SAMPLES_DECISION_2026-02-09.md
     allowed_methods:
       - resolved:config
       - resolved:snapshot_config
@@ -58,7 +58,7 @@ parameters:
   selection.min_distance_km:
     class: policy_or_computed
     resolver: distance_policy
-    required_evidence: reports_2026-02-09/MIN_DISTANCE_DECISION_2026-02-09.md
+    required_evidence: repo:reports_2026-02-09/MIN_DISTANCE_DECISION_2026-02-09.md
     allowed_methods:
       - config_policy
       - snapshot_policy
@@ -68,7 +68,7 @@ parameters:
   clustering.n_clusters:
     class: policy_or_computed
     resolver: clustering_policy
-    required_evidence: docs/PARAMETER_POLICY_LEDGER.md
+    required_evidence: repo:docs/PARAMETER_POLICY_LEDGER.md
     allowed_methods:
       - config_policy
       - snapshot_policy
@@ -77,7 +77,7 @@ parameters:
   clustering.umap_n_neighbors:
     class: policy_or_computed
     resolver: clustering_policy
-    required_evidence: docs/PARAMETER_POLICY_LEDGER.md
+    required_evidence: repo:docs/PARAMETER_POLICY_LEDGER.md
     allowed_methods:
       - config_policy
       - snapshot_policy
@@ -86,7 +86,7 @@ parameters:
   clustering.umap_min_dist:
     class: policy_or_computed
     resolver: clustering_policy
-    required_evidence: docs/PARAMETER_POLICY_LEDGER.md
+    required_evidence: repo:docs/PARAMETER_POLICY_LEDGER.md
     allowed_methods:
       - config_policy
       - snapshot_policy
@@ -95,7 +95,7 @@ parameters:
   feature_extraction.batch_size:
     class: technical_or_computed
     resolver: runtime_or_policy
-    required_evidence: docs/PARAMETER_POLICY_LEDGER.md
+    required_evidence: repo:docs/PARAMETER_POLICY_LEDGER.md
     allowed_methods:
       - config_policy
       - snapshot_policy
@@ -104,7 +104,7 @@ parameters:
   feature_extraction.pooling:
     class: technical_or_computed
     resolver: runtime_or_policy
-    required_evidence: docs/PARAMETER_POLICY_LEDGER.md
+    required_evidence: repo:docs/PARAMETER_POLICY_LEDGER.md
     allowed_methods:
       - config_policy
       - snapshot_policy
@@ -113,7 +113,7 @@ parameters:
   feature_extraction.model_variant:
     class: technical_or_computed
     resolver: runtime_or_policy
-    required_evidence: docs/PARAMETER_POLICY_LEDGER.md
+    required_evidence: repo:docs/PARAMETER_POLICY_LEDGER.md
     allowed_methods:
       - config_policy
       - snapshot_policy
@@ -122,7 +122,7 @@ parameters:
   feature_extraction.dinov2_repo:
     class: technical_or_computed
     resolver: runtime_or_policy
-    required_evidence: docs/PARAMETER_POLICY_LEDGER.md
+    required_evidence: repo:docs/PARAMETER_POLICY_LEDGER.md
     allowed_methods:
       - config_policy
       - snapshot_policy
@@ -131,7 +131,7 @@ parameters:
   feature_extraction.dinov2_ref:
     class: technical_or_computed
     resolver: runtime_or_policy
-    required_evidence: docs/PARAMETER_POLICY_LEDGER.md
+    required_evidence: repo:docs/PARAMETER_POLICY_LEDGER.md
     allowed_methods:
       - config_policy
       - snapshot_policy
