@@ -105,10 +105,15 @@ def validate_snapshot_against_contract(
                 if not ev_path.exists():
                     # Also allow run-relative evidence if source_file exists and matches suffix.
                     source_file = str(entry.get("source_file", "")).strip()
+                    source_path = Path(source_file) if source_file else None
+                    source_exists = bool(source_path and source_path.exists())
                     if not source_file or not source_file.endswith(evidence):
                         errors.append(
                             f"'{dotted}' requires evidence '{evidence}' (missing at {ev_path})"
                         )
+                    elif not source_exists:
+                        errors.append(
+                            f"'{dotted}' provenance source_file '{source_file}' does not exist"
+                        )
 
     return errors
-

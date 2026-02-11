@@ -497,6 +497,60 @@ def test_resolve_optuna_sampler_uses_requested_trials_without_clamp(tmp_path, mo
     assert captured["n_trials"] == 7
 
 
+def test_run_thesis_pipeline_materializes_run_local_sampler_evidence(
+    tmp_path, monkeypatch
+):
+    """Resolved sampler must be materialized under run-local parameter_resolution evidence path."""
+    from dataselector.workflows import thesis_pipeline as mod
+
+    ws = tmp_path
+    (ws / "data").mkdir(parents=True, exist_ok=True)
+    (ws / "config").mkdir(parents=True, exist_ok=True)
+    (ws / "data" / "new_all_tiles.csv").write_text(
+        "ul_x,ul_y,lr_x,lr_y,year\n1,2,3,4,1900\n",
+        encoding="utf-8",
+    )
+    (ws / "config" / "pipeline_config.yaml").write_text(
+        _minimal_resolved_config(n_samples=24, optuna_sampler="tpe"),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(ws)
+    monkeypatch.setattr(
+        "dataselector.workflows.generate_reports.generate_thesis_final_report",
+        lambda **_kwargs: None,
+    )
+
+    success = mod.run_thesis_pipeline(
+        n_lhs=5,
+        n_trials=2,
+        skip_exploration=True,
+        skip_optimization=True,
+        skip_validation=True,
+        dry_run=True,
+        no_auto_continue=True,
+        output_dir=ws / "outputs",
+        execution_profile="thesis_repro",
+        seed=11,
+        snapshot_config=True,
+    )
+
+    assert success is True
+    run_meta = json.loads((ws / "outputs" / "run_metadata.json").read_text("utf-8"))
+    sampler_artifact_path = run_meta["extra"]["sampler_artifact_path"]
+    assert sampler_artifact_path is not None
+    assert sampler_artifact_path.endswith(
+        "parameter_resolution/sampler_resolution/selected_sampler.json"
+    )
+    assert Path(sampler_artifact_path).exists()
+
+    import yaml
+
+    snapshot_path = Path(run_meta["extra"]["resolved_snapshot_path"])
+    resolved = yaml.safe_load(snapshot_path.read_text(encoding="utf-8"))
+    prov = resolved["parameters"]["selection"]["_provenance"]["optuna_sampler"]
+    assert prov["source_file"] == sampler_artifact_path
+
+
 @pytest.mark.skipif(
     True, reason="Requires full pipeline setup (data, features, config)"
 )

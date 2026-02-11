@@ -116,6 +116,36 @@ def _read_selected_sampler(path: Path) -> str | None:
     return None
 
 
+def _materialize_sampler_resolution_artifact(
+    *,
+    output_dir: Path,
+    sampler: str,
+    source: str,
+    source_artifact: str | None,
+) -> Path:
+    """Persist a run-local sampler resolution artifact for contract evidence."""
+    artifact_dir = output_dir / "parameter_resolution" / "sampler_resolution"
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    artifact_path = artifact_dir / "selected_sampler.json"
+    payload: dict[str, Any] = {
+        "best": sampler,
+        "sampler": sampler,
+        "source": source,
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    if source_artifact:
+        payload["source_artifact"] = source_artifact
+        source_path = Path(source_artifact)
+        if source_path.exists():
+            payload["source_artifact_sha256"] = compute_file_sha256(source_path)
+
+    artifact_path.write_text(
+        json.dumps(payload, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+    return artifact_path
+
+
 def _resolve_optuna_sampler(
     *,
     config: dict[str, Any],
@@ -147,6 +177,7 @@ def _resolve_optuna_sampler(
         return sampler, "config_policy", None
 
     artifact_candidates = [
+        output_dir / "parameter_resolution" / "sampler_resolution" / "selected_sampler.json",
         output_dir / "selected_sampler.json",
         output_dir / "sampler_resolution" / "selected_sampler.json",
         Path("outputs") / "selected_sampler.json",
@@ -163,7 +194,7 @@ def _resolve_optuna_sampler(
 
         from dataselector.workflows.compare_samplers import compare_multi_seed
 
-        compare_out = output_dir / "sampler_resolution"
+        compare_out = output_dir / "parameter_resolution" / "sampler_resolution"
         compare_multi_seed(
             samplers=["qmc", "tpe", "cmaes"],
             seeds=validation_seeds,
@@ -806,6 +837,13 @@ def run_thesis_pipeline(
     )
     if resolved_sampler is not None:
         parameters.setdefault("selection", {})["optuna_sampler"] = resolved_sampler
+        canonical_sampler_artifact = _materialize_sampler_resolution_artifact(
+            output_dir=output_dir,
+            sampler=resolved_sampler,
+            source=sampler_source,
+            source_artifact=sampler_artifact_path,
+        )
+        sampler_artifact_path = str(canonical_sampler_artifact)
     elif not skip_optimization and not dry_run:
         raise ValueError(
             "Optuna sampler unresolved. Set selection.optuna_sampler policy, "
@@ -976,6 +1014,7 @@ def run_thesis_pipeline(
                     "parameter_source": parameter_source,
                     "resolved_sampler": resolved_sampler,
                     "resolved_sampler_source": sampler_source,
+                    "sampler_artifact_path": sampler_artifact_path,
                     "resolved_exploration_sampler": resolved_exploration_sampler,
                     "resolved_exploration_sampler_source": exploration_sampler_source,
                     "resolved_snapshot_path": str(resolved_snapshot_path)

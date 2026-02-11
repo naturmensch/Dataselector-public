@@ -28,7 +28,7 @@ parameters:
   selection.optuna_sampler:
     class: computed_required
     resolver: sampler_resolution
-    required_evidence: sampler_resolution/selected_sampler.json
+    required_evidence: parameter_resolution/sampler_resolution/selected_sampler.json
     allowed_methods:
       - config_policy
       - snapshot_policy

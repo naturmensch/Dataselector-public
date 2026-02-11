@@ -124,6 +124,9 @@ This command performs:
 3. snapshot + contract validation
 4. production run via `--use-params <final_config.yaml>`
 
+Sampler evidence for contract validation is persisted run-locally at:
+`outputs/runs/<run_id>/parameter_resolution/sampler_resolution/selected_sampler.json`.
+
 ### 4.A Parameter Resolution + Snapshot Contract
 
 The canonical thesis path now supports explicit resolver/snapshot flags:
@@ -176,6 +179,12 @@ CLI commands.
 For thesis runs, pass `--n-samples` explicitly in commands below.
 Current thesis policy baseline is `24` (minimum-sufficient decision):
 `reports_2026-02-09/N_SAMPLES_DECISION_2026-02-09.md`.
+
+Note on autoscale `full` stage:
+When a stage uses full candidate coverage (`n_samples == total candidates`), the
+autoscale objective enforces `min_distance_km = 0` for that stage to avoid
+cardinality infeasibility artifacts. This stage is diagnostic and should not be
+interpreted as the production min-distance policy by itself.
 
 ### 4.1 Build metadata from local images
 

@@ -125,9 +125,16 @@ def make_objective(
         beta = b / total
         gamma = c / total
 
-        min_dist = trial.suggest_int(
-            "min_distance_km", *min_distance_bounds["min_distance_km"]
-        )
+        full_coverage_mode = int(n_samples) >= int(len(features))
+        if full_coverage_mode:
+            # In full-coverage stages, any positive min_distance can make the target
+            # cardinality infeasible by construction. Treat as diagnostic stage and
+            # disable spatial distance enforcement in the objective.
+            min_dist = 0
+        else:
+            min_dist = trial.suggest_int(
+                "min_distance_km", *min_distance_bounds["min_distance_km"]
+            )
 
         selector = DiversitySelector(n_samples=n_samples, use_multi_criteria=True)
         selected = selector.select(
@@ -161,6 +168,7 @@ def make_objective(
         trial.set_user_attr("diversity", float(diversity))
         trial.set_user_attr("spatial_spread", float(spread))
         trial.set_user_attr("n_samples", int(n_samples))
+        trial.set_user_attr("full_coverage_mode", bool(full_coverage_mode))
 
         return float(score)
 
@@ -228,9 +236,15 @@ def run_autoscale(
     no_change = 0
 
     for stage_idx, n_samples in enumerate(stages_samples):
+        full_coverage_stage = int(n_samples) >= int(len(features))
         print(
             f"\n=== Stage {stage_idx+1}/{len(stages_samples)}: n_samples={n_samples} | trials={n_trials_per_stage[stage_idx]} ==="
         )
+        if full_coverage_stage:
+            print(
+                "Stage uses full coverage mode (n_samples == candidate count): "
+                "forcing min_distance_km=0 for objective feasibility."
+            )
         objective = make_objective(
             features,
             metadata,
@@ -376,10 +390,16 @@ def run_autoscale(
             hi = clamp(val + 0.2, 0.01, 1.0)
             bounds[key] = (lo, hi)
 
-        md = best_params["min_distance_km"]
-        if md is None:
-            md = 28
-        bounds["min_distance_km"] = (max(0, int(md - 10)), int(md + 10))
+        if full_coverage_stage:
+            print(
+                "Skipping min_distance bounds update from full-coverage stage "
+                "(diagnostic stage)."
+            )
+        else:
+            md = best_params["min_distance_km"]
+            if md is None:
+                md = 28
+            bounds["min_distance_km"] = (max(0, int(md - 10)), int(md + 10))
 
         print("New bounds for next stage:", bounds)
 

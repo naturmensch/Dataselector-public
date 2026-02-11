@@ -56,6 +56,11 @@ def test_validate_snapshot_against_contract_success(tmp_path: Path) -> None:
             }
         }
     }
+    evidence_path = (
+        tmp_path / "parameter_resolution" / "optuna_autoscale_best_latest.json"
+    )
+    evidence_path.parent.mkdir(parents=True, exist_ok=True)
+    evidence_path.write_text("{}", encoding="utf-8")
 
     errors = validate_snapshot_against_contract(
         snapshot=snapshot,
@@ -125,3 +130,40 @@ def test_validate_snapshot_against_contract_missing_evidence_fails(
         repo_root=tmp_path,
     )
     assert any("requires evidence" in err.lower() for err in errors)
+
+
+def test_validate_snapshot_against_contract_missing_source_file_fails(
+    tmp_path: Path,
+) -> None:
+    contract = {
+        "parameters": {
+            "selection.alpha_visual": {
+                "allowed_methods": ["computed_autoscale_artifact"],
+                "required_evidence": "parameter_resolution/optuna_autoscale_best_latest.json",
+            }
+        }
+    }
+    snapshot = {
+        "parameters": {
+            "selection": {
+                "alpha_visual": 0.4,
+                "_provenance": {
+                    "alpha_visual": {
+                        "method": "computed_autoscale_artifact",
+                        "source_file": str(
+                            tmp_path
+                            / "parameter_resolution"
+                            / "optuna_autoscale_best_latest.json"
+                        ),
+                    }
+                },
+            }
+        }
+    }
+
+    errors = validate_snapshot_against_contract(
+        snapshot=snapshot,
+        contract=contract,
+        repo_root=tmp_path,
+    )
+    assert any("does not exist" in err.lower() for err in errors)
