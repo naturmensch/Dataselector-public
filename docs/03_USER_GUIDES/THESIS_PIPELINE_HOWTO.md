@@ -137,6 +137,13 @@ The canonical thesis path now supports explicit resolver/snapshot flags:
 4. `--no-auto-continue`: stop after resolution/snapshot stage.
 5. `--force`: continue despite validation mismatch (flagged in `run_metadata.json`).
 
+Feature-extraction provenance is pinned in the snapshot for scientific traceability:
+1. `feature_extraction.model`
+2. `feature_extraction.model_variant`
+3. `feature_extraction.dinov2_repo`
+4. `feature_extraction.dinov2_ref`
+5. `feature_extraction.pooling`
+
 Example (resolution-only preflight):
 
 ```bash

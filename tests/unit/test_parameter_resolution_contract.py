@@ -17,6 +17,8 @@ def test_parameter_resolution_contract_file_loads() -> None:
     assert "selection.alpha_visual" in params
     assert "selection.optuna_sampler" in params
     assert "clustering.umap_min_dist" in params
+    assert "feature_extraction.pooling" in params
+    assert "feature_extraction.model_variant" in params
 
 
 def test_validate_snapshot_against_contract_success(tmp_path: Path) -> None:

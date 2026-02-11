@@ -99,6 +99,15 @@ def _parse_bool(value: Any, *, label: str) -> bool:
     raise ValueError(f"{label} must be boolean-compatible (got {value!r})")
 
 
+def _parse_pooling(value: Any) -> str:
+    pooled = str(value).strip().lower()
+    if pooled not in {"cls", "mean", "global_avg"}:
+        raise ValueError(
+            f"feature_extraction.pooling must be one of cls|mean|global_avg (got {value!r})"
+        )
+    return pooled
+
+
 def _read_selected_sampler(path: Path) -> str | None:
     """Read sampler artifact JSON and return selected sampler name."""
     if not path.exists():
@@ -706,11 +715,57 @@ def run_thesis_pipeline(
         parser=int,
     )
 
-    resolve_param(
+    resolved_feature_model = resolve_param(
         section="feature_extraction",
         key="model",
         paths=["feature_extraction.model"],
         parser=lambda v: str(v).strip().lower(),
+    )
+    resolved_feature_model_variant = resolve_param(
+        section="feature_extraction",
+        key="model_variant",
+        paths=["feature_extraction.model_variant"],
+        parser=lambda v: str(v).strip(),
+        default="dinov2_vits14",
+        notes="DINOv2 model variant pinned for reproducibility",
+    )
+    resolved_feature_dinov2_repo = resolve_param(
+        section="feature_extraction",
+        key="dinov2_repo",
+        paths=["feature_extraction.dinov2_repo"],
+        parser=lambda v: str(v).strip(),
+        default="facebookresearch/dinov2",
+        notes="DINOv2 upstream repository",
+    )
+    resolved_feature_dinov2_ref = resolve_param(
+        section="feature_extraction",
+        key="dinov2_ref",
+        paths=["feature_extraction.dinov2_ref"],
+        parser=lambda v: str(v).strip(),
+        default="main",
+        notes="DINOv2 repository ref (branch/tag/commit)",
+    )
+    resolved_feature_pooling = resolve_param(
+        section="feature_extraction",
+        key="pooling",
+        paths=["feature_extraction.pooling"],
+        parser=_parse_pooling,
+        default="cls" if resolved_feature_model == "dinov2" else "global_avg",
+        notes="Feature pooling strategy used for embedding extraction",
+    )
+    resolved_feature_input_size = resolve_param(
+        section="feature_extraction",
+        key="input_size",
+        paths=["feature_extraction.input_size"],
+        parser=int,
+        default=392 if resolved_feature_model == "dinov2" else 224,
+    )
+    resolved_feature_resnet_input_size = resolve_param(
+        section="feature_extraction",
+        key="resnet_input_size",
+        paths=["feature_extraction.resnet_input_size"],
+        parser=int,
+        default=224,
     )
     resolved_batch_size = resolve_param(
         section="feature_extraction",
@@ -1032,6 +1087,13 @@ def run_thesis_pipeline(
                     "strict_block_reason": strict_block_reason,
                     "resolved_n_clusters": resolved_n_clusters,
                     "resolved_batch_size": resolved_batch_size,
+                    "resolved_feature_model": resolved_feature_model,
+                    "resolved_feature_model_variant": resolved_feature_model_variant,
+                    "resolved_feature_pooling": resolved_feature_pooling,
+                    "resolved_feature_input_size": resolved_feature_input_size,
+                    "resolved_feature_resnet_input_size": resolved_feature_resnet_input_size,
+                    "resolved_feature_dinov2_repo": resolved_feature_dinov2_repo,
+                    "resolved_feature_dinov2_ref": resolved_feature_dinov2_ref,
                     "resolved_umap_components": resolved_umap_components,
                     "resolved_umap_n_neighbors": resolved_umap_n_neighbors,
                     "resolved_umap_min_dist": resolved_umap_min_dist,
@@ -1306,6 +1368,13 @@ def run_thesis_pipeline(
                 "n_trials": n_trials,
                 "resolved_n_clusters": resolved_n_clusters,
                 "resolved_batch_size": resolved_batch_size,
+                "resolved_feature_model": resolved_feature_model,
+                "resolved_feature_model_variant": resolved_feature_model_variant,
+                "resolved_feature_pooling": resolved_feature_pooling,
+                "resolved_feature_input_size": resolved_feature_input_size,
+                "resolved_feature_resnet_input_size": resolved_feature_resnet_input_size,
+                "resolved_feature_dinov2_repo": resolved_feature_dinov2_repo,
+                "resolved_feature_dinov2_ref": resolved_feature_dinov2_ref,
                 "resolved_umap_components": resolved_umap_components,
                 "resolved_umap_n_neighbors": resolved_umap_n_neighbors,
                 "resolved_umap_min_dist": resolved_umap_min_dist,

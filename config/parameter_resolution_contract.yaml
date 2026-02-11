@@ -100,3 +100,39 @@ parameters:
       - config_policy
       - snapshot_policy
       - computed
+
+  feature_extraction.pooling:
+    class: technical_or_computed
+    resolver: runtime_or_policy
+    required_evidence: docs/PARAMETER_POLICY_LEDGER.md
+    allowed_methods:
+      - config_policy
+      - snapshot_policy
+      - workflow_default_policy
+
+  feature_extraction.model_variant:
+    class: technical_or_computed
+    resolver: runtime_or_policy
+    required_evidence: docs/PARAMETER_POLICY_LEDGER.md
+    allowed_methods:
+      - config_policy
+      - snapshot_policy
+      - workflow_default_policy
+
+  feature_extraction.dinov2_repo:
+    class: technical_or_computed
+    resolver: runtime_or_policy
+    required_evidence: docs/PARAMETER_POLICY_LEDGER.md
+    allowed_methods:
+      - config_policy
+      - snapshot_policy
+      - workflow_default_policy
+
+  feature_extraction.dinov2_ref:
+    class: technical_or_computed
+    resolver: runtime_or_policy
+    required_evidence: docs/PARAMETER_POLICY_LEDGER.md
+    allowed_methods:
+      - config_policy
+      - snapshot_policy
+      - workflow_default_policy

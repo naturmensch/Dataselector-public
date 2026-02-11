@@ -123,20 +123,50 @@ def extract_features(metadata: pd.DataFrame, batch_size: int = 16) -> np.ndarray
     # Lade Modell-Konfiguration aus pipeline_config.yaml
     config_path = Path("config/pipeline_config.yaml")
     model_name = "dinov2"  # Fallback auf neuen Standard
+    input_size = 392
+    crop_size = (2048, 2048)
+    pooling = "cls"
+    model_variant = "dinov2_vits14"
+    dinov2_repo = "facebookresearch/dinov2"
+    dinov2_ref = "main"
+    device = None
     if config_path.exists():
         try:
             with open(config_path, "r") as f:
                 cfg = yaml.safe_load(f)
-                model_name = cfg.get("feature_extraction", {}).get("model", "dinov2")
+                feat_cfg = cfg.get("feature_extraction", {})
+                model_name = feat_cfg.get("model", "dinov2")
+                input_size = int(feat_cfg.get("input_size", input_size))
+                raw_crop = feat_cfg.get("crop_size", list(crop_size))
+                if isinstance(raw_crop, (list, tuple)) and len(raw_crop) == 2:
+                    crop_size = (int(raw_crop[0]), int(raw_crop[1]))
+                pooling = str(feat_cfg.get("pooling", pooling)).strip().lower()
+                model_variant = str(feat_cfg.get("model_variant", model_variant)).strip()
+                dinov2_repo = str(feat_cfg.get("dinov2_repo", dinov2_repo)).strip()
+                dinov2_ref = str(feat_cfg.get("dinov2_ref", dinov2_ref)).strip()
+                cfg_device = str(feat_cfg.get("device", "auto")).strip().lower()
+                device = None if cfg_device == "auto" else cfg_device
         except Exception as e:
             print(
                 f"Warnung: Konnte Config nicht lesen ({e}), nutze Default: {model_name}"
             )
 
-    fe = FeatureExtractor(model_name=model_name)
+    fe = FeatureExtractor(
+        model_name=model_name,
+        input_size=input_size,
+        default_crop_size=crop_size,
+        pooling=pooling,
+        model_variant=model_variant,
+        dinov2_repo=dinov2_repo,
+        dinov2_ref=dinov2_ref,
+        device=device,
+    )
     image_paths = metadata["image_path"].tolist()
     features = fe.extract_features_batch(
-        image_paths=image_paths, data_dir=Path("."), batch_size=batch_size
+        image_paths=image_paths,
+        data_dir=Path("."),
+        batch_size=batch_size,
+        crop_size=crop_size,
     )
     return features
 

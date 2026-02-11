@@ -16,6 +16,10 @@ features:
 # Feature Extraction (Deep Learning)
 feature_extraction:
   model: "dinov2"
+  model_variant: "dinov2_vits14"
+  dinov2_repo: "facebookresearch/dinov2"
+  dinov2_ref: "main"
+  pooling: "cls"
   input_size: 392
   resnet_input_size: 224
   batch_size: 8

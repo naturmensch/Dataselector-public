@@ -6,7 +6,7 @@ mittels eines vortrainierten CNN oder ViT.
 """
 
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
@@ -41,6 +41,10 @@ class FeatureExtractor:
         device: Optional[str] = None,
         input_size: int = 224,
         default_crop_size: Tuple[int, int] = (2048, 2048),
+        pooling: str = "cls",
+        model_variant: str = "dinov2_vits14",
+        dinov2_repo: str = "facebookresearch/dinov2",
+        dinov2_ref: str = "main",
     ):
         """
         Args:
@@ -48,6 +52,10 @@ class FeatureExtractor:
             device: 'cuda'|'cpu' or None (auto)
             input_size: Model-Input-Größe (z. B. 224)
             default_crop_size: Default für center-crop (w, h)
+            pooling: DINOv2 Pooling-Strategie ('cls' oder 'mean')
+            model_variant: DINOv2 Modell-Name (z. B. dinov2_vits14)
+            dinov2_repo: DINOv2 Repository (owner/repo)
+            dinov2_ref: DINOv2 Referenz (branch/tag/commit)
         """
         if device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -57,6 +65,18 @@ class FeatureExtractor:
         self.model_name = model_name
         self.input_size = int(input_size)
         self.default_crop_size = tuple(default_crop_size)
+        self.pooling = str(pooling).strip().lower()
+        self.model_variant = str(model_variant).strip()
+        self.dinov2_repo = str(dinov2_repo).strip()
+        self.dinov2_ref = str(dinov2_ref).strip()
+        if self.pooling not in {"cls", "mean", "global_avg"}:
+            raise ValueError(
+                f"Unbekannte pooling-Strategie: {self.pooling}. Erlaubt: cls|mean|global_avg"
+            )
+        if self.model_name.lower() == "dinov2" and self.pooling == "global_avg":
+            # Keep a deterministic fallback for callers that use framework-neutral naming.
+            self.pooling = "mean"
+        self._model_provenance: Dict[str, Any] = {}
 
         # If DINOv2 is selected and the user did not override input_size, use
         # a patch-compatible size (multiple of 14).
@@ -83,20 +103,92 @@ class FeatureExtractor:
         if model_key == "resnet50":
             model = models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
             model = nn.Sequential(*list(model.children())[:-1])
+            self._model_provenance = {
+                "model_name": "resnet50",
+                "weights": "ResNet50_Weights.IMAGENET1K_V1",
+                "pooling": "global_avg",
+                "input_size": int(self.input_size),
+            }
         elif model_key == "dinov2":
             try:
-                # Canonical DINOv2 entrypoint; explicit and no implicit model switch.
-                model = torch.hub.load("facebookresearch/dinov2", "dinov2_vits14")
+                # Canonical DINOv2 entrypoint with explicit repo/ref/model variant.
+                repo_spec = (
+                    f"{self.dinov2_repo}:{self.dinov2_ref}"
+                    if self.dinov2_ref
+                    else self.dinov2_repo
+                )
+                model = torch.hub.load(repo_spec, self.model_variant)
+                self._model_provenance = {
+                    "model_name": "dinov2",
+                    "repo": self.dinov2_repo,
+                    "ref": self.dinov2_ref or None,
+                    "repo_spec": repo_spec,
+                    "model_variant": self.model_variant,
+                    "pooling": self.pooling,
+                    "input_size": int(self.input_size),
+                }
             except Exception as exc:
                 raise RuntimeError(
                     "Failed to load 'dinov2' via torch.hub "
-                    "('facebookresearch/dinov2', 'dinov2_vits14')."
+                    f"('{self.dinov2_repo}:{self.dinov2_ref}', '{self.model_variant}')."
                 ) from exc
         else:
             raise ValueError(f"Unbekanntes Modell: {self.model_name}")
 
         model.eval().to(self.device)
         return model
+
+    def _extract_dinov2_tensor_features(self, batch: torch.Tensor) -> torch.Tensor:
+        """Extract DINOv2 features using configured pooling strategy."""
+        model = self.model
+        output: Any
+
+        # Prefer explicit feature dict if available for deterministic pooling behavior.
+        if hasattr(model, "forward_features"):
+            output = model.forward_features(batch)
+        else:
+            output = model(batch)
+
+        if isinstance(output, dict):
+            if self.pooling == "cls":
+                if "x_norm_clstoken" in output:
+                    output = output["x_norm_clstoken"]
+                elif "x_prenorm" in output and output["x_prenorm"].ndim == 3:
+                    output = output["x_prenorm"][:, 0, :]
+                elif "x_norm_patchtokens" in output:
+                    output = output["x_norm_patchtokens"].mean(dim=1)
+                else:
+                    output = model(batch)
+            else:  # mean pooling
+                if "x_norm_patchtokens" in output:
+                    output = output["x_norm_patchtokens"].mean(dim=1)
+                elif "x_prenorm" in output and output["x_prenorm"].ndim == 3:
+                    output = output["x_prenorm"].mean(dim=1)
+                elif "x_norm_clstoken" in output:
+                    output = output["x_norm_clstoken"]
+                else:
+                    output = model(batch)
+
+        if isinstance(output, torch.Tensor):
+            if output.ndim == 3:
+                if self.pooling == "cls":
+                    output = output[:, 0, :]
+                else:
+                    output = output.mean(dim=1)
+            return output.reshape(output.shape[0], -1)
+
+        # Fallback for unexpected model outputs.
+        output = model(batch)
+        if not isinstance(output, torch.Tensor):
+            raise RuntimeError(
+                f"Unexpected DINOv2 output type: {type(output)}; expected Tensor/dict"
+            )
+        if output.ndim == 3:
+            if self.pooling == "cls":
+                output = output[:, 0, :]
+            else:
+                output = output.mean(dim=1)
+        return output.reshape(output.shape[0], -1)
 
     def _get_transforms(self, input_size: int = 224) -> transforms.Compose:
         resize_size = max(256, int(input_size))
@@ -141,7 +233,10 @@ class FeatureExtractor:
     def extract_features_single(self, image: Image.Image) -> np.ndarray:
         img_tensor = self.transform(image).unsqueeze(0).to(self.device)
         with torch.no_grad():
-            features = self.model(img_tensor)
+            if self.model_name.lower() == "dinov2":
+                features = self._extract_dinov2_tensor_features(img_tensor)
+            else:
+                features = self.model(img_tensor).reshape(1, -1)
         features = features.squeeze().cpu().numpy()
         return features
 
@@ -198,10 +293,12 @@ class FeatureExtractor:
             batch = torch.stack(batch_tensors).to(self.device)
 
             with torch.no_grad():
-                features = self.model(batch)
-                # DINOv2 gibt direkt einen Feature-Vektor aus
-                # Ensure flat vector (ResNet50 outputs (N, 2048, 1, 1))
-                features = features.reshape(features.shape[0], -1)
+                if self.model_name.lower() == "dinov2":
+                    features = self._extract_dinov2_tensor_features(batch)
+                else:
+                    features = self.model(batch)
+                    # Ensure flat vector (ResNet50 outputs (N, 2048, 1, 1))
+                    features = features.reshape(features.shape[0], -1)
 
             features = features.reshape(features.shape[0], -1).cpu().numpy()
             all_features.append(features)
@@ -217,3 +314,10 @@ class FeatureExtractor:
         if model_key == "dinov2":
             return 384
         return 0
+
+    def get_model_provenance(self) -> Dict[str, Any]:
+        """Return deterministic model-loading metadata for run provenance."""
+        provenance = dict(self._model_provenance)
+        provenance["device"] = str(self.device)
+        provenance["crop_size"] = [int(self.default_crop_size[0]), int(self.default_crop_size[1])]
+        return provenance

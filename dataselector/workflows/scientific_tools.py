@@ -329,6 +329,10 @@ def _extract_features_for_backbones(
     device: str | None,
     dinov2_input_size: int,
     resnet_input_size: int,
+    dinov2_pooling: str,
+    dinov2_model_variant: str,
+    dinov2_repo: str,
+    dinov2_ref: str,
 ) -> tuple[np.ndarray, np.ndarray]:
     from dataselector.features.feature_extractor import FeatureExtractor
     from dataselector.pipeline.experiments import load_metadata
@@ -340,6 +344,10 @@ def _extract_features_for_backbones(
         input_size=dinov2_input_size,
         device=device,
         default_crop_size=crop_size,
+        pooling=dinov2_pooling,
+        model_variant=dinov2_model_variant,
+        dinov2_repo=dinov2_repo,
+        dinov2_ref=dinov2_ref,
     )
     dinov2_features = dinov2_extractor.extract_features_batch(
         image_paths,
@@ -393,6 +401,18 @@ def run_backbone_comparison(config_path: str | Path) -> dict[str, Any]:
     resnet_input_size = int(
         get_required(config, ["feature_extraction.resnet_input_size"], "resnet input size")
     )
+    dinov2_pooling = str(
+        get_required(config, ["feature_extraction.pooling"], "dinov2 pooling")
+    ).strip().lower()
+    dinov2_model_variant = str(
+        get_required(config, ["feature_extraction.model_variant"], "dinov2 model variant")
+    ).strip()
+    dinov2_repo = str(
+        get_required(config, ["feature_extraction.dinov2_repo"], "dinov2 repo")
+    ).strip()
+    dinov2_ref = str(
+        get_required(config, ["feature_extraction.dinov2_ref"], "dinov2 ref")
+    ).strip()
 
     dinov2_feats, resnet_feats = _extract_features_for_backbones(
         csv_meta=str(csv_meta),
@@ -402,6 +422,10 @@ def run_backbone_comparison(config_path: str | Path) -> dict[str, Any]:
         device=device,
         dinov2_input_size=dinov2_input_size,
         resnet_input_size=resnet_input_size,
+        dinov2_pooling=dinov2_pooling,
+        dinov2_model_variant=dinov2_model_variant,
+        dinov2_repo=dinov2_repo,
+        dinov2_ref=dinov2_ref,
     )
 
     clustering_dino = ClusteringPipeline(n_clusters=n_clusters, random_state=42)
