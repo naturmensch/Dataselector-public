@@ -1,0 +1,16 @@
+version: 1
+description: >
+  Tile exclusion policy for thesis_repro candidate pool construction.
+  Rules in this file are applied before feature extraction and split construction.
+
+rules:
+  - id: exclude_kdr_155b_duplicate_variant
+    class: representation_duplicate_variant
+    action: exclude_from_candidate_pool
+    rationale: >
+      KDR_155b is a newer representation variant of KDR_155 (different map style).
+      Keep KDR_155 as canonical and exclude KDR_155b from candidate pool to avoid
+      representation-duplicate leakage.
+    match:
+      shortName:
+        - KDR_155b

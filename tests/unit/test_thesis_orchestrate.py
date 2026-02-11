@@ -16,6 +16,21 @@ def _write_minimal_inputs(root: Path) -> None:
         "selection:\n  n_samples: 24\n",
         encoding="utf-8",
     )
+    (root / "config" / "tile_exclusion_policy.yaml").write_text(
+        "rules: []\n",
+        encoding="utf-8",
+    )
+    (root / "config" / "spatial_split_policy.yaml").write_text(
+        "split:\n"
+        "  ratios:\n"
+        "    train: 0.7\n"
+        "    val: 0.15\n"
+        "    test: 0.15\n"
+        "leakage:\n"
+        "  calibration:\n"
+        "    min_pairs_per_bin: 1\n",
+        encoding="utf-8",
+    )
     (root / "data" / "new_all_tiles.csv").write_text(
         "ul_x,ul_y,lr_x,lr_y,year\n1,2,3,4,1900\n",
         encoding="utf-8",
@@ -52,6 +67,7 @@ def test_thesis_orchestrate_precompute_only_success(tmp_path: Path, monkeypatch:
         output_dir=str(out_dir),
         precompute_only=True,
         run_after_precompute=False,
+        build_splits="false",
     )
 
     assert rc == 0
@@ -92,6 +108,7 @@ def test_thesis_orchestrate_validation_errors_fail_without_force(
             precompute_only=True,
             run_after_precompute=False,
             force=False,
+            build_splits="false",
         )
 
 
@@ -110,6 +127,7 @@ def test_thesis_orchestrate_force_requires_reason(
             output_dir=str(tmp_path / "outputs" / "runs" / "orch_force"),
             precompute_only=True,
             run_after_precompute=False,
+            build_splits="false",
             force=True,
             force_override_reason=None,
         )
@@ -152,6 +170,7 @@ def test_thesis_orchestrate_passes_config_and_cache_mode(
         precompute_only=True,
         run_after_precompute=False,
         cache_mode="write_only",
+        build_splits="false",
     )
 
     assert rc == 0

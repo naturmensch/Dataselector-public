@@ -1,0 +1,31 @@
+version: 1
+description: >
+  Spatial split policy for leakage-safe train/val/test manifests.
+
+split:
+  ratios:
+    train: 0.70
+    val: 0.15
+    test: 0.15
+  seed: 42
+  year_bins:
+    - 1800
+    - 1875
+    - 1900
+    - 1918
+    - 1933
+    - 1950
+  region_mode: quadrant
+
+leakage:
+  buffer_km: auto
+  distance_metric: edge_to_edge_km
+  calibration:
+    bin_width_km: 5.0
+    min_pairs_per_bin: 30
+    stability_bins: 2
+    far_percentile: 75
+    similarity_epsilon: 0.02
+
+strict:
+  fail_on_leakage_violation: true

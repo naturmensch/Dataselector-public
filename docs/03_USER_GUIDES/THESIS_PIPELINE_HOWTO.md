@@ -143,6 +143,25 @@ Flag semantics:
 2. `--strict-evidence-root`: evidence lookup scope (`run_dir` recommended).
 3. `--strict-real-data`: forbids synthetic autoscale fallback in production.
 4. `--force` requires `--force-override-reason "<reason>"` and is recorded in metadata.
+5. `--tile-exclusion-policy` applies explicit tile removal rules before split/audit.
+6. `--split-policy` controls leakage calibration and split ratios.
+7. `--leakage-buffer-km auto|<value>` selects auto-calibration or fixed leakage buffer.
+8. `--build-splits auto|true|false` controls split/audit artifact generation.
+
+### 4.0.1.1 Leakage-Safe Split Artifacts
+
+When split building is enabled (default in `thesis_repro`), the orchestrator writes:
+
+1. `policy/distance_policy.json`
+2. `policy/leakage_calibration.csv`
+3. `splits/split_manifest.json`
+4. `splits/leakage_audit.csv`
+
+Scientific rules:
+
+1. edge-to-edge distance in metric CRS (`EPSG:25832`) is used for leakage checks.
+2. connected components under `edge_distance_km < d_leak` are not split across train/val/test.
+3. in `thesis_repro`, any inter-split leakage violation triggers fail-fast.
 
 Sampler evidence for contract validation is persisted run-locally at:
 `outputs/runs/<run_id>/parameter_resolution/sampler_resolution/selected_sampler.json`.

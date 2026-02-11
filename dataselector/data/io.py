@@ -27,10 +27,49 @@ def load_metadata(
     strict_image_resolution: bool = False,
     strict_metric_crs: bool | None = None,
     metric_epsg: int | None = None,
+    tile_exclusion_policy: str | Path | None = None,
+    apply_tile_exclusion: bool | None = None,
 ) -> pd.DataFrame:
     mp = MetadataProcessor(str(csv_path))
     df = mp.load_csv()
     df = mp.add_temporal_metadata()
+
+    policy_path = (
+        Path(tile_exclusion_policy)
+        if tile_exclusion_policy is not None
+        else (
+            Path(os.getenv("DATASELECTOR_TILE_EXCLUSION_POLICY"))
+            if os.getenv("DATASELECTOR_TILE_EXCLUSION_POLICY")
+            else None
+        )
+    )
+    apply_policy = (
+        bool(apply_tile_exclusion)
+        if apply_tile_exclusion is not None
+        else os.getenv("DATASELECTOR_APPLY_TILE_EXCLUSION", "0") == "1"
+    )
+    if apply_policy and policy_path is not None:
+        from dataselector.data.tile_policy import (
+            apply_tile_exclusion_policy,
+            load_tile_exclusion_policy,
+        )
+
+        policy_payload, resolved_policy_path = load_tile_exclusion_policy(policy_path)
+        policy_result = apply_tile_exclusion_policy(
+            df,
+            policy=policy_payload,
+            policy_path=resolved_policy_path,
+        )
+        df = policy_result.dataframe
+        mp.df = df
+        # Keep CRS logic stable after row filtering by using the pandas/pyproj path.
+        mp.gdf = None
+        if hasattr(df, "attrs"):
+            df.attrs["tile_exclusions_applied"] = bool(policy_result.applied)
+            df.attrs["tile_exclusion_policy_sha256"] = policy_result.policy_sha256
+            df.attrs["tile_exclusions_count"] = int(policy_result.excluded_count)
+            df.attrs["tile_excluded_shortnames"] = list(policy_result.excluded_shortnames)
+            df.attrs["effective_tile_count"] = int(len(df))
 
     if resolve_images:
         resolved_image_dir = Path(
@@ -77,6 +116,8 @@ def load_metadata(
         df.attrs["source_crs"] = mp.source_crs
         df.attrs["metric_crs"] = mp.metric_crs
         df.attrs["transform_applied"] = bool(mp.transform_applied)
+        if "effective_tile_count" not in df.attrs:
+            df.attrs["effective_tile_count"] = int(len(df))
     if strict_crs_flag and gdf_metric is None:
         raise RuntimeError(
             "Strict CRS mode requires metric reprojection, but no metric coordinates were produced."
