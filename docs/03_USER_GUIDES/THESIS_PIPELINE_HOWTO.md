@@ -229,6 +229,8 @@ In `thesis_repro` profile, metric distance context is enforced:
 1. target metric CRS defaults to `EPSG:25832`
 2. unknown/unresolved CRS is treated as hard error
 3. run metadata must include: `source_crs`, `metric_crs`, `transform_applied`
+4. geometric min-distance references (`compute_min_distance_km`) are computed
+   from metric projected coordinates, not from raw Web-Mercator display units
 
 ### 4.1 Build metadata from local images
 

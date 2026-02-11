@@ -4,7 +4,7 @@ Functions:
 - compute_fine_search_bounds(exploration_pareto_csv): Compute Fine grid bounds from LHS/exploration Pareto
 - compute_optuna_bounds(fine_pareto_csv, pct=0.2): Compute Optuna search range from Fine Pareto
 - compute_bootstrap_candidates(optuna_csv, delta=5): Compute Bootstrap candidates from Optuna best
-- compute_min_distance_km(metadata_csv, strategy='median_nn'): Calculate spatial constraint from tile geometry
+- compute_min_distance_km(metadata_csv, strategy='median_nn'): Calculate spatial constraint from metric tile geometry
 """
 
 from pathlib import Path
@@ -12,6 +12,19 @@ from typing import List, Tuple
 
 import numpy as np
 import pandas as pd
+
+
+def _nearest_neighbor_distances_km(xs: np.ndarray, ys: np.ndarray) -> np.ndarray:
+    """Compute nearest-neighbor distances (km) for projected coordinates."""
+    coords = np.column_stack((xs.astype(float), ys.astype(float)))
+    if len(coords) < 2:
+        return np.array([], dtype=float)
+
+    # Pairwise Euclidean distances in meters, then nearest neighbor in km.
+    deltas = coords[:, None, :] - coords[None, :, :]
+    dists_m = np.sqrt(np.sum(deltas * deltas, axis=2))
+    np.fill_diagonal(dists_m, np.inf)
+    return dists_m.min(axis=1) / 1000.0
 
 
 def compute_fine_search_bounds(exploration_pareto_csv: str) -> List[float]:
@@ -90,6 +103,7 @@ def compute_min_distance_km(
 
     Implements a data-driven approach: computes the nearest-neighbor distance
     distribution across all tiles and derives an appropriate spatial constraint.
+    Distances are always computed from metric coordinates (default EPSG:25832).
 
     Parameters
     ----------
@@ -122,21 +136,26 @@ def compute_min_distance_km(
     if not p.exists():
         raise FileNotFoundError(f"Metadata CSV not found: {p}")
 
-    df = pd.read_csv(p)
+    # Import lazily to avoid adding heavy dependencies for unrelated commands.
+    from dataselector.data.io import get_metric_gdf, load_metadata
 
-    # Extract canonical center coordinates from ul/lr bounds.
-    if all(c in df.columns for c in ("ul_x", "ul_y", "lr_x", "lr_y")):
-        xs = ((df["ul_x"].values + df["lr_x"].values) / 2.0).astype(float)
-        ys = ((df["ul_y"].values + df["lr_y"].values) / 2.0).astype(float)
-    elif all(c in df.columns for c in ("center_x", "center_y")):
-        xs = df["center_x"].values.astype(float)
-        ys = df["center_y"].values.astype(float)
-    else:
-        raise ValueError(
-            "CSV must contain canonical spatial schema columns "
-            "('ul_x','ul_y','lr_x','lr_y')."
+    df = load_metadata(
+        str(p),
+        resolve_images=False,
+        strict_metric_crs=True,
+        metric_epsg=25832,
+    )
+    gdf_metric = get_metric_gdf(df)
+    if gdf_metric is None or not all(
+        col in gdf_metric.columns for col in ("_proj_x", "_proj_y")
+    ):
+        raise RuntimeError(
+            "Metric CRS projection missing. compute_min_distance_km requires "
+            "projected coordinates (_proj_x/_proj_y)."
         )
-    is_utm = bool(np.nanmax(np.abs(xs)) > 180 or np.nanmax(np.abs(ys)) > 90)
+
+    xs = gdf_metric["_proj_x"].to_numpy(dtype=float)
+    ys = gdf_metric["_proj_y"].to_numpy(dtype=float)
 
     if len(xs) < 2:
         print(
@@ -145,43 +164,9 @@ def compute_min_distance_km(
         )
         return 28.0
 
-    # Compute nearest-neighbor distances
-    nn_distances = []
-
-    if is_utm:
-        # UTM coordinates: Euclidean distance in meters
-        for i in range(len(xs)):
-            x1, y1 = xs[i], ys[i]
-            distances = []
-            for j in range(len(xs)):
-                if i != j:
-                    x2, y2 = xs[j], ys[j]
-                    dist_meters = np.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-                    dist_km = dist_meters / 1000.0
-                    distances.append(dist_km)
-            if distances:
-                nn_distance = min(distances)
-                nn_distances.append(nn_distance)
-    else:
-        # WGS84: Haversine distance
-        for i in range(len(xs)):
-            lat1, lon1 = ys[i], xs[i]
-            distances = []
-            for j in range(len(xs)):
-                if i != j:
-                    lat2, lon2 = ys[j], xs[j]
-                    # Approximate km per degree (ignoring spheroid for speed)
-                    dlat_km = (lat2 - lat1) * 111.0
-                    dlon_km = (
-                        (lon2 - lon1) * 111.0 * np.cos(np.radians((lat1 + lat2) / 2))
-                    )
-                    dist_km = np.sqrt(dlat_km**2 + dlon_km**2)
-                    distances.append(dist_km)
-            if distances:
-                nn_distance = min(distances)
-                nn_distances.append(nn_distance)
-
-    nn_distances = np.array(nn_distances)
+    nn_distances = _nearest_neighbor_distances_km(xs, ys)
+    if len(nn_distances) == 0:
+        return 28.0
 
     # Compute statistic based on strategy
     if strategy == "median_nn":
@@ -205,9 +190,13 @@ def compute_min_distance_km(
     # Round to nearest 0.5 km
     min_dist_rounded = round(min_dist * 2) / 2
 
-    coord_system = "UTM EPSG:3857" if is_utm else "WGS84 (lat/lon)"
+    source_crs = df.attrs.get("source_crs")
+    metric_crs = df.attrs.get("metric_crs") or "EPSG:25832"
+    transform_applied = bool(df.attrs.get("transform_applied"))
     print(
-        f"📏 Spatial Constraint Calculation ({coord_system}):\n"
+        "📏 Spatial Constraint Calculation (metric CRS):\n"
+        f"   • source_crs={source_crs}, metric_crs={metric_crs}, "
+        f"transform_applied={transform_applied}\n"
         f"   • Dataset size: {len(nn_distances)} tiles\n"
         f"   • NN distances: min={nn_distances.min():.1f}, "
         f"max={nn_distances.max():.1f}, {strategy_name}={computed_dist:.1f} km\n"

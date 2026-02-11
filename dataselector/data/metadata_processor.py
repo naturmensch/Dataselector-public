@@ -331,8 +331,8 @@ class MetadataProcessor:
 
         if self.crs_unit == "meter":
             print(
-                "[WARNUNG] Achtung: Haversine-Distanz ist für Meter-Koordinaten nicht definiert! "
-                "Nutze Euklidische Distanz als Fallback."
+                "[GIS-INFO] Für wissenschaftliche Distanzberechnungen werden projizierte "
+                "Koordinaten in eine metrische Ziel-CRS (Standard: EPSG:25832) überführt."
             )
 
     def convert_dbf_to_csv(self, output_path: str = None) -> str:
