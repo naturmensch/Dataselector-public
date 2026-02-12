@@ -144,6 +144,11 @@ def attach_metric_gdf(df, gdf_metric):
             return
         except Exception:
             # Fall through to attribute fallback.
+            # NOTE: Best-effort attachment only — if pandas.attrs is read-only or
+            # mutated in unexpected environments we intentionally do not fail
+            # the pipeline. This `pass` keeps the system robust across pandas
+            # versions and container runtimes while preserving metric data when
+            # possible.
             ...
 
     # Backward-compatible fallback for custom containers.

@@ -395,6 +395,15 @@ def run_thesis_orchestrate(
     resolution_dir.mkdir(parents=True, exist_ok=True)
     split_extra: dict[str, Any] = {}
 
+    # --- ANCHOR TILE LOGIC ---
+    anchor_tile_env = os.environ.get("DATASELECTOR_ANCHOR_TILE")
+    pre_selected_names: list[str] | None = None
+
+    if anchor_tile_env:
+        pre_selected_names = [anchor_tile_env.strip()]
+        print(f"⚓ Orchestrator: Anchor tile set via environment: '{anchor_tile_env}'")
+    # -------------------------
+
     # Keep feature extraction, autoscale and split-building on the same candidate pool.
     tile_policy_path = Path(tile_exclusion_policy)
     if tile_policy_path.exists():
@@ -411,6 +420,7 @@ def run_thesis_orchestrate(
         config_path=str(config_path),
         cache_mode=cache_mode,
         strict_real_data=strict_real_data_flag,
+        pre_names=pre_selected_names,
     )
 
     # 2) Resolver + snapshot stage only.
@@ -429,6 +439,7 @@ def run_thesis_orchestrate(
         strict_scientific=strict_scientific,
         config_path=config_path,
         cache_mode=cache_mode,
+        pre_names=pre_selected_names,
     )
     if not resolution_ok:
         raise RuntimeError("Resolver/snapshot phase failed.")
@@ -516,6 +527,7 @@ def run_thesis_orchestrate(
         strict_scientific=strict_scientific,
         config_path=config_path,
         cache_mode=cache_mode,
+        pre_names=pre_selected_names,
     )
 
     metadata_extra = _merge_orchestrator_metadata_extra(

@@ -935,6 +935,9 @@ def _generate_single_run_thesis_report(
                     try:
                         text = text.encode("cp437").decode("utf-8")
                     except Exception:
+                        # Non-fatal fallback: keep original text if CP437->UTF-8
+                        # re-decoding fails. This is only for report formatting
+                        # and must not cause the report generation to fail.
                         pass
                 return text.replace("|", "\\|")
 
