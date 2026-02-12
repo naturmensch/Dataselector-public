@@ -10,6 +10,7 @@ Theoretische Basis:
 - Keine Dominanz einzelner Dimensionalitäten
 """
 
+import os
 from typing import Optional
 
 import numpy as np
@@ -17,6 +18,10 @@ import pandas as pd
 from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
 
 from dataselector.data.io import get_metric_gdf
+from dataselector.data.spatial_distance import (
+    pairwise_edge_distance_matrix,
+    tile_bounds_to_metric,
+)
 from dataselector.data.spatial_schema import (
     coordinates_look_projected,
     normalize_spatial_schema,
@@ -53,6 +58,7 @@ class MultiCriteriaFacilityLocation:
         gamma_temporal: float = 0.15,
         min_distance_km: float = 50.0,
         metric: str = "euclidean",
+        spatial_constraint_metric: str = "edge_to_edge_km",
         random_state: Optional[int] = None,
         preselected_indices: Optional[list] = None,
     ):
@@ -67,6 +73,7 @@ class MultiCriteriaFacilityLocation:
             gamma_temporal: Gewicht für zeitliche Diversität [0,1]
             min_distance_km: Hard spatial constraint (km)
             metric: 'euclidean' oder 'cosine' für visuelle Features
+            spatial_constraint_metric: 'edge_to_edge_km' oder 'center_to_center_km'
             random_state: Seed
 
         Note:
@@ -80,6 +87,12 @@ class MultiCriteriaFacilityLocation:
         )
         self.min_distance_km = min_distance_km
         self.metric = metric
+        if spatial_constraint_metric not in {"edge_to_edge_km", "center_to_center_km"}:
+            raise ValueError(
+                "spatial_constraint_metric must be one of "
+                "{'edge_to_edge_km', 'center_to_center_km'}."
+            )
+        self.spatial_constraint_metric = spatial_constraint_metric
         self.random_state = random_state
 
         # Validiere Gewichte (keine automatische Normalisierung mehr)
@@ -179,8 +192,23 @@ class MultiCriteriaFacilityLocation:
                         d_spatial_km[i, j] = dist_km
                         d_spatial_km[j, i] = dist_km
 
-        # Keep raw km distances for constraint checks
+        # Keep raw km distances for constraint checks.
         self._spatial_km = d_spatial_km
+        self._spatial_constraint_km = d_spatial_km
+        if self.spatial_constraint_metric == "edge_to_edge_km":
+            try:
+                metric_bounds = tile_bounds_to_metric(
+                    self.metadata,
+                    target_epsg=25832,
+                    strict=False,
+                )
+                self._spatial_constraint_km = pairwise_edge_distance_matrix(
+                    metric_bounds
+                )
+            except Exception:
+                # Fallback to center-to-center distances if edge distance matrix
+                # cannot be computed for legacy/partial metadata inputs.
+                self._spatial_constraint_km = d_spatial_km
 
         d_spatial = d_spatial_km.copy()
         max_spatial = d_spatial.max()
@@ -214,10 +242,10 @@ class MultiCriteriaFacilityLocation:
         cand_y = self.y_coords[candidate_idx]
         cand_x = self.x_coords[candidate_idx]
 
-        # Use precomputed spatial km matrix if available for O(1) checks
-        if hasattr(self, "_spatial_km") and self._spatial_km is not None:
+        # Use precomputed constraint matrix if available for O(1) checks.
+        if hasattr(self, "_spatial_constraint_km") and self._spatial_constraint_km is not None:
             # vectorized selection: check if any selected distance is below threshold
-            dists = self._spatial_km[candidate_idx, selected_indices]
+            dists = self._spatial_constraint_km[candidate_idx, selected_indices]
             return np.any(dists < self.min_distance_km)
 
         # Fallback to scalar haversine if no precomputed matrix
@@ -347,7 +375,11 @@ class MultiCriteriaFacilityLocation:
                     frame = frame.f_back
                 if csv_meta:
                     meta_hash = compute_meta_hash(csv_meta, params=None)
-                    meta_path = features_path_for_hash("outputs", meta_hash)
+                    cache_root = os.getenv(
+                        "DATASELECTOR_FEATURE_CACHE_ROOT",
+                        "outputs/cache/features",
+                    )
+                    meta_path = features_path_for_hash(cache_root, meta_hash)
             except Exception:
                 pass
             msg = (
@@ -360,18 +392,25 @@ class MultiCriteriaFacilityLocation:
             if meta_path:
                 msg += f"[Debug] expected features-cache: {meta_path}\n"
             msg += (
-                "Regeneriere den Feature-Cache passend zu den Metadaten, z.B.:\n"
-                '  rm outputs/features-*.npy && python -c "from dataselector.data.io import load_or_extract_features; load_or_extract_features(cache=True)"'
+                "Regeneriere den Feature-Cache passend zu den Metadaten mit dem "
+                "aktiven thesis-orchestrate Lauf (global cache key wird dann sauber neu aufgebaut)."
             )
             raise ValueError(msg)
 
         distances = self._compute_pairwise_distances(X)
 
+        metric_note = (
+            "edge-to-edge"
+            if self.spatial_constraint_metric == "edge_to_edge_km"
+            else "center-to-center"
+        )
         if self.min_distance_km == 0.0:
             md_note = f"{self.min_distance_km}km (disabled)"
         else:
             md_note = f"{self.min_distance_km}km"
-        print(f"  [Multi-Criteria] Greedy selection with min_dist={md_note}...")
+        print(
+            f"  [Multi-Criteria] Greedy selection with min_dist={md_note} ({metric_note})..."
+        )
         self.ranking = self._greedy_selection(distances)
         self.n_samples_ = len(self.ranking)
 

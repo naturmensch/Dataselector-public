@@ -190,7 +190,6 @@ def _resolve_optuna_sampler(
         output_dir / "parameter_resolution" / "sampler_resolution" / "selected_sampler.json",
         output_dir / "selected_sampler.json",
         output_dir / "sampler_resolution" / "selected_sampler.json",
-        Path("outputs") / "selected_sampler.json",
     ]
     for candidate in artifact_candidates:
         sampler = _read_selected_sampler(candidate)
@@ -341,8 +340,6 @@ def _resolve_computed_selection_values(
         output_dir / "optuna_autoscale_best_latest.json",
         output_dir / "parameter_resolution" / "autoscale_best_latest.json",
         output_dir / "autoscale_best_latest.json",
-        Path("outputs") / "optuna_autoscale_best_latest.json",
-        Path("outputs") / "autoscale_best_latest.json",
     ]
 
     for candidate in artifact_candidates:
@@ -425,6 +422,8 @@ def run_thesis_pipeline(
         output_dir = Path("outputs") / "runs" / f"thesis_pipeline_{run_timestamp}"
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    feature_cache_dir = output_dir / "parameter_resolution"
+    feature_cache_dir.mkdir(parents=True, exist_ok=True)
 
     metadata_path = Path("data/new_all_tiles.csv")
     config_path = Path(config_path) if config_path is not None else Path("config/pipeline_config.yaml")
@@ -1259,7 +1258,7 @@ def run_thesis_pipeline(
                     pre_selected_names=pre_names_list if pre_names_list else None,
                     pre_selected_indices=pre_indices_list if pre_indices_list else None,
                     out_dir=output_dir / "optuna",
-                    feature_cache_dir=Path("outputs"),
+                    feature_cache_dir=feature_cache_dir,
                     study_name=f"thesis_optuna_{timestamp}",
                 )
                 elapsed = time.time() - t0
@@ -1314,7 +1313,7 @@ def run_thesis_pipeline(
                     min_distances=validation_min_distances,
                     seeds=validation_seeds,
                     output_dir=output_dir / "validation",
-                    feature_cache_dir=Path("outputs"),
+                    feature_cache_dir=feature_cache_dir,
                     n_samples=resolved_n_samples,
                     n_clusters=resolved_n_clusters,
                     batch_size=resolved_batch_size,

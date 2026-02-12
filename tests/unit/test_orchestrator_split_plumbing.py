@@ -71,3 +71,44 @@ def test_orchestrator_writes_split_metadata(tmp_path: Path, monkeypatch: pytest.
     extra = payload["extra"]
     assert extra["d_leak_km"] == 12.0
     assert extra["leakage_violations_count"] == 0
+
+
+def test_orchestrator_default_does_not_build_splits(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from dataselector.workflows import thesis_orchestrate as mod
+
+    _write_minimal_inputs(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(mod, "_require_torch", lambda: None)
+    monkeypatch.setattr(mod, "run_optuna_autoscale_workflow", lambda **_: 0)
+
+    def _fake_run_thesis_pipeline(**kwargs):
+        out_dir = Path(kwargs["output_dir"])
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "final_config.yaml").write_text("parameters: {}\n", encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(mod, "run_thesis_pipeline", _fake_run_thesis_pipeline)
+    monkeypatch.setattr(mod, "validate_snapshot_file", lambda _p: [])
+    monkeypatch.setattr(mod, "load_snapshot", lambda _p: {"parameters": {}})
+    monkeypatch.setattr(mod, "load_parameter_contract", lambda _p: {"parameters": {}})
+    monkeypatch.setattr(mod, "validate_snapshot_against_contract", lambda **_: [])
+    monkeypatch.setattr(
+        mod,
+        "_build_leakage_safe_splits",
+        lambda **_: (_ for _ in ()).throw(AssertionError("split build should stay off by default")),
+    )
+
+    out_dir = tmp_path / "outputs" / "runs" / "orch_no_split_default"
+    rc = mod.run_thesis_orchestrate(
+        config="config/pipeline_config.yaml",
+        output_dir=str(out_dir),
+        precompute_only=True,
+        run_after_precompute=False,
+    )
+    assert rc == 0
+    payload = json.loads((out_dir / "run_metadata.json").read_text(encoding="utf-8"))
+    assert "split_manifest_path" not in payload["extra"]

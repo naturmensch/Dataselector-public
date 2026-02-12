@@ -28,56 +28,115 @@ def compute_meta_hash(csv_path: str, params: Optional[Dict[str, Any]] = None) ->
     return h.hexdigest()
 
 
-def features_path_for_hash(out_dir: str | Path, meta_hash: str) -> Path:
-    out_dir = Path(out_dir)
-    return out_dir / f"features-{meta_hash}.npy"
+def cache_dir_for_hash(cache_root: str | Path, meta_hash: str) -> Path:
+    return Path(cache_root) / str(meta_hash)
 
 
-def meta_path_for_hash(out_dir: str | Path, meta_hash: str) -> Path:
-    out_dir = Path(out_dir)
-    return out_dir / f"features-{meta_hash}.meta.json"
+def features_path_for_hash(cache_root: str | Path, meta_hash: str) -> Path:
+    return cache_dir_for_hash(cache_root, meta_hash) / "features.npy"
+
+
+def meta_path_for_hash(cache_root: str | Path, meta_hash: str) -> Path:
+    return cache_dir_for_hash(cache_root, meta_hash) / "meta.json"
+
+
+def _canonical_json(payload: Dict[str, Any]) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))
+
+
+def _load_json(path: Path) -> Dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def atomic_write_features_with_meta(
-    out_dir: str | Path, feats: np.ndarray, meta_hash: str, meta_info: Dict[str, Any]
+    cache_root: str | Path, feats: np.ndarray, meta_hash: str, meta_info: Dict[str, Any]
 ) -> None:
-    out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    target = features_path_for_hash(out_dir, meta_hash)
-    meta_target = meta_path_for_hash(out_dir, meta_hash)
+    """Write-once cache write.
+
+    - Existing key + identical meta => no-op (reuse immutable object).
+    - Existing key + different meta => hard error.
+    - Partial object presence => hard error.
+    """
+    cache_dir = cache_dir_for_hash(cache_root, meta_hash)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    target = features_path_for_hash(cache_root, meta_hash)
+    meta_target = meta_path_for_hash(cache_root, meta_hash)
+    lock_path = cache_dir / ".lock"
 
     pid = os.getpid()
     ts = int(time.time())
-    tmp_features = out_dir / f"{target.name}.tmp-{pid}-{ts}.npy"
-    tmp_meta = out_dir / f"{meta_target.name}.tmp-{pid}-{ts}.json"
+    canonical_meta = _canonical_json(meta_info)
+    lock_fd: int | None = None
+    try:
+        lock_fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
 
-    # Write tmp files (ensure explicit extensions so numpy doesn't append .npy again)
-    np.save(str(tmp_features), feats)
-    with open(tmp_meta, "w", encoding="utf-8") as fh:
-        json.dump(meta_info, fh, sort_keys=True, indent=2)
+        features_exists = target.exists()
+        meta_exists = meta_target.exists()
+        if features_exists or meta_exists:
+            if not (features_exists and meta_exists):
+                raise RuntimeError(
+                    f"Incomplete cache object for key {meta_hash}: expected both features.npy and meta.json."
+                )
+            existing_meta = _load_json(meta_target)
+            if _canonical_json(existing_meta) != canonical_meta:
+                raise RuntimeError(
+                    f"Immutable cache conflict for key {meta_hash}: existing meta differs from current provenance."
+                )
+            return
 
-    # Atomic replace
-    os.replace(str(tmp_features), str(target))
-    os.replace(str(tmp_meta), str(meta_target))
+        tmp_features = cache_dir / f"features.tmp-{pid}-{ts}.npy"
+        tmp_meta = cache_dir / f"meta.tmp-{pid}-{ts}.json"
+        np.save(str(tmp_features), feats)
+        tmp_meta.write_text(
+            json.dumps(meta_info, sort_keys=True, indent=2),
+            encoding="utf-8",
+        )
+        os.replace(str(tmp_features), str(target))
+        os.replace(str(tmp_meta), str(meta_target))
+    except FileExistsError:
+        # Another process is writing this key. Wait briefly, then validate immutable object.
+        deadline = time.time() + 60.0
+        while time.time() < deadline:
+            if not lock_path.exists():
+                break
+            time.sleep(0.2)
+        features_exists = target.exists()
+        meta_exists = meta_target.exists()
+        if not (features_exists and meta_exists):
+            raise RuntimeError(
+                f"Cache lock timeout for key {meta_hash}: writer did not produce a complete immutable object."
+            )
+        existing_meta = _load_json(meta_target)
+        if _canonical_json(existing_meta) != canonical_meta:
+            raise RuntimeError(
+                f"Immutable cache conflict for key {meta_hash}: existing meta differs from current provenance."
+            )
+    finally:
+        if lock_fd is not None:
+            os.close(lock_fd)
+            try:
+                lock_path.unlink(missing_ok=True)
+            except Exception:
+                pass
 
 
-def find_cache_by_hash(out_dir: str | Path, meta_hash: str) -> Optional[Path]:
-    f = features_path_for_hash(out_dir, meta_hash)
-    m = meta_path_for_hash(out_dir, meta_hash)
+def find_cache_by_hash(cache_root: str | Path, meta_hash: str) -> Optional[Path]:
+    f = features_path_for_hash(cache_root, meta_hash)
+    m = meta_path_for_hash(cache_root, meta_hash)
     if f.exists() and m.exists():
         return f
     return None
 
 
-def load_features_by_hash(out_dir: str | Path, meta_hash: str) -> Optional[np.ndarray]:
-    path = find_cache_by_hash(out_dir, meta_hash)
+def load_features_by_hash(cache_root: str | Path, meta_hash: str) -> Optional[np.ndarray]:
+    path = find_cache_by_hash(cache_root, meta_hash)
     if path is None:
         return None
     return np.load(path)
 
 
-def load_meta_by_hash(out_dir: str | Path, meta_hash: str) -> Optional[Dict[str, Any]]:
-    meta_path = meta_path_for_hash(out_dir, meta_hash)
+def load_meta_by_hash(cache_root: str | Path, meta_hash: str) -> Optional[Dict[str, Any]]:
+    meta_path = meta_path_for_hash(cache_root, meta_hash)
     if not meta_path.exists():
         return None
     try:
@@ -86,9 +145,9 @@ def load_meta_by_hash(out_dir: str | Path, meta_hash: str) -> Optional[Dict[str,
         return None
 
 
-def list_all_feature_caches(out_dir: str | Path) -> list[Path]:
-    out_dir = Path(out_dir)
-    return sorted(out_dir.glob("features-*.npy"))
+def list_all_feature_caches(cache_root: str | Path) -> list[Path]:
+    cache_root = Path(cache_root)
+    return sorted(cache_root.glob("*/features.npy"))
 
 
 def create_meta_info(

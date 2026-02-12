@@ -20,6 +20,14 @@ THREAD_ENV_VARS = {
 ALLOWED_PROFILES = {"default", "thesis_repro"}
 
 
+def _is_expected_interop_reinit_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return (
+        "cannot set number of interop threads after parallel work has started" in text
+        or "set_num_interop_threads called" in text
+    )
+
+
 def activate_repro_mode(profile: str = "default", seed: int = 42) -> dict[str, Any]:
     """Activate runtime settings for a selected execution profile.
 
@@ -101,8 +109,26 @@ def activate_repro_mode(profile: str = "default", seed: int = 42) -> dict[str, A
             try:
                 torch.set_num_interop_threads(1)
             except Exception as exc:
-                result["repro_degraded"] = True
-                result["repro_warnings"].append(f"set_num_interop_threads_failed:{exc}")
+                # Idempotent behavior: a second profile activation can hit this path
+                # even when the effective interop thread count is already correct.
+                if _is_expected_interop_reinit_error(exc):
+                    current_interop = None
+                    try:
+                        current_interop = int(torch.get_num_interop_threads())
+                    except Exception:
+                        current_interop = None
+                    if current_interop == 1:
+                        result["repro_warnings"].append(
+                            "set_num_interop_threads_already_initialized"
+                        )
+                    else:
+                        result["repro_degraded"] = True
+                        result["repro_warnings"].append(
+                            f"set_num_interop_threads_failed:{exc}"
+                        )
+                else:
+                    result["repro_degraded"] = True
+                    result["repro_warnings"].append(f"set_num_interop_threads_failed:{exc}")
 
             try:
                 if hasattr(torch.backends, "cudnn"):

@@ -63,7 +63,7 @@ def test_cache_mode_off_does_not_write_cache(
         cache=True,
     )
     assert feats.shape == (2, 4)
-    assert list((tmp_path / "outputs").glob("features-*.npy")) == []
+    assert list((tmp_path / "outputs").glob("*/features.npy")) == []
 
 
 def test_cache_mode_write_only_forces_recompute(

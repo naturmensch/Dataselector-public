@@ -14,12 +14,14 @@ Author: Phase 5 Migration
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import yaml
 
 from dataselector.cli_decorators import cli_command
 from dataselector.data.spatial_schema import (
@@ -45,6 +47,237 @@ def _select_best_production_trial(study):
     if production_trials:
         return max(production_trials, key=lambda t: float(t.value)), True
     return study.best_trial, False
+
+
+def _parse_bool_like(value: object, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"1", "true", "yes", "on"}:
+            return True
+        if text in {"0", "false", "no", "off"}:
+            return False
+    return default
+
+
+def _load_min_distance_policy(config_path: str | None) -> tuple[int, int, bool]:
+    floor_km = 1
+    ceiling_km = 60
+    global_search = True
+    if not config_path:
+        return floor_km, ceiling_km, global_search
+
+    cfg_path = Path(config_path)
+    if not cfg_path.exists():
+        return floor_km, ceiling_km, global_search
+
+    try:
+        payload = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+        selection = payload.get("selection", {}) if isinstance(payload, dict) else {}
+        floor_raw = selection.get(
+            "autoscale_min_distance_floor_km",
+            selection.get("min_distance_km", floor_km),
+        )
+        ceiling_raw = selection.get(
+            "autoscale_min_distance_ceiling_km",
+            ceiling_km,
+        )
+        global_raw = selection.get("autoscale_min_distance_global_search", True)
+        floor_km = max(1, int(round(float(floor_raw))))
+        ceiling_km = max(floor_km, int(round(float(ceiling_raw))))
+        global_search = _parse_bool_like(global_raw, True)
+    except Exception:
+        return 1, 60, True
+
+    return floor_km, ceiling_km, global_search
+
+
+def _policy_sha256(payload: dict) -> str:
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _load_n_samples_policy(config_path: str | None) -> dict[str, object]:
+    policy: dict[str, object] = {
+        "mode": "corridor",
+        "fixed": None,
+        "corridor_min_pct": 0.04,
+        "corridor_target_pct": 0.05,
+        "corridor_max_pct": 0.08,
+        "corridor_step": 1,
+        "corridor_min_abs": 24,
+        "corridor_max_abs": 96,
+        "plateau_delta": 0.02,
+    }
+    if not config_path:
+        return policy
+
+    cfg_path = Path(config_path)
+    if not cfg_path.exists():
+        return policy
+
+    try:
+        payload = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+        selection = payload.get("selection", {}) if isinstance(payload, dict) else {}
+
+        mode_raw = str(selection.get("autoscale_n_samples_mode", "corridor")).strip().lower()
+        mode = mode_raw if mode_raw in {"corridor", "fixed"} else "corridor"
+
+        fixed_raw = selection.get("autoscale_n_samples_fixed")
+        fixed_value = None
+        if fixed_raw is not None:
+            fixed_value = max(1, int(round(float(fixed_raw))))
+
+        min_pct = float(selection.get("autoscale_n_samples_corridor_min_pct", policy["corridor_min_pct"]))
+        target_pct = float(
+            selection.get("autoscale_n_samples_corridor_target_pct", policy["corridor_target_pct"])
+        )
+        max_pct = float(selection.get("autoscale_n_samples_corridor_max_pct", policy["corridor_max_pct"]))
+        step = max(1, int(round(float(selection.get("autoscale_n_samples_step", policy["corridor_step"])))))
+        min_abs = max(1, int(round(float(selection.get("autoscale_n_samples_corridor_min_abs", policy["corridor_min_abs"])))))
+        max_abs = max(
+            min_abs,
+            int(round(float(selection.get("autoscale_n_samples_corridor_max_abs", policy["corridor_max_abs"])))),
+        )
+        plateau_delta = float(selection.get("autoscale_n_samples_plateau_delta", policy["plateau_delta"]))
+
+        if not (0 < min_pct <= target_pct <= max_pct):
+            min_pct = float(policy["corridor_min_pct"])
+            target_pct = float(policy["corridor_target_pct"])
+            max_pct = float(policy["corridor_max_pct"])
+        if plateau_delta < 0:
+            plateau_delta = float(policy["plateau_delta"])
+
+        policy.update(
+            {
+                "mode": mode,
+                "fixed": fixed_value,
+                "corridor_min_pct": min_pct,
+                "corridor_target_pct": target_pct,
+                "corridor_max_pct": max_pct,
+                "corridor_step": step,
+                "corridor_min_abs": min_abs,
+                "corridor_max_abs": max_abs,
+                "plateau_delta": plateau_delta,
+            }
+        )
+    except Exception:
+        return policy
+
+    return policy
+
+
+def _derive_corridor_stages(n_effective: int, policy: dict[str, object]) -> list[int]:
+    if n_effective <= 0:
+        raise ValueError("n_effective must be > 0")
+
+    min_pct = float(policy["corridor_min_pct"])
+    max_pct = float(policy["corridor_max_pct"])
+    target_pct = float(policy["corridor_target_pct"])
+    step = max(1, int(policy.get("corridor_step", 1)))
+    min_abs = int(policy["corridor_min_abs"])
+    max_abs = int(policy["corridor_max_abs"])
+    upper_abs = min(max_abs, n_effective)
+    lower_abs = min(min_abs, upper_abs)
+    lower_pct = max(
+        1,
+        min(upper_abs, int(round(float(n_effective) * float(min_pct)))),
+    )
+    upper_pct = max(
+        lower_pct,
+        min(upper_abs, int(round(float(n_effective) * float(max_pct)))),
+    )
+    lower = max(lower_abs, lower_pct)
+    upper = min(upper_abs, upper_pct)
+    if lower > upper:
+        lower = upper
+
+    stages = list(range(int(lower), int(upper) + 1, int(step)))
+    target_n = max(
+        int(lower),
+        min(int(upper), int(round(float(n_effective) * float(target_pct)))),
+    )
+    if target_n not in stages:
+        stages.append(target_n)
+    deduped = sorted(set(stages))
+    return deduped if deduped else [int(lower)]
+
+
+def _default_trials_for_stage_count(stage_count: int) -> list[int]:
+    if stage_count <= 0:
+        return []
+    base = [30, 40, 60, 80]
+    if stage_count <= len(base):
+        return base[:stage_count]
+    per_stage = max(8, int(round(320 / float(stage_count))))
+    return [per_stage] * stage_count
+
+
+def _is_feasible_trial(trial: object) -> bool:
+    value = getattr(trial, "value", None)
+    user_attrs = getattr(trial, "user_attrs", {}) or {}
+    if value is None:
+        return False
+    if bool(user_attrs.get("infeasible", False)):
+        return False
+    target_n = int(user_attrs.get("n_samples", 0) or 0)
+    selected_n = int(user_attrs.get("n_selected", 0) or 0)
+    return selected_n >= target_n and target_n > 0
+
+
+def _select_plateau_feasible_trial(
+    study: object,
+    plateau_delta: float,
+    strict_feasible_selection: bool,
+) -> tuple[object, bool, dict[str, object]]:
+    production_trials = [
+        t
+        for t in getattr(study, "trials", [])
+        if getattr(t, "value", None) is not None
+        and not bool((getattr(t, "user_attrs", {}) or {}).get("full_coverage_mode", False))
+    ]
+    feasible_trials = [t for t in production_trials if _is_feasible_trial(t)]
+
+    if not feasible_trials:
+        if strict_feasible_selection:
+            raise RuntimeError(
+                "No feasible production trials found during autoscale "
+                "(all trials were infeasible or diagnostic-only)."
+            )
+        fallback, from_production = _select_best_production_trial(study)
+        fallback_n = int((getattr(fallback, "user_attrs", {}) or {}).get("n_samples", 0) or 0)
+        meta = {
+            "rule": "fallback_best_production",
+            "selected_n_samples": fallback_n if fallback_n > 0 else None,
+            "plateau_delta": float(plateau_delta),
+            "feasible_trial_count": 0,
+            "plateau_trial_count": 0,
+            "best_feasible_value": None,
+            "plateau_threshold_value": None,
+        }
+        return fallback, bool(from_production), meta
+
+    best_feasible = max(feasible_trials, key=lambda t: float(t.value))
+    best_feasible_value = float(best_feasible.value)
+    threshold = best_feasible_value * (1.0 - float(plateau_delta))
+    plateau_trials = [t for t in feasible_trials if float(t.value) >= threshold]
+    selected_n = min(int((t.user_attrs or {}).get("n_samples", 0)) for t in plateau_trials)
+    plateau_same_n = [
+        t for t in plateau_trials if int((t.user_attrs or {}).get("n_samples", 0)) == int(selected_n)
+    ]
+    selected = max(plateau_same_n, key=lambda t: float(t.value))
+
+    meta = {
+        "rule": "minimal_feasible_plateau",
+        "selected_n_samples": int(selected_n),
+        "plateau_delta": float(plateau_delta),
+        "feasible_trial_count": int(len(feasible_trials)),
+        "plateau_trial_count": int(len(plateau_trials)),
+        "best_feasible_value": float(best_feasible_value),
+        "plateau_threshold_value": float(threshold),
+    }
+    return selected, True, meta
 
 
 def load_or_create_data(
@@ -233,11 +466,18 @@ def run_autoscale(
     stages_samples: list[int],
     features: np.ndarray,
     metadata: pd.DataFrame,
+    seed: int = 42,
     patience: int = 2,
     tol: dict | None = None,
     pre_selected_names: list | None = None,
     pre_selected_indices: np.ndarray | None = None,
     out_dir: Path | None = None,
+    min_distance_floor_km: int = 1,
+    min_distance_ceiling_km: int = 60,
+    min_distance_global_search: bool = True,
+    plateau_delta: float = 0.02,
+    strict_feasible_selection: bool = True,
+    n_samples_policy: dict[str, object] | None = None,
 ) -> tuple[Path, Path]:
     """
     Run multi-stage autoscale optimization.
@@ -252,6 +492,8 @@ def run_autoscale(
         Feature embeddings
     metadata : pd.DataFrame
         Tile metadata
+    seed : int
+        Random seed for deterministic Optuna sampler
     patience : int
         Stop if converged for N consecutive stages
     tol : dict | None
@@ -279,10 +521,14 @@ def run_autoscale(
         "a": (0.01, 1.0),
         "b": (0.01, 1.0),
         "c": (0.01, 1.0),
-        "min_distance_km": (0, 60),
+        "min_distance_km": (
+            int(min_distance_floor_km),
+            int(min_distance_ceiling_km),
+        ),
     }
 
-    study = optuna.create_study(direction="maximize")
+    study_sampler = optuna.samplers.TPESampler(seed=int(seed))
+    study = optuna.create_study(direction="maximize", sampler=study_sampler)
 
     history = []
     best_prev = None
@@ -381,6 +627,17 @@ def run_autoscale(
             print("Warning: could not create stage plots:", e)
 
         best = study.best_trial
+        stage_best_trial = max(
+            (t for t in stage_trials if t.value is not None),
+            key=lambda t: float(t.value),
+            default=None,
+        )
+        stage_feasible_trials = [t for t in stage_trials if _is_feasible_trial(t)]
+        stage_best_feasible = max(
+            stage_feasible_trials,
+            key=lambda t: float(t.value),
+            default=None,
+        )
         best_params = {
             "value": best.value,
             "alpha": best.user_attrs.get("alpha"),
@@ -395,6 +652,11 @@ def run_autoscale(
             "stage": stage_idx,
             "n_samples": n_samples,
             "trials": n_trials_per_stage[stage_idx],
+            "stage_best_value": float(stage_best_trial.value) if stage_best_trial else None,
+            "stage_feasible": bool(stage_best_feasible is not None),
+            "stage_best_feasible_value": (
+                float(stage_best_feasible.value) if stage_best_feasible else None
+            ),
             **best_params,
         }
         history.append(hist)
@@ -451,8 +713,16 @@ def run_autoscale(
         else:
             md = best_params["min_distance_km"]
             if md is None:
-                md = 28
-            bounds["min_distance_km"] = (max(0, int(md - 10)), int(md + 10))
+                md = int(min_distance_floor_km)
+            if min_distance_global_search:
+                bounds["min_distance_km"] = (
+                    int(min_distance_floor_km),
+                    int(min_distance_ceiling_km),
+                )
+            else:
+                lo = max(int(min_distance_floor_km), int(md - 10))
+                hi = min(int(min_distance_ceiling_km), int(md + 10))
+                bounds["min_distance_km"] = (lo, max(lo, hi))
 
         print("New bounds for next stage:", bounds)
 
@@ -480,17 +750,25 @@ def run_autoscale(
     report_md.write_text("\n".join(lines))
     print("Report written to", report_md)
 
-    # Save best trial from production stages only (exclude diagnostic full-coverage).
-    best_overall, best_from_production = _select_best_production_trial(study)
+    selected_trial, best_from_production, selection_meta = _select_plateau_feasible_trial(
+        study=study,
+        plateau_delta=float(plateau_delta),
+        strict_feasible_selection=bool(strict_feasible_selection),
+    )
 
     out_best = out_dir / f"optuna_autoscale_best_{date}.json"
     with out_best.open("w") as fh:
         json.dump(
             {
-                "value": best_overall.value,
-                "params": best_overall.params,
-                "user_attrs": best_overall.user_attrs,
+                "value": selected_trial.value,
+                "params": selected_trial.params,
+                "user_attrs": selected_trial.user_attrs,
                 "best_from_production_stage": bool(best_from_production),
+                "best_selection_rule": selection_meta.get("rule"),
+                "selection_meta": selection_meta,
+                "study_sampler": study_sampler.__class__.__name__,
+                "study_seed": int(seed),
+                "n_samples_policy": n_samples_policy or {},
             },
             fh,
             indent=2,
@@ -501,17 +779,24 @@ def run_autoscale(
     with latest.open("w") as fh:
         json.dump(
             {
-                "value": best_overall.value,
-                "params": best_overall.params,
-                "user_attrs": best_overall.user_attrs,
+                "value": selected_trial.value,
+                "params": selected_trial.params,
+                "user_attrs": selected_trial.user_attrs,
                 "best_from_production_stage": bool(best_from_production),
+                "best_selection_rule": selection_meta.get("rule"),
+                "selection_meta": selection_meta,
+                "study_sampler": study_sampler.__class__.__name__,
+                "study_seed": int(seed),
+                "n_samples_policy": n_samples_policy or {},
             },
             fh,
             indent=2,
         )
 
     # Extract n_samples
-    best_n_samples = best_overall.user_attrs.get("n_samples")
+    best_n_samples = selection_meta.get("selected_n_samples")
+    if best_n_samples is None:
+        best_n_samples = selected_trial.user_attrs.get("n_samples")
     sel_file = out_dir / "optuna_autoscale_selected_n_samples.txt"
     if best_n_samples is not None:
         sel_file.write_text(str(int(best_n_samples)))
@@ -552,10 +837,9 @@ def run_optuna_autoscale_workflow(
     config_path: str | None = None,
     cache_mode: str = "read_write",
     strict_real_data: bool = True,
+    strict_feasible_selection: bool = True,
 ) -> int:
     """Run autoscale workflow and persist artifacts under output_dir."""
-    trials = n_trials or [20, 40, 80, 160]
-    stage_values = stages or ["50", "100", "300", "full"]
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -570,13 +854,37 @@ def run_optuna_autoscale_workflow(
         strict_real_data=strict_real_data,
     )
 
-    actual_n = len(features)
-    parsed_stages: list[int] = []
-    for stage in stage_values:
-        if stage == "full":
-            parsed_stages.append(actual_n)
+    actual_n = int(len(features))
+    n_samples_policy = _load_n_samples_policy(config_path)
+    if stages is None:
+        mode = str(n_samples_policy.get("mode", "corridor"))
+        if mode == "fixed":
+            fixed_n = n_samples_policy.get("fixed")
+            if fixed_n is None:
+                raise SystemExit(
+                    "selection.autoscale_n_samples_mode='fixed' requires "
+                    "selection.autoscale_n_samples_fixed in config."
+                )
+            parsed_stages = [max(1, min(actual_n, int(fixed_n)))]
+            stage_values: list[str] = [str(parsed_stages[0])]
         else:
-            parsed_stages.append(int(stage))
+            parsed_stages = _derive_corridor_stages(actual_n, n_samples_policy)
+            stage_values = [str(value) for value in parsed_stages]
+    else:
+        stage_values = stages
+        parsed_stages = []
+        for stage in stage_values:
+            if str(stage).strip().lower() == "full":
+                parsed_stages.append(actual_n)
+            else:
+                parsed_stages.append(max(1, min(actual_n, int(stage))))
+
+    if n_trials is None:
+        trials = _default_trials_for_stage_count(len(parsed_stages))
+        if not trials:
+            raise SystemExit("Could not derive autoscale trial schedule.")
+    else:
+        trials = [int(v) for v in n_trials]
 
     if len(trials) != len(parsed_stages):
         if len(trials) == 1:
@@ -586,15 +894,46 @@ def run_optuna_autoscale_workflow(
     else:
         n_trials_per_stage = trials
 
+    policy_payload = {
+        "mode": n_samples_policy.get("mode"),
+        "fixed": n_samples_policy.get("fixed"),
+        "corridor_min_pct": n_samples_policy.get("corridor_min_pct"),
+        "corridor_target_pct": n_samples_policy.get("corridor_target_pct"),
+        "corridor_max_pct": n_samples_policy.get("corridor_max_pct"),
+        "corridor_step": n_samples_policy.get("corridor_step"),
+        "corridor_min_abs": n_samples_policy.get("corridor_min_abs"),
+        "corridor_max_abs": n_samples_policy.get("corridor_max_abs"),
+        "plateau_delta": n_samples_policy.get("plateau_delta"),
+        "effective_candidates": actual_n,
+        "stages_requested": stage_values,
+        "stages_resolved": parsed_stages,
+        "trials_per_stage": n_trials_per_stage,
+        "selection_rule": "minimal_feasible_plateau",
+    }
+    policy_payload["policy_sha256"] = _policy_sha256(policy_payload)
+    (out_dir / "optuna_autoscale_stage_policy.json").write_text(
+        json.dumps(policy_payload, indent=2),
+        encoding="utf-8",
+    )
+
+    floor_km, ceiling_km, global_search = _load_min_distance_policy(config_path)
+
     run_autoscale(
         n_trials_per_stage,
         parsed_stages,
         features,
         metadata,
+        seed=seed,
         patience=patience,
         pre_selected_names=pre_names,
         pre_selected_indices=np.array(pre_indices) if pre_indices else None,
         out_dir=out_dir,
+        min_distance_floor_km=floor_km,
+        min_distance_ceiling_km=ceiling_km,
+        min_distance_global_search=global_search,
+        plateau_delta=float(n_samples_policy.get("plateau_delta", 0.02)),
+        strict_feasible_selection=bool(strict_feasible_selection),
+        n_samples_policy=policy_payload,
     )
 
     return 0
@@ -607,14 +946,14 @@ def run_optuna_autoscale_workflow(
         "n_trials": {
             "type": int,
             "nargs": "+",
-            "default": [20, 40, 80, 160],
-            "help": "Trials per stage, or one value reused for all stages",
+            "default": None,
+            "help": "Trials per stage, or one value reused for all stages (default: derived from config policy)",
         },
         "stages": {
             "type": str,
             "nargs": "+",
-            "default": ["50", "100", "300", "full"],
-            "help": "Stage sample counts (e.g. 50 100 300 full)",
+            "default": None,
+            "help": "Stage sample counts (e.g. 50 100 300 full; default: derived from config policy)",
         },
         "n_candidates": {
             "type": int,
@@ -652,6 +991,7 @@ def run_optuna_autoscale_workflow(
             "choices": ["off", "read_only", "write_only", "read_write"],
         },
         "strict_real_data": {"type": bool, "default": True},
+        "strict_feasible_selection": {"type": bool, "default": True},
     },
 )
 def cli_optuna_autoscale(
@@ -667,6 +1007,7 @@ def cli_optuna_autoscale(
     config_path: str = "config/pipeline_config.yaml",
     cache_mode: str = "read_write",
     strict_real_data: bool = True,
+    strict_feasible_selection: bool = True,
 ) -> int:
     return run_optuna_autoscale_workflow(
         n_trials=n_trials,
@@ -681,18 +1022,29 @@ def cli_optuna_autoscale(
         config_path=config_path,
         cache_mode=cache_mode,
         strict_real_data=strict_real_data,
+        strict_feasible_selection=strict_feasible_selection,
     )
 
 
 def main(argv: list[str] | None = None) -> int:
     """CLI entry point for Optuna autoscale."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("--n-trials", type=int, nargs="+", default=[20, 40, 80, 160])
-    parser.add_argument("--stages", nargs="+", default=["50", "100", "300", "full"])
+    parser.add_argument("--n-trials", type=int, nargs="+", default=None)
+    parser.add_argument("--stages", nargs="+", default=None)
     parser.add_argument("--n-candidates", type=int, default=None)
     parser.add_argument("--dim", type=int, default=256)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--patience", type=int, default=2)
+    parser.add_argument("--output-dir", type=str, default="outputs")
+    parser.add_argument("--config-path", type=str, default="config/pipeline_config.yaml")
+    parser.add_argument(
+        "--cache-mode",
+        type=str,
+        default="read_write",
+        choices=["off", "read_only", "write_only", "read_write"],
+    )
+    parser.add_argument("--strict-real-data", type=bool, default=True)
+    parser.add_argument("--strict-feasible-selection", type=bool, default=True)
     parser.add_argument(
         "--pre-names",
         type=str,
@@ -710,43 +1062,21 @@ def main(argv: list[str] | None = None) -> int:
 
     args = parser.parse_args(argv)
 
-    features, metadata = load_or_create_data(
-        out_dir=OUT,
-        n=args.n_candidates,
+    return run_optuna_autoscale_workflow(
+        n_trials=args.n_trials,
+        stages=args.stages,
+        n_candidates=args.n_candidates,
         dim=args.dim,
         seed=args.seed,
-        require_metadata=True,
-    )
-
-    actual_n = len(features)
-
-    stages = []
-    for s in args.stages:
-        if s == "full":
-            stages.append(actual_n)
-        else:
-            stages.append(int(s))
-
-    if len(args.n_trials) != len(stages):
-        if len(args.n_trials) == 1:
-            n_trials_per_stage = [args.n_trials[0]] * len(stages)
-        else:
-            raise SystemExit("Provide n-trials per stage or a single value.")
-    else:
-        n_trials_per_stage = args.n_trials
-
-    run_autoscale(
-        n_trials_per_stage,
-        stages,
-        features,
-        metadata,
         patience=args.patience,
-        pre_selected_names=args.pre_names,
-        pre_selected_indices=args.pre_indices,
-        out_dir=OUT,
+        pre_names=args.pre_names,
+        pre_indices=args.pre_indices,
+        output_dir=args.output_dir,
+        config_path=args.config_path,
+        cache_mode=args.cache_mode,
+        strict_real_data=args.strict_real_data,
+        strict_feasible_selection=args.strict_feasible_selection,
     )
-
-    return 0
 
 
 if __name__ == "__main__":

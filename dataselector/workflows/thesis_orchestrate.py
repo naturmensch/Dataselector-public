@@ -37,12 +37,12 @@ def _require_torch() -> None:
 
 
 def _resolve_snapshot_path(output_dir: Path) -> Path:
-    stable = output_dir / "final_config.yaml"
-    if stable.exists():
-        return stable
     candidates = sorted(output_dir.glob("final_config_*.yaml"))
     if candidates:
         return candidates[-1]
+    stable = output_dir / "final_config.yaml"
+    if stable.exists():
+        return stable
     raise FileNotFoundError(
         f"No resolved snapshot found in {output_dir}. "
         "Expected final_config.yaml or final_config_<timestamp>.yaml"
@@ -74,6 +74,165 @@ def _load_split_policy(path: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError(f"Invalid spatial split policy format: {path}")
     return payload
+
+
+def _load_existing_run_metadata(output_dir: Path) -> dict[str, Any] | None:
+    metadata_path = output_dir / "run_metadata.json"
+    if not metadata_path.exists():
+        return None
+    try:
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if isinstance(payload, dict):
+        return payload
+    return None
+
+
+def _merge_orchestrator_metadata_extra(
+    output_dir: Path,
+    *,
+    orchestrator_extra: dict[str, Any],
+) -> dict[str, Any]:
+    existing = _load_existing_run_metadata(output_dir)
+    if existing is None:
+        return dict(orchestrator_extra)
+
+    existing_extra = existing.get("extra")
+    merged: dict[str, Any] = {}
+    if isinstance(existing_extra, dict):
+        merged.update(existing_extra)
+    merged.update(orchestrator_extra)
+    merged["pipeline_metadata_preserved"] = True
+    merged["pipeline_metadata_snapshot"] = {
+        "timestamp_utc": existing.get("timestamp_utc"),
+        "command": existing.get("command"),
+        "runtime_state": existing.get("runtime_state"),
+        "extra": existing_extra if isinstance(existing_extra, dict) else None,
+    }
+    return merged
+
+
+def _dedupe_warnings(values: list[Any]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = str(value)
+        if text in seen:
+            continue
+        seen.add(text)
+        deduped.append(text)
+    return deduped
+
+
+def _reconcile_runtime_state(
+    orchestrator_state: dict[str, Any] | None,
+    pipeline_state: dict[str, Any] | None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Merge runtime states conservatively (strictest result wins)."""
+    sources: list[str] = []
+    orchestrator = orchestrator_state if isinstance(orchestrator_state, dict) else None
+    pipeline = pipeline_state if isinstance(pipeline_state, dict) else None
+
+    if orchestrator is not None:
+        sources.append("orchestrator")
+    if pipeline is not None:
+        sources.append("pipeline_snapshot")
+    if not sources:
+        return {}, []
+
+    reconciled: dict[str, Any] = {}
+    if orchestrator is not None:
+        reconciled.update(orchestrator)
+    if pipeline is not None:
+        # Prefer later runtime snapshot for resolved backend details.
+        reconciled.update(pipeline)
+
+    warning_values: list[Any] = []
+    if orchestrator is not None:
+        warning_values.extend(orchestrator.get("repro_warnings", []))
+    if pipeline is not None:
+        warning_values.extend(pipeline.get("repro_warnings", []))
+    reconciled["repro_warnings"] = _dedupe_warnings(warning_values)
+
+    repro_flags: list[bool] = []
+    parallel_flags: list[bool] = []
+    if orchestrator is not None:
+        repro_flags.append(bool(orchestrator.get("repro_degraded", False)))
+        parallel_flags.append(bool(orchestrator.get("parallelism_degraded", False)))
+    if pipeline is not None:
+        repro_flags.append(bool(pipeline.get("repro_degraded", False)))
+        parallel_flags.append(bool(pipeline.get("parallelism_degraded", False)))
+
+    reconciled["repro_degraded"] = any(repro_flags)
+    reconciled["parallelism_degraded"] = any(parallel_flags)
+    return reconciled, sources
+
+
+def _ensure_fresh_output_dir(output_dir: Path) -> None:
+    if output_dir.exists():
+        if any(output_dir.iterdir()):
+            raise FileExistsError(
+                "Output directory already exists and is not empty: "
+                f"{output_dir}. Use a fresh timestamped run directory."
+            )
+        return
+    output_dir.mkdir(parents=True, exist_ok=False)
+
+
+def _file_sha256(path: Path) -> str:
+    import hashlib
+
+    h = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _write_artifact_manifest(output_dir: Path, snapshot_path: Path) -> Path:
+    manifest_dir = output_dir / "manifest"
+    manifest_dir.mkdir(parents=True, exist_ok=True)
+
+    artifacts = [
+        "run_metadata.json",
+        "parameter_resolution/optuna_autoscale_best_latest.json",
+        "parameter_resolution/optuna_autoscale_selected_n_samples.txt",
+        "validation/validation_results.csv",
+        "THESIS_PIPELINE_REPORT.md",
+    ]
+
+    relative_snapshot = (
+        str(snapshot_path.relative_to(output_dir))
+        if snapshot_path.is_relative_to(output_dir)
+        else str(snapshot_path)
+    )
+    if relative_snapshot not in artifacts:
+        artifacts.append(relative_snapshot)
+
+    files: dict[str, Any] = {}
+    for rel in sorted(set(artifacts)):
+        path = output_dir / rel
+        if not path.exists() or not path.is_file():
+            files[rel] = {"exists": False, "sha256": None, "size_bytes": None}
+            continue
+        files[rel] = {
+            "exists": True,
+            "sha256": _file_sha256(path),
+            "size_bytes": int(path.stat().st_size),
+        }
+
+    payload = {
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "output_dir": str(output_dir),
+        "files": files,
+    }
+    manifest_path = manifest_dir / "artifact_hashes.json"
+    manifest_path.write_text(
+        json.dumps(payload, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+    return manifest_path
 
 
 def _build_leakage_safe_splits(
@@ -201,7 +360,7 @@ def run_thesis_orchestrate(
     tile_exclusion_policy: str = "config/tile_exclusion_policy.yaml",
     split_policy: str = "config/spatial_split_policy.yaml",
     leakage_buffer_km: str = "auto",
-    build_splits: str | bool = "auto",
+    build_splits: str | bool = "false",
     split_seed: int = 42,
     force: bool = False,
     force_override_reason: str | None = None,
@@ -230,7 +389,7 @@ def run_thesis_orchestrate(
     else:
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         out_dir = Path("outputs") / "runs" / f"thesis_orchestrated_{ts}"
-    out_dir.mkdir(parents=True, exist_ok=True)
+    _ensure_fresh_output_dir(out_dir)
 
     resolution_dir = out_dir / "parameter_resolution"
     resolution_dir.mkdir(parents=True, exist_ok=True)
@@ -244,8 +403,8 @@ def run_thesis_orchestrate(
 
     # 1) Precompute required artifacts (autoscale best + selected_n_samples).
     run_optuna_autoscale_workflow(
-        n_trials=autoscale_trials or [20, 40, 80, 160],
-        stages=autoscale_stages or ["50", "100", "300", "full"],
+        n_trials=autoscale_trials,
+        stages=autoscale_stages,
         seed=seed,
         patience=autoscale_patience,
         output_dir=str(resolution_dir),
@@ -259,7 +418,7 @@ def run_thesis_orchestrate(
         n_trials=n_trials,
         n_samples=n_samples,
         compute_params=True,
-        snapshot_config=True,
+        snapshot_config=False,
         no_auto_continue=True,
         force=force,
         output_dir=out_dir,
@@ -304,23 +463,41 @@ def run_thesis_orchestrate(
         )
 
     if precompute_only or not run_after_precompute:
+        metadata_extra = _merge_orchestrator_metadata_extra(
+            out_dir,
+            orchestrator_extra={
+                "orchestrator_mode": "precompute_only",
+                "snapshot_path": str(snapshot_path),
+                "validation_errors": validation_errors,
+                "contract_validation_scope": strict_evidence_root,
+                "contract_validation_errors": contract_errors,
+                "force_override_used": bool(force),
+                "force_override_reason": force_override_reason if force else None,
+                **split_extra,
+            },
+        )
+        pipeline_snapshot = metadata_extra.get("pipeline_metadata_snapshot")
+        pipeline_runtime_state = None
+        if isinstance(pipeline_snapshot, dict):
+            snapshot_runtime_state = pipeline_snapshot.get("runtime_state")
+            if isinstance(snapshot_runtime_state, dict):
+                pipeline_runtime_state = snapshot_runtime_state
+        runtime_state_final, runtime_sources = _reconcile_runtime_state(
+            runtime_state,
+            pipeline_runtime_state,
+        )
+        metadata_extra["runtime_state_reconciled"] = len(runtime_sources) > 1
+        if len(runtime_sources) > 1:
+            metadata_extra["runtime_state_sources"] = runtime_sources
         write_run_metadata(
             output_dir=out_dir,
             execution_profile=execution_profile,
             seed=seed,
             config_path=config_path,
-            runtime_state=runtime_state,
-            extra={
-                "orchestrator_mode": "precompute_only",
-                    "snapshot_path": str(snapshot_path),
-                    "validation_errors": validation_errors,
-                    "contract_validation_scope": strict_evidence_root,
-                    "contract_validation_errors": contract_errors,
-                    "force_override_used": bool(force),
-                    "force_override_reason": force_override_reason if force else None,
-                    **split_extra,
-                },
-            )
+            runtime_state=runtime_state_final or runtime_state or {},
+            extra=metadata_extra,
+        )
+        _write_artifact_manifest(out_dir, snapshot_path)
         return 0
 
     # 3) Production thesis run from validated snapshot.
@@ -341,13 +518,9 @@ def run_thesis_orchestrate(
         cache_mode=cache_mode,
     )
 
-    write_run_metadata(
-        output_dir=out_dir,
-        execution_profile=execution_profile,
-        seed=seed,
-        config_path=config_path,
-        runtime_state=runtime_state,
-        extra={
+    metadata_extra = _merge_orchestrator_metadata_extra(
+        out_dir,
+        orchestrator_extra={
             "orchestrator_mode": "full",
             "snapshot_path": str(snapshot_path),
             "snapshot_validated": len(validation_errors) == 0,
@@ -362,6 +535,28 @@ def run_thesis_orchestrate(
             **split_extra,
         },
     )
+    pipeline_snapshot = metadata_extra.get("pipeline_metadata_snapshot")
+    pipeline_runtime_state = None
+    if isinstance(pipeline_snapshot, dict):
+        snapshot_runtime_state = pipeline_snapshot.get("runtime_state")
+        if isinstance(snapshot_runtime_state, dict):
+            pipeline_runtime_state = snapshot_runtime_state
+    runtime_state_final, runtime_sources = _reconcile_runtime_state(
+        runtime_state,
+        pipeline_runtime_state,
+    )
+    metadata_extra["runtime_state_reconciled"] = len(runtime_sources) > 1
+    if len(runtime_sources) > 1:
+        metadata_extra["runtime_state_sources"] = runtime_sources
+    write_run_metadata(
+        output_dir=out_dir,
+        execution_profile=execution_profile,
+        seed=seed,
+        config_path=config_path,
+        runtime_state=runtime_state_final or runtime_state or {},
+        extra=metadata_extra,
+    )
+    _write_artifact_manifest(out_dir, snapshot_path)
     return 0 if run_ok else 1
 
 
@@ -416,7 +611,7 @@ def run_thesis_orchestrate(
         },
         "build_splits": {
             "type": str,
-            "default": "auto",
+            "default": "false",
             "choices": ["auto", "true", "false"],
         },
         "split_seed": {"type": int, "default": 42},
@@ -445,7 +640,7 @@ def cli_thesis_orchestrate(
     tile_exclusion_policy: str = "config/tile_exclusion_policy.yaml",
     split_policy: str = "config/spatial_split_policy.yaml",
     leakage_buffer_km: str = "auto",
-    build_splits: str | bool = "auto",
+    build_splits: str | bool = "false",
     split_seed: int = 42,
     force: bool = False,
     force_override_reason: str | None = None,

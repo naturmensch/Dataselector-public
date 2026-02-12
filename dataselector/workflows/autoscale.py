@@ -19,6 +19,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import yaml
 
 from dataselector.cli_decorators import cli_command
 from dataselector.data.spatial_schema import (
@@ -34,6 +35,50 @@ from dataselector.workflows.objective_scoring import (
 def clamp(v, lo, hi):
     """Clamp value v to range [lo, hi]."""
     return max(lo, min(hi, v))
+
+
+def _parse_bool_like(value: object, default: bool) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in {"1", "true", "yes", "on"}:
+            return True
+        if text in {"0", "false", "no", "off"}:
+            return False
+    return default
+
+
+def _load_min_distance_policy(config_path: str | None) -> tuple[int, int, bool]:
+    floor_km = 1
+    ceiling_km = 60
+    global_search = True
+    if not config_path:
+        return floor_km, ceiling_km, global_search
+
+    cfg_path = Path(config_path)
+    if not cfg_path.exists():
+        return floor_km, ceiling_km, global_search
+
+    try:
+        payload = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+        selection = payload.get("selection", {}) if isinstance(payload, dict) else {}
+        floor_raw = selection.get(
+            "autoscale_min_distance_floor_km",
+            selection.get("min_distance_km", floor_km),
+        )
+        ceiling_raw = selection.get(
+            "autoscale_min_distance_ceiling_km",
+            ceiling_km,
+        )
+        global_raw = selection.get("autoscale_min_distance_global_search", True)
+        floor_km = max(1, int(round(float(floor_raw))))
+        ceiling_km = max(floor_km, int(round(float(ceiling_raw))))
+        global_search = _parse_bool_like(global_raw, True)
+    except Exception:
+        return 1, 60, True
+
+    return floor_km, ceiling_km, global_search
 
 
 def load_or_create_data(
@@ -237,6 +282,9 @@ def run_autoscale(
     tol=None,
     pre_names=None,
     pre_indices=None,
+    min_distance_floor_km: int = 1,
+    min_distance_ceiling_km: int = 60,
+    min_distance_global_search: bool = True,
 ):
     """Run multi-stage Optuna optimization with progressive refinement.
 
@@ -270,10 +318,16 @@ def run_autoscale(
         "a": (0.01, 1.0),
         "b": (0.01, 1.0),
         "c": (0.01, 1.0),
-        "min_distance_km": (0, 60),
+        "min_distance_km": (
+            int(min_distance_floor_km),
+            int(min_distance_ceiling_km),
+        ),
     }
 
-    study = optuna.create_study(direction="maximize")
+    study = optuna.create_study(
+        direction="maximize",
+        sampler=optuna.samplers.TPESampler(seed=int(seed)),
+    )
 
     history = []
     best_prev = None
@@ -426,8 +480,16 @@ def run_autoscale(
 
         md = best_params["min_distance_km"]
         if md is None:
-            md = 28
-        bounds["min_distance_km"] = (max(0, int(md - 10)), int(md + 10))
+            md = int(min_distance_floor_km)
+        if min_distance_global_search:
+            bounds["min_distance_km"] = (
+                int(min_distance_floor_km),
+                int(min_distance_ceiling_km),
+            )
+        else:
+            lo = max(int(min_distance_floor_km), int(md - 10))
+            hi = min(int(min_distance_ceiling_km), int(md + 10))
+            bounds["min_distance_km"] = (lo, max(lo, hi))
 
         print("New bounds for next stage:", bounds)
 
@@ -644,6 +706,8 @@ def main(
     else:
         n_trials_per_stage = n_trials
 
+    floor_km, ceiling_km, global_search = _load_min_distance_policy(config_path)
+
     run_autoscale(
         n_trials_per_stage,
         interpreted_stages,
@@ -653,6 +717,9 @@ def main(
         patience=patience,
         pre_names=pre_names,
         pre_indices=pre_indices,
+        min_distance_floor_km=floor_km,
+        min_distance_ceiling_km=ceiling_km,
+        min_distance_global_search=global_search,
     )
 
     return 0

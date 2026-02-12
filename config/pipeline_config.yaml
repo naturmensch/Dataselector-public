@@ -61,6 +61,25 @@ selection:
   #   distance when quality is statistically equivalent, preserving combination space)
   spatial_constraint: true
   min_distance_km: 28.5
+  # Autoscale search policy for min_distance_km:
+  # - floor defaults to thesis policy (28.5km, rounded to 28 in integer search)
+  # - ceiling keeps broad exploration possible
+  # - global_search keeps global min-distance exploration across stages
+  autoscale_min_distance_floor_km: 28.5
+  autoscale_min_distance_ceiling_km: 60
+  autoscale_min_distance_global_search: true
+  # Autoscale n_samples policy (global core default):
+  # - corridor: derive stage panel from effective candidate count after exclusions
+  # - fixed: optimize only one fixed n_samples value
+  autoscale_n_samples_mode: corridor
+  autoscale_n_samples_fixed: null
+  autoscale_n_samples_corridor_min_pct: 0.04
+  autoscale_n_samples_corridor_target_pct: 0.05
+  autoscale_n_samples_corridor_max_pct: 0.08
+  autoscale_n_samples_step: 1
+  autoscale_n_samples_corridor_min_abs: 24
+  autoscale_n_samples_corridor_max_abs: 96
+  autoscale_n_samples_plateau_delta: 0.02
   
   # Method selection (IMPORTANT)
   use_multi_criteria: true           # REQUIRED: Unified distance metric
@@ -79,3 +98,8 @@ output:
   dir: "outputs/runs"
   prefix: "kdr100_selection"
   create_visualizations: true
+
+# Feature cache policy (global immutable cache objects)
+feature_cache:
+  scope: "global_shared"  # options: global_shared, run_local
+  root: "outputs/cache/features"

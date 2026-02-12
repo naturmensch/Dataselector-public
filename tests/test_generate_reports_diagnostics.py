@@ -9,26 +9,77 @@ from dataselector.workflows.generate_reports import _generate_single_run_thesis_
 
 
 def _write_minimal_artifacts(run_dir: Path, *, n_selected_values: list[int]) -> None:
-    optuna_dir = run_dir / "optuna" / "results"
+    optuna_dir = run_dir / "optuna"
+    resolution_dir = run_dir / "parameter_resolution"
     pareto_dir = run_dir / "tuning_weights" / "pareto"
     validation_dir = run_dir / "validation"
     optuna_dir.mkdir(parents=True, exist_ok=True)
+    resolution_dir.mkdir(parents=True, exist_ok=True)
     pareto_dir.mkdir(parents=True, exist_ok=True)
     validation_dir.mkdir(parents=True, exist_ok=True)
 
     pd.DataFrame(
         [
-            {"trial_number": 0, "state": "TrialState.COMPLETE", "value": 1.23},
+            {"number": 0, "state": "COMPLETE", "value": 1.23},
+            {"number": 1, "state": "COMPLETE", "value": 1.11},
         ]
-    ).to_csv(optuna_dir / "trials.csv", index=False)
+    ).to_csv(optuna_dir / "optuna_results.csv", index=False)
 
-    (optuna_dir / "best_trial.json").write_text(
-        json.dumps({"params": {"a": 0.2, "b": 0.3, "c": 0.5}}),
+    (resolution_dir / "optuna_autoscale_best_latest.json").write_text(
+        json.dumps(
+            {
+                "value": 1.23,
+                "params": {"a": 0.2, "b": 0.3, "c": 0.5, "min_distance_km": 29},
+                "best_selection_rule": "minimal_feasible_plateau",
+                "study_sampler": "TPESampler",
+                "study_seed": 42,
+                "user_attrs": {"n_samples": 40},
+            }
+        ),
         encoding="utf-8",
     )
+    (resolution_dir / "optuna_autoscale_stage_policy.json").write_text(
+        json.dumps(
+            {
+                "mode": "corridor",
+                "effective_candidates": 675,
+                "stages_resolved": [27, 34, 40, 54],
+                "trials_per_stage": [30, 40, 60, 80],
+            }
+        ),
+        encoding="utf-8",
+    )
+    pd.DataFrame(
+        [
+            {"stage": 0, "n_samples": 27, "stage_feasible": True},
+            {"stage": 1, "n_samples": 34, "stage_feasible": True},
+        ]
+    ).to_csv(resolution_dir / "optuna_autoscale_summary_20260212.csv", index=False)
 
     pd.DataFrame([{"alpha": 0.2, "beta": 0.3, "gamma": 0.5}]).to_csv(
         pareto_dir / "pareto_solutions.csv",
+        index=False,
+    )
+
+    (run_dir / "tuning_weights" / "meta.json").write_text(
+        json.dumps(
+            {
+                "best_metrics": {
+                    "alpha": 0.2,
+                    "beta": 0.3,
+                    "gamma": 0.5,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    pd.DataFrame(
+        [
+            {"selection_rank": 0, "shortName": "KDR_001", "city": "CityA", "year": 1900},
+            {"selection_rank": 1, "shortName": "KDR_002", "city": "CityB", "year": 1910},
+        ]
+    ).to_csv(
+        run_dir / "tuning_weights" / "selection_a0.2_b0.3_g0.5.csv",
         index=False,
     )
 
@@ -48,6 +99,13 @@ def test_report_adds_diagnostic_hint_for_zero_non_empty(tmp_path: Path):
     assert "- Configurations with non-empty selection: **0**" in report
     assert "Diagnostic hint" in report
     assert "does not automatically mean exploration/optuna failed globally" in report
+    assert "optuna/results/trials.csv" not in report
+    assert "- ⚠️ Missing:" not in report
+    assert "## Tile Selection" in report
+    assert "KDR_001" in report
+    assert "KDR_002" in report
+    assert "| Rank | Tile | City | Year |" in report
+    assert "| 0 | `KDR_001` | CityA | 1900 |" in report
 
 
 def test_report_omits_diagnostic_hint_when_non_empty_exists(tmp_path: Path):
@@ -59,3 +117,18 @@ def test_report_omits_diagnostic_hint_when_non_empty_exists(tmp_path: Path):
 
     assert "- Configurations with non-empty selection: **1**" in report
     assert "Diagnostic hint" not in report
+    assert "- Best selection rule: `minimal_feasible_plateau`" in report
+    assert "- Selected tiles: **2**" in report
+    assert "- Unique cities: **2**" in report
+
+
+def test_report_flags_missing_canonical_artifact(tmp_path: Path):
+    run_dir = tmp_path / "run_missing_best"
+    _write_minimal_artifacts(run_dir, n_selected_values=[1, 1])
+    (run_dir / "parameter_resolution" / "optuna_autoscale_best_latest.json").unlink()
+
+    report_file = _generate_single_run_thesis_report(run_dir, timestamp="T2")
+    report = report_file.read_text(encoding="utf-8")
+
+    assert "Missing: `parameter_resolution/optuna_autoscale_best_latest.json`" in report
+    assert "Report is partial because required thesis artifacts are missing." in report

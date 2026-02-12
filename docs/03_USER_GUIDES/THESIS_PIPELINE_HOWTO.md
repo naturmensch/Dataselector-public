@@ -146,11 +146,57 @@ Flag semantics:
 5. `--tile-exclusion-policy` applies explicit tile removal rules before split/audit.
 6. `--split-policy` controls leakage calibration and split ratios.
 7. `--leakage-buffer-km auto|<value>` selects auto-calibration or fixed leakage buffer.
-8. `--build-splits auto|true|false` controls split/audit artifact generation.
+8. `--build-splits auto|true|false` controls split/audit artifact generation (default: `false`).
+9. autoscale `min_distance_km` bounds are policy-driven via
+   `selection.autoscale_min_distance_floor_km|ceiling_km|global_search` in
+   `config/pipeline_config.yaml`.
+
+### 4.0.1.2 Global n_samples Corridor Policy (Core)
+
+`n_samples` autoscale staging is resolved in the core workflow
+(`dataselector/workflows/optuna_autoscale.py`), not in helper scripts.
+
+Policy keys in `config/pipeline_config.yaml`:
+
+1. `selection.autoscale_n_samples_mode: corridor|fixed`
+2. `selection.autoscale_n_samples_fixed`
+3. `selection.autoscale_n_samples_corridor_min_pct`
+4. `selection.autoscale_n_samples_corridor_target_pct`
+5. `selection.autoscale_n_samples_corridor_max_pct`
+6. `selection.autoscale_n_samples_step` (default `1`: every integer in corridor)
+7. `selection.autoscale_n_samples_corridor_min_abs`
+8. `selection.autoscale_n_samples_corridor_max_abs`
+9. `selection.autoscale_n_samples_plateau_delta`
+
+Selection rule:
+
+1. build stage panel from `N_eff` (effective candidates after exclusions),
+2. keep only feasible stages (`infeasible=false`, hard target met),
+3. choose smallest `n` within plateau:
+   `score(n) >= best_score * (1 - plateau_delta)`.
+
+Methodological interpretation:
+
+1. thesis objective is a core-set style annotation strategy: minimize annotation
+   load while preserving selection quality.
+2. default corridor is centered around `5%` of `N_eff` with bounded exploration
+   in `4-8%` to make the chosen sample size robust against local noise.
+3. default `step=1` evaluates every integer `n` in the bounded corridor for a
+   transparent minimum-annotation decision.
+4. the plateau rule enforces "minimum n with near-optimal score" instead of
+   blindly maximizing score at larger `n`.
+5. this is a selection contract, not an evaluation split contract; if splitting
+   is done by a downstream training tool, keep `--build-splits false`.
+
+Artifacts:
+
+1. `parameter_resolution/optuna_autoscale_stage_policy.json`
+2. `parameter_resolution/optuna_autoscale_best_latest.json`
+3. `parameter_resolution/optuna_autoscale_selected_n_samples.txt`
 
 ### 4.0.1.1 Leakage-Safe Split Artifacts
 
-When split building is enabled (default in `thesis_repro`), the orchestrator writes:
+When split building is enabled (`--build-splits true` or explicit `auto`), the orchestrator writes:
 
 1. `policy/distance_policy.json`
 2. `policy/leakage_calibration.csv`
@@ -162,6 +208,19 @@ Scientific rules:
 1. edge-to-edge distance in metric CRS (`EPSG:25832`) is used for leakage checks.
 2. connected components under `edge_distance_km < d_leak` are not split across train/val/test.
 3. in `thesis_repro`, any inter-split leakage violation triggers fail-fast.
+
+### 4.0.1.3 Responsibility Boundary: Selection vs. Split
+
+For thesis workflows, responsibilities are intentionally separated:
+
+1. `dataselector thesis-orchestrate` selects the global annotation candidate set
+   (core-set selection contract).
+2. split generation and split leakage enforcement are optional in Dataselector and
+   controlled by `--build-splits`.
+3. if your downstream training tool performs the authoritative train/val/test split
+   and leakage checks, keep `--build-splits false` in Dataselector runs.
+4. document this boundary explicitly in the thesis methods section as:
+   `Selection contract (Dataselector)` vs. `Evaluation contract (training tool)`.
 
 Sampler evidence for contract validation is persisted run-locally at:
 `outputs/runs/<run_id>/parameter_resolution/sampler_resolution/selected_sampler.json`.

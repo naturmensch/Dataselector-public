@@ -81,4 +81,4 @@ def test_feature_cache_identity_prevents_reuse_on_pooling_change(
     )
 
     assert calls["count"] == 2
-    assert len(list(out.glob("features-*.npy"))) >= 2
+    assert len(list(out.glob("*/features.npy"))) >= 2

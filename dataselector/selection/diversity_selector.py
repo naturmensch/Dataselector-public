@@ -99,6 +99,7 @@ class DiversitySelector:
         alpha_visual: float = 0.7,
         beta_spatial: float = 0.15,
         gamma_temporal: float = 0.15,
+        spatial_constraint_metric: str = "edge_to_edge_km",
         override_n_samples: Optional[int] = None,
         pre_selected: Optional[list] = None,
         pre_selected_names: Optional[list] = None,
@@ -115,6 +116,7 @@ class DiversitySelector:
             alpha_visual: Gewicht für visuelle Ähnlichkeit (Multi-Criteria mode)
             beta_spatial: Gewicht für räumliche Diversität (Multi-Criteria mode)
             gamma_temporal: Gewicht für zeitliche Diversität (Multi-Criteria mode)
+            spatial_constraint_metric: Distanzmetrik für den hard spatial constraint
             override_n_samples: Optionaler Überschreibungswert für die Anzahl zu selektierender Samples.
                 Wenn angegeben, hat dieser Vorrang vor dem bei der Instanziierung gesetzten `n_samples`.
 
@@ -230,6 +232,7 @@ class DiversitySelector:
                 beta_spatial=beta_spatial,
                 gamma_temporal=gamma_temporal,
                 min_distance_km=min_distance_km,
+                spatial_constraint_metric=spatial_constraint_metric,
                 metric=self.metric,
                 random_state=self.random_state,
                 preselected_indices=preselected_indices,

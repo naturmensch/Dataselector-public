@@ -511,11 +511,21 @@ def _generate_single_run_thesis_report(
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    optuna_results_dir = output_dir / "optuna" / "results"
-    trials_csv = optuna_results_dir / "trials.csv"
-    best_trial_json = optuna_results_dir / "best_trial.json"
+    resolution_dir = output_dir / "parameter_resolution"
+    optuna_dir = output_dir / "optuna"
+    optuna_results_csv = optuna_dir / "optuna_results.csv"
+    autoscale_best_json = resolution_dir / "optuna_autoscale_best_latest.json"
+    autoscale_stage_policy_json = resolution_dir / "optuna_autoscale_stage_policy.json"
+    autoscale_summary_candidates = sorted(
+        resolution_dir.glob("optuna_autoscale_summary_*.csv")
+    )
+    autoscale_summary_csv = (
+        autoscale_summary_candidates[-1] if autoscale_summary_candidates else None
+    )
     pareto_csv = output_dir / "tuning_weights" / "pareto" / "pareto_solutions.csv"
     validation_csv = output_dir / "validation" / "validation_results.csv"
+    tuning_weights_dir = output_dir / "tuning_weights"
+    tuning_meta_json = tuning_weights_dir / "meta.json"
 
     lines = []
     lines.append("# Thesis Pipeline Summary Report")
@@ -529,13 +539,25 @@ def _generate_single_run_thesis_report(
     lines.append("## Artifacts")
     lines.append("")
 
-    missing = []
-    for artifact in [trials_csv, best_trial_json, pareto_csv, validation_csv]:
+    required_artifacts = [
+        autoscale_best_json,
+        autoscale_stage_policy_json,
+        pareto_csv,
+        validation_csv,
+        optuna_results_csv,
+    ]
+    missing_required = []
+    for artifact in required_artifacts:
         if artifact.exists():
             lines.append(f"- ✅ `{artifact.relative_to(output_dir)}`")
         else:
-            missing.append(artifact)
+            missing_required.append(artifact)
             lines.append(f"- ⚠️ Missing: `{artifact.relative_to(output_dir)}`")
+    if autoscale_summary_csv is not None:
+        lines.append(f"- ✅ `{autoscale_summary_csv.relative_to(output_dir)}`")
+    else:
+        missing_required.append(resolution_dir / "optuna_autoscale_summary_*.csv")
+        lines.append("- ⚠️ Missing: `parameter_resolution/optuna_autoscale_summary_*.csv`")
     lines.append("")
 
     lines.append("## Exploration")
@@ -549,42 +571,100 @@ def _generate_single_run_thesis_report(
 
     lines.append("## Optuna")
     lines.append("")
-    if trials_csv.exists():
-        df_trials = pd.read_csv(trials_csv)
-        df_complete = (
-            df_trials[df_trials["state"] == "TrialState.COMPLETE"]
-            if "state" in df_trials.columns
-            else df_trials
-        )
+    if optuna_results_csv.exists():
+        df_trials = pd.read_csv(optuna_results_csv)
+        if "state" in df_trials.columns:
+            complete_mask = df_trials["state"].astype(str).str.contains("COMPLETE")
+            df_complete = df_trials[complete_mask]
+        else:
+            df_complete = df_trials
 
         lines.append(f"- Trials (total): **{len(df_trials)}**")
         lines.append(f"- Trials (complete): **{len(df_complete)}**")
         if not df_complete.empty and "value" in df_complete.columns:
             best_value = float(df_complete["value"].max())
-            lines.append(f"- Best value: **{best_value:.6f}**")
-            if "trial_number" in df_complete.columns:
+            lines.append(f"- Best value (from trials): **{best_value:.6f}**")
+            if "number" in df_complete.columns:
                 best_trial = int(
-                    df_complete.loc[
-                        df_complete["value"] == best_value, "trial_number"
-                    ].iloc[0]
+                    df_complete.loc[df_complete["value"] == best_value, "number"].iloc[0]
                 )
-                lines.append(f"- Best trial: **#{best_trial}**")
+                lines.append(f"- Best trial (from trials): **#{best_trial}**")
             lines.append(f"- Mean value: **{float(df_complete['value'].mean()):.6f}**")
-            lines.append(f"- Std value: **{float(df_complete['value'].std()):.6f}**")
+            std_value = float(df_complete["value"].std()) if len(df_complete) > 1 else 0.0
+            lines.append(f"- Std value: **{std_value:.6f}**")
         else:
             lines.append("- No completed value column available")
     else:
         lines.append("- Optuna trials: not available")
 
-    if best_trial_json.exists():
+    if autoscale_best_json.exists():
         try:
-            best_trial_data = json.loads(best_trial_json.read_text(encoding="utf-8"))
+            best_trial_data = json.loads(autoscale_best_json.read_text(encoding="utf-8"))
             params = best_trial_data.get("params", {})
-            lines.append("- Best trial params:")
+            if "value" in best_trial_data:
+                lines.append(
+                    f"- Best value (autoscale best): **{float(best_trial_data['value']):.6f}**"
+                )
+            rule = best_trial_data.get("best_selection_rule")
+            if rule:
+                lines.append(f"- Best selection rule: `{rule}`")
+            user_attrs = best_trial_data.get("user_attrs", {})
+            selected_n = user_attrs.get("n_samples")
+            if selected_n is None:
+                selected_n = (
+                    best_trial_data.get("selection_meta", {}).get("selected_n_samples")
+                )
+            if selected_n is not None:
+                lines.append(f"- Selected n_samples: **{int(selected_n)}**")
+            sampler_name = best_trial_data.get("study_sampler")
+            if sampler_name:
+                lines.append(f"- Study sampler: `{sampler_name}`")
+            study_seed = best_trial_data.get("study_seed")
+            if study_seed is not None:
+                lines.append(f"- Study seed: **{int(study_seed)}**")
+            lines.append("- Best params:")
             for key in sorted(params.keys()):
                 lines.append(f"  - `{key}`: `{params[key]}`")
         except Exception as exc:
-            lines.append(f"- Could not parse best_trial.json: `{exc}`")
+            lines.append(f"- Could not parse optuna_autoscale_best_latest.json: `{exc}`")
+    else:
+        lines.append("- Autoscale best artifact: not available")
+
+    if autoscale_stage_policy_json.exists():
+        try:
+            stage_policy = json.loads(
+                autoscale_stage_policy_json.read_text(encoding="utf-8")
+            )
+            mode = stage_policy.get("mode")
+            if mode:
+                lines.append(f"- n_samples mode: `{mode}`")
+            effective_candidates = stage_policy.get("effective_candidates")
+            if effective_candidates is not None:
+                lines.append(f"- Effective candidates: **{int(effective_candidates)}**")
+            stages_resolved = stage_policy.get("stages_resolved")
+            if stages_resolved:
+                lines.append(f"- Autoscale stages: `{stages_resolved}`")
+            trials_per_stage = stage_policy.get("trials_per_stage")
+            if trials_per_stage:
+                lines.append(f"- Trials per stage: `{trials_per_stage}`")
+        except Exception as exc:
+            lines.append(f"- Could not parse optuna_autoscale_stage_policy.json: `{exc}`")
+
+    if autoscale_summary_csv is not None and autoscale_summary_csv.exists():
+        try:
+            df_summary = pd.read_csv(autoscale_summary_csv)
+            lines.append(f"- Autoscale summary rows: **{len(df_summary)}**")
+            if "stage_feasible" in df_summary.columns:
+                feasible = int(
+                    df_summary["stage_feasible"]
+                    .astype(str)
+                    .str.lower()
+                    .isin(["true", "1"])
+                    .sum()
+                )
+                lines.append(f"- Autoscale feasible stages: **{feasible}**")
+        except Exception as exc:
+            lines.append(f"- Could not parse autoscale summary CSV: `{exc}`")
     lines.append("")
 
     lines.append("## Validation")
@@ -612,12 +692,121 @@ def _generate_single_run_thesis_report(
         lines.append("- Validation results: not available")
     lines.append("")
 
-    if missing:
+    lines.append("## Tile Selection")
+    lines.append("")
+    selected_tiles_file: Optional[Path] = None
+    selected_from = "not available"
+
+    if tuning_meta_json.exists():
+        try:
+            tuning_meta = json.loads(tuning_meta_json.read_text(encoding="utf-8"))
+            best_metrics = tuning_meta.get("best_metrics", {})
+            alpha = best_metrics.get("alpha")
+            beta = best_metrics.get("beta")
+            gamma = best_metrics.get("gamma")
+            if alpha is not None and beta is not None and gamma is not None:
+                exact_name = f"selection_a{alpha}_b{beta}_g{gamma}.csv"
+                exact_path = tuning_weights_dir / exact_name
+                if exact_path.exists():
+                    selected_tiles_file = exact_path
+                else:
+                    candidate_pattern = (
+                        f"selection_a{float(alpha):.6f}*_b{float(beta):.6f}*_g{float(gamma):.6f}*.csv"
+                    )
+                    candidates = sorted(tuning_weights_dir.glob(candidate_pattern))
+                    if candidates:
+                        selected_tiles_file = candidates[0]
+        except Exception:
+            selected_tiles_file = None
+
+    if selected_tiles_file is None:
+        validation_selection_files = sorted(
+            (output_dir / "validation").glob("selection_a*_b*_g*_d*_s*.csv")
+        )
+        if validation_selection_files:
+            selected_tiles_file = validation_selection_files[0]
+            selected_from = "validation fallback"
+
+    if selected_tiles_file is not None and selected_tiles_file.exists():
+        try:
+            df_selected = pd.read_csv(selected_tiles_file)
+            if "selection_rank" in df_selected.columns:
+                df_selected = df_selected.sort_values("selection_rank")
+
+            tile_col = None
+            for candidate_col in ("shortName", "filename", "image_filename"):
+                if candidate_col in df_selected.columns:
+                    tile_col = candidate_col
+                    break
+            if tile_col is None:
+                tile_col = "tile"
+                df_selected[tile_col] = "-"
+
+            if "selection_rank" in df_selected.columns:
+                df_selected["selection_rank"] = (
+                    pd.to_numeric(df_selected["selection_rank"], errors="coerce")
+                    .fillna(0)
+                    .astype(int)
+                )
+            else:
+                df_selected["selection_rank"] = list(range(len(df_selected)))
+
+            city_col = "city" if "city" in df_selected.columns else None
+            year_col = "year" if "year" in df_selected.columns else None
+
+            def _fmt_value(value: object) -> str:
+                if pd.isna(value):
+                    return "-"
+                text = str(value).strip()
+                if not text:
+                    return "-"
+                # Fix common UTF-8 mojibake rendered through CP437 glyphs (e.g. "R├╝" -> "Rü").
+                if any(0x2500 <= ord(ch) <= 0x257F for ch in text):
+                    try:
+                        text = text.encode("cp437").decode("utf-8")
+                    except Exception:
+                        pass
+                return text.replace("|", "\\|")
+
+            unique_cities = 0
+            if city_col is not None:
+                unique_cities = int(df_selected[city_col].dropna().astype(str).nunique())
+
+            if selected_from == "not available":
+                selected_from = "tuning_weights best_metrics"
+            lines.append(
+                f"- Selection file: `{selected_tiles_file.relative_to(output_dir)}`"
+            )
+            lines.append(f"- Selection source: `{selected_from}`")
+            lines.append(f"- Selected tiles: **{len(df_selected)}**")
+            if unique_cities > 0:
+                lines.append(f"- Unique cities: **{unique_cities}**")
+            lines.append("")
+            lines.append("| Rank | Tile | City | Year |")
+            lines.append("|---:|---|---|---:|")
+            for _, row in df_selected.iterrows():
+                rank = int(row["selection_rank"])
+                tile_id = _fmt_value(row.get(tile_col, "-"))
+                city = _fmt_value(row.get(city_col, "-")) if city_col else "-"
+                year_value = row.get(year_col, "-") if year_col else "-"
+                if pd.isna(year_value):
+                    year = "-"
+                else:
+                    try:
+                        year = str(int(float(year_value)))
+                    except Exception:
+                        year = _fmt_value(year_value)
+                lines.append(f"| {rank} | `{tile_id}` | {city} | {year} |")
+        except Exception as exc:
+            lines.append(f"- Could not parse selection CSV: `{exc}`")
+    else:
+        lines.append("- Selection file: not available")
+    lines.append("")
+
+    if missing_required:
         lines.append("## Notes")
         lines.append("")
-        lines.append(
-            "Some optional artifacts were not found. This can be expected when phases are skipped."
-        )
+        lines.append("Report is partial because required thesis artifacts are missing.")
         lines.append("")
 
     report_file = output_dir / "THESIS_PIPELINE_REPORT.md"

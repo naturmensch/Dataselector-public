@@ -1,5 +1,4 @@
 import os
-import time
 from inspect import signature
 from pathlib import Path
 from typing import Any
@@ -18,6 +17,8 @@ from dataselector.runtime.parameter_snapshot import compute_file_sha256
 
 PREPROCESS_PIPELINE_ID = "historical_grayscale_autocontrast_rgb_v1"
 CACHE_MODES = {"off", "read_only", "write_only", "read_write"}
+FEATURE_CACHE_SCOPES = {"run_local", "global_shared"}
+DEFAULT_FEATURE_CACHE_ROOT = Path("outputs/cache/features")
 
 
 def load_metadata(
@@ -229,6 +230,50 @@ def _resolve_feature_config(
     return dict(defaults), path if path is not None and path.exists() else None
 
 
+def _resolve_feature_cache_settings(
+    *,
+    config_path: str | Path | None,
+    cache_scope: str | None,
+    cache_root: str | Path | None,
+) -> tuple[str, Path]:
+    """Resolve cache scope/root with explicit overrides winning over config defaults."""
+    scope = "run_local"
+    root = DEFAULT_FEATURE_CACHE_ROOT
+
+    cfg_path: Path | None = Path(config_path) if config_path is not None else None
+    if cfg_path is not None and cfg_path.exists():
+        try:
+            payload = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
+            section = payload.get("feature_cache", {}) if isinstance(payload, dict) else {}
+            if isinstance(section, dict):
+                configured_scope = section.get("scope")
+                configured_root = section.get("root")
+                if configured_scope:
+                    scope = str(configured_scope).strip().lower()
+                if configured_root:
+                    root = Path(str(configured_root))
+        except Exception:
+            pass
+
+    env_scope = os.getenv("DATASELECTOR_FEATURE_CACHE_SCOPE")
+    env_root = os.getenv("DATASELECTOR_FEATURE_CACHE_ROOT")
+    if env_scope:
+        scope = env_scope.strip().lower()
+    if env_root:
+        root = Path(env_root)
+
+    if cache_scope is not None:
+        scope = str(cache_scope).strip().lower()
+    if cache_root is not None:
+        root = Path(cache_root)
+
+    if scope not in FEATURE_CACHE_SCOPES:
+        raise ValueError(
+            f"Unknown feature cache scope '{scope}'. Expected one of: {sorted(FEATURE_CACHE_SCOPES)}"
+        )
+    return scope, root
+
+
 def build_feature_identity(
     *,
     feature_cfg: dict[str, Any],
@@ -359,13 +404,14 @@ def load_or_extract_features(
     resolved_feature_config: dict[str, Any] | None = None,
     strict_cache_identity: bool = False,
     force_extract: bool = False,
+    cache_scope: str | None = None,
+    cache_root: str | Path | None = None,
 ) -> np.ndarray:
-    """Load features from a hash-identified cache or extract and create a new cache."""
+    """Load features from cache or extract and store with immutable provenance."""
     from dataselector.pipeline.cache import (
         atomic_write_features_with_meta,
         compute_meta_hash,
         create_meta_info,
-        features_path_for_hash,
         load_features_by_hash,
         load_meta_by_hash,
     )
@@ -381,6 +427,20 @@ def load_or_extract_features(
         # Explicitly avoid strict read-only hard-fail on cache miss.
         cache_mode = "off"
 
+    feature_cfg, cfg_path = _resolve_feature_config(
+        config_path=config_path,
+        resolved_feature_config=resolved_feature_config,
+    )
+    effective_scope, effective_cache_root = _resolve_feature_cache_settings(
+        config_path=str(cfg_path) if cfg_path else config_path,
+        cache_scope=cache_scope,
+        cache_root=cache_root,
+    )
+    cache_dir = (
+        effective_cache_root if effective_scope == "global_shared" else Path(out_dir)
+    )
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
     # Resolve metadata CSV path (production default is canonical source only).
     csv_meta = _resolve_feature_metadata_csv(
         csv_meta,
@@ -389,10 +449,6 @@ def load_or_extract_features(
     )
 
     # Compute deterministic hash for this metadata + extraction params
-    feature_cfg, cfg_path = _resolve_feature_config(
-        config_path=config_path,
-        resolved_feature_config=resolved_feature_config,
-    )
     config_sha256 = compute_file_sha256(cfg_path) if cfg_path and cfg_path.exists() else None
     feature_identity = build_feature_identity(
         feature_cfg=feature_cfg,
@@ -400,25 +456,12 @@ def load_or_extract_features(
         config_sha256=config_sha256,
     )
     params = {"batch_size": batch_size, "feature_identity": feature_identity}
-    try:
-        meta_hash = compute_meta_hash(csv_meta, params=params)
-    except Exception:
-        # If we cannot compute a hash (e.g., missing CSV), fall back to legacy behavior
-        print(
-            "[WARN] Could not compute metadata hash; falling back to legacy cache behavior."
-        )
-        return load_or_extract_features_legacy(
-            out_dir=out_dir,
-            csv_meta=csv_meta,
-            batch_size=batch_size,
-            cache=cache,
-            enforce_canonical=enforce_canonical,
-        )
+    meta_hash = compute_meta_hash(csv_meta, params=params)
 
     # Try to find existing hash-named cache
     cached = None
     if cache_mode in {"read_only", "read_write"} and not force_extract:
-        cached = load_features_by_hash(out_dir, meta_hash)
+        cached = load_features_by_hash(cache_dir, meta_hash)
 
     if cached is not None:
         # Basic shape validation
@@ -433,7 +476,11 @@ def load_or_extract_features(
                 raise ValueError(msg + " read_only mode forbids re-extraction.")
             print(msg + " Re-extracting.")
         else:
-            cached_meta = load_meta_by_hash(out_dir, meta_hash) or {}
+            cached_meta = load_meta_by_hash(cache_dir, meta_hash)
+            if not isinstance(cached_meta, dict):
+                raise RuntimeError(
+                    f"Corrupt immutable cache for hash {meta_hash[:8]}...: missing or unreadable meta.json"
+                )
             cached_identity = cached_meta.get("feature_identity")
             if strict_cache_identity and not isinstance(cached_identity, dict):
                 msg = (
@@ -443,15 +490,13 @@ def load_or_extract_features(
                     raise ValueError(msg + " strict read_only mode forbids fallback.")
                 print(msg + " Re-extracting with current identity.")
             elif isinstance(cached_identity, dict) and cached_identity != feature_identity:
-                msg = (
-                    f"[WARN] Feature identity mismatch for cache hash {meta_hash[:8]}..."
+                raise RuntimeError(
+                    f"Immutable cache conflict for hash {meta_hash[:8]}...: "
+                    "feature_identity in meta does not match current feature identity."
                 )
-                if strict_cache_identity and cache_mode == "read_only":
-                    raise ValueError(msg + " strict read_only mode forbids fallback.")
-                print(msg + " Re-extracting with current identity.")
             else:
                 print(
-                    f"[INFO] ✓ Feature cache hit (hash: {meta_hash[:8]}..., shape: {cached.shape})"
+                    f"[INFO] ✓ Feature cache hit (scope={effective_scope}, hash={meta_hash[:8]}..., shape={cached.shape})"
                 )
                 return cached
 
@@ -472,55 +517,9 @@ def load_or_extract_features(
         )
         return feats
 
-    # In strict scientific mode, do not silently migrate/remove legacy caches.
-    legacy = out_dir / "features.npy"
-    if legacy.exists() and strict_cache_identity and not force_extract:
-        raise RuntimeError(
-            "Legacy cache file features.npy detected. "
-            "Strict scientific mode forbids silent migration. "
-            "Delete it manually or rerun with force_extract=True."
-        )
-
-    # If not found, check for legacy features.npy and attempt safe migration
-    if legacy.exists() and cache_mode == "read_write":
-        try:
-            legacy_feats = np.load(legacy)
-            meta = load_metadata(csv_meta)
-            if legacy_feats.shape[0] == len(meta):
-                # Safe to migrate
-                meta_info = create_meta_info(
-                    csv_meta,
-                    params=params,
-                    feature_identity=feature_identity,
-                    config_sha256=config_sha256,
-                )
-                atomic_write_features_with_meta(
-                    out_dir, legacy_feats, meta_hash, meta_info
-                )
-                # preserve legacy file as a timestamped backup
-                backup_dir = out_dir / "backups"
-                backup_dir.mkdir(exist_ok=True)
-                ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-                backup_path = backup_dir / f"features_legacy_backup_{ts}.npy"
-                legacy.rename(backup_path)
-                print(
-                    f"[INFO] Migrated legacy features.npy to features-{meta_hash}.npy and backed up legacy file."
-                )
-                return legacy_feats
-            else:
-                print(
-                    "[WARN] Legacy features.npy row count ({}) does not match metadata ({}) - ignoring legacy cache.".format(
-                        legacy_feats.shape[0], len(meta)
-                    )
-                )
-        except Exception:
-            print(
-                "[WARN] Could not migrate legacy features.npy (read error); ignoring it."
-            )
-
-    # No usable cache found: extract and create a new hash-named cache
+    # No usable cache found: extract and create (or verify) immutable hash-named cache.
     print(
-        f"[INFO] Feature cache miss (hash: {meta_hash[:8]}...) - extracting features with batch_size={batch_size}..."
+        f"[INFO] Feature cache miss (scope={effective_scope}, hash={meta_hash[:8]}...) - extracting features with batch_size={batch_size}..."
     )
     meta = load_metadata(csv_meta)
     feats, provenance = _extract_features_with_provenance(
@@ -540,83 +539,9 @@ def load_or_extract_features(
             model_provenance=provenance.get("model_provenance"),
             config_sha256=provenance.get("config_sha256"),
         )
-        try:
-            atomic_write_features_with_meta(out_dir, feats, meta_hash, meta_info)
-        except Exception:
-            # Fallback: try to write legacy file to not lose work
-            out_dir.mkdir(parents=True, exist_ok=True)
-            np.save(out_dir / "features.npy", feats)
-
-    return feats
-
-
-# Preserve the original legacy behavior as a small helper for safety fallback
-def load_or_extract_features_legacy(
-    out_dir: str | Path = "outputs",
-    csv_meta: str | None = None,
-    batch_size: int = 16,
-    cache: bool = True,
-    enforce_canonical: bool = False,
-) -> np.ndarray:
-    # Original algorithm preserved for falling back in rare error cases
-    out_dir = Path(out_dir)
-    features_path = out_dir / "features.npy"
-
-    if features_path.exists():
-        feats = np.load(features_path)
-
-        # Determine metadata source for validation.
-        csv_meta = _resolve_feature_metadata_csv(
-            csv_meta,
-            context="load_or_extract_features_legacy",
-            enforce_canonical=enforce_canonical,
-        )
-
-        # Load metadata and validate shapes: cached features must match metadata rows
-        try:
-            meta = load_metadata(csv_meta)
-            if feats.shape[0] != len(meta):
-                print(
-                    "[WARN] Cached features.npy rows ({}) != metadata rows ({}). "
-                    "Removing stale cache and re-extracting features.".format(
-                        feats.shape[0], len(meta)
-                    )
-                )
-                try:
-                    features_path.unlink()
-                except Exception:
-                    pass
-                # fall through to extraction below
-            else:
-                return feats
-        except Exception:
-            # If metadata cannot be loaded for validation, conservatively re-extract
-            print(
-                "[WARN] Could not validate feature cache against metadata; re-extracting."
-            )
-            try:
-                features_path.unlink()
-            except Exception:
-                pass
-
-    # Determine metadata source.
-    csv_meta = _resolve_feature_metadata_csv(
-        csv_meta,
-        context="load_or_extract_features_legacy",
-        enforce_canonical=enforce_canonical,
-    )
-
-    meta = load_metadata(csv_meta)
-    feats, _ = _extract_features_with_provenance(
-        meta,
-        batch_size=batch_size,
-        config_path=None,
-        resolved_feature_config=None,
-    )
-
-    if cache:
-        out_dir.mkdir(parents=True, exist_ok=True)
-        np.save(features_path, feats)
+        meta_info["cache_scope"] = effective_scope
+        meta_info["cache_root"] = str(cache_dir.resolve())
+        atomic_write_features_with_meta(cache_dir, feats, meta_hash, meta_info)
 
     return feats
 
