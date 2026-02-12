@@ -29,6 +29,7 @@ PROBE_SECONDS=0
 AUTOSCALE_TRIALS=""
 AUTOSCALE_STAGES=""
 BUILD_SPLITS_OVERRIDE=""
+ANCHOR_TILE=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -83,10 +84,23 @@ while [[ $# -gt 0 ]]; do
       BUILD_SPLITS_OVERRIDE="false"
       shift
       ;;
+    --anchor-tile)
+      ANCHOR_TILE="${2:-}"
+      if [[ -z "${ANCHOR_TILE}" ]]; then
+        echo "ERROR: --anchor-tile requires a value" >&2
+        exit 2
+      fi
+      shift 2
+      ;;
+    --hamburg)
+      ANCHOR_TILE="Hamburg"
+      shift
+      ;;
     -h|--help)
       usage
       exit 0
       ;;
+
     *)
       echo "ERROR: unknown argument '$1'" >&2
       usage
@@ -116,6 +130,11 @@ if [[ -n "${BUILD_SPLITS_OVERRIDE}" ]]; then
 fi
 
 mkdir -p "${OUTPUT_ROOT}"
+
+if [[ -n "${ANCHOR_TILE}" ]]; then
+  echo "Applying anchor tile constraint: ${ANCHOR_TILE}"
+  export DATASELECTOR_ANCHOR_TILE="${ANCHOR_TILE}"
+fi
 
 if [[ "${SINGLE_RUN}" == "true" ]]; then
   tags=("A")

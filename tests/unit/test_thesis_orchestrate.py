@@ -275,25 +275,39 @@ def test_thesis_orchestrate_force_requires_reason(
         )
 
 
-def test_thesis_orchestrate_passes_config_and_cache_mode(
+@pytest.mark.parametrize("anchor_env, expected_pre_names", [
+    (None, None),              # Case 1: Standard, no env var
+    ("Hamburg", ["Hamburg"]),  # Case 2: With Anchor-Tile Env-Var
+])
+def test_thesis_orchestrate_passes_arguments_correctly(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    anchor_env: str | None,
+    expected_pre_names: list[str] | None,
 ) -> None:
     from dataselector.workflows import thesis_orchestrate as mod
 
     _write_minimal_inputs(tmp_path)
     monkeypatch.chdir(tmp_path)
 
+    # Optional: Set Environment Variable for this test run
+    if anchor_env:
+        monkeypatch.setenv("DATASELECTOR_ANCHOR_TILE", anchor_env)
+
     observed: dict[str, dict] = {}
     monkeypatch.setattr(mod, "_require_torch", lambda: None)
 
+    # Mock sub-workflows to intercept arguments
     def _fake_autoscale(**kwargs):
         observed["autoscale"] = kwargs
         return 0
 
     def _fake_run_thesis_pipeline(**kwargs):
-        observed.setdefault("pipeline_calls", {})
-        observed["pipeline_calls"] = kwargs
+        # Collect all calls in a list
+        calls = observed.setdefault("pipeline_calls", [])
+        calls.append(kwargs)
+
+        # Create dummy outputs so orchestrator continues
         out_dir = Path(kwargs["output_dir"])
         out_dir.mkdir(parents=True, exist_ok=True)
         (out_dir / "final_config.yaml").write_text("parameters: {}\n", encoding="utf-8")
@@ -301,6 +315,8 @@ def test_thesis_orchestrate_passes_config_and_cache_mode(
 
     monkeypatch.setattr(mod, "run_optuna_autoscale_workflow", _fake_autoscale)
     monkeypatch.setattr(mod, "run_thesis_pipeline", _fake_run_thesis_pipeline)
+
+    # Mocks for validation (Boilerplate)
     monkeypatch.setattr(mod, "validate_snapshot_file", lambda _p: [])
     monkeypatch.setattr(mod, "load_snapshot", lambda _p: {"parameters": {}})
     monkeypatch.setattr(mod, "load_parameter_contract", lambda _p: {"parameters": {}})
@@ -308,7 +324,7 @@ def test_thesis_orchestrate_passes_config_and_cache_mode(
 
     rc = mod.run_thesis_orchestrate(
         config="config/pipeline_config.yaml",
-        output_dir=str(tmp_path / "outputs" / "runs" / "orch_cfg"),
+        output_dir=str(tmp_path / "outputs" / "runs" / "orch_args"),
         precompute_only=True,
         run_after_precompute=False,
         cache_mode="write_only",
@@ -316,12 +332,18 @@ def test_thesis_orchestrate_passes_config_and_cache_mode(
     )
 
     assert rc == 0
+
+    # 1. Existing Checks (Config & Cache Mode)
     assert observed["autoscale"]["config_path"] == "config/pipeline_config.yaml"
     assert observed["autoscale"]["cache_mode"] == "write_only"
-    assert str(observed["pipeline_calls"]["config_path"]).endswith(
-        "config/pipeline_config.yaml"
-    )
-    assert observed["pipeline_calls"]["cache_mode"] == "write_only"
+
+    # 2. New Check: Was pre_names passed correctly?
+    assert observed["autoscale"].get("pre_names") == expected_pre_names
+
+    # Check pipeline calls as well
+    assert len(observed["pipeline_calls"]) > 0
+    for call_kwargs in observed["pipeline_calls"]:
+        assert call_kwargs.get("pre_names") == expected_pre_names
 
 
 def test_thesis_orchestrate_fails_for_non_empty_output_dir(
