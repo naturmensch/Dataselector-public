@@ -132,3 +132,62 @@ def test_report_flags_missing_canonical_artifact(tmp_path: Path):
 
     assert "Missing: `parameter_resolution/optuna_autoscale_best_latest.json`" in report
     assert "Report is partial because required thesis artifacts are missing." in report
+
+
+def test_report_documents_sampler_resolution_contract(tmp_path: Path):
+    run_dir = tmp_path / "run_sampler_contract"
+    _write_minimal_artifacts(run_dir, n_selected_values=[1, 2, 3])
+
+    sampler_resolution_dir = run_dir / "parameter_resolution" / "sampler_resolution"
+    sampler_resolution_dir.mkdir(parents=True, exist_ok=True)
+
+    (sampler_resolution_dir / "selected_sampler.json").write_text(
+        json.dumps({"best": "qmc", "sampler": "qmc", "source": "config_policy"}),
+        encoding="utf-8",
+    )
+
+    pd.DataFrame(
+        [
+            {"sampler": "qmc", "mean": 1.115869},
+            {"sampler": "tpe", "mean": 1.098005},
+            {"sampler": "cmaes", "mean": 1.094759},
+        ]
+    ).to_csv(sampler_resolution_dir / "summary.csv", index=False)
+
+    snapshot_path = run_dir / "final_config_resolution.yaml"
+    snapshot_path.write_text(
+        "\n".join(
+            [
+                "parameters:",
+                "  selection:",
+                "    parameter_provenance:",
+                "      optuna_sampler:",
+                "        method: auto_compare",
+                "        source_file: parameter_resolution/sampler_resolution/selected_sampler.json",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    (run_dir / "run_metadata.json").write_text(
+        json.dumps(
+            {
+                "extra": {
+                    "resolved_sampler": "qmc",
+                    "resolved_sampler_source": "config_policy",
+                    "resolved_exploration_sampler": "sobol",
+                    "resolved_exploration_sampler_source": "config_policy",
+                    "snapshot_path": "final_config_resolution.yaml",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report_file = _generate_single_run_thesis_report(run_dir, timestamp="T3")
+    report = report_file.read_text(encoding="utf-8")
+
+    assert "## Sampler Resolution & Scientific Contract" in report
+    assert "- Production optuna sampler: `qmc` (source: `config_policy`)" in report
+    assert "- Optuna sampler decision provenance: `auto_compare`" in report
+    assert "no re-selection during production" in report

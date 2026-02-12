@@ -18,6 +18,45 @@ def _get_repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def _safe_read_json_dict(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _safe_read_yaml_dict(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        payload = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _resolve_report_path(run_dir: Path, path_value: object) -> Optional[Path]:
+    if not isinstance(path_value, str) or not path_value.strip():
+        return None
+
+    raw_path = Path(path_value)
+    if raw_path.is_absolute():
+        return raw_path
+
+    run_relative = run_dir / raw_path
+    if run_relative.exists():
+        return run_relative
+
+    repo_relative = _get_repo_root() / raw_path
+    if repo_relative.exists():
+        return repo_relative
+
+    return run_relative
+
+
 def summarize_csv_metrics(csv_path: Path) -> dict:
     try:
         with csv_path.open("r", encoding="utf-8") as fh:
@@ -516,6 +555,10 @@ def _generate_single_run_thesis_report(
     optuna_results_csv = optuna_dir / "optuna_results.csv"
     autoscale_best_json = resolution_dir / "optuna_autoscale_best_latest.json"
     autoscale_stage_policy_json = resolution_dir / "optuna_autoscale_stage_policy.json"
+    sampler_resolution_dir = resolution_dir / "sampler_resolution"
+    sampler_summary_csv = sampler_resolution_dir / "summary.csv"
+    sampler_selected_json = sampler_resolution_dir / "selected_sampler.json"
+    run_metadata_json = output_dir / "run_metadata.json"
     autoscale_summary_candidates = sorted(
         resolution_dir.glob("optuna_autoscale_summary_*.csv")
     )
@@ -665,6 +708,133 @@ def _generate_single_run_thesis_report(
                 lines.append(f"- Autoscale feasible stages: **{feasible}**")
         except Exception as exc:
             lines.append(f"- Could not parse autoscale summary CSV: `{exc}`")
+    lines.append("")
+
+    lines.append("## Sampler Resolution & Scientific Contract")
+    lines.append("")
+    run_metadata = _safe_read_json_dict(run_metadata_json)
+    run_extra = run_metadata.get("extra", {}) if isinstance(run_metadata, dict) else {}
+    if run_metadata:
+        lines.append("- Run metadata artifact: `run_metadata.json`")
+    else:
+        lines.append("- Run metadata artifact: not available")
+
+    production_sampler = run_extra.get("resolved_sampler")
+    production_sampler_source = run_extra.get("resolved_sampler_source")
+    if production_sampler:
+        if production_sampler_source:
+            lines.append(
+                f"- Production optuna sampler: `{production_sampler}` (source: `{production_sampler_source}`)"
+            )
+        else:
+            lines.append(f"- Production optuna sampler: `{production_sampler}`")
+
+    exploration_sampler = run_extra.get("resolved_exploration_sampler")
+    exploration_sampler_source = run_extra.get("resolved_exploration_sampler_source")
+    if exploration_sampler:
+        if exploration_sampler_source:
+            lines.append(
+                f"- Production exploration sampler: `{exploration_sampler}` (source: `{exploration_sampler_source}`)"
+            )
+        else:
+            lines.append(f"- Production exploration sampler: `{exploration_sampler}`")
+
+    selected_sampler_payload = _safe_read_json_dict(sampler_selected_json)
+    if sampler_selected_json.exists():
+        lines.append(
+            "- Sampler selection artifact: "
+            f"`{sampler_selected_json.relative_to(output_dir)}`"
+        )
+        selected_sampler_name = selected_sampler_payload.get(
+            "best", selected_sampler_payload.get("sampler")
+        )
+        selected_sampler_source = selected_sampler_payload.get("source")
+        if selected_sampler_name:
+            if selected_sampler_source:
+                lines.append(
+                    f"- Artifact sampler value: `{selected_sampler_name}` (source: `{selected_sampler_source}`)"
+                )
+            else:
+                lines.append(f"- Artifact sampler value: `{selected_sampler_name}`")
+    else:
+        lines.append("- Sampler selection artifact: not available")
+
+    if sampler_summary_csv.exists():
+        try:
+            sampler_summary_df = pd.read_csv(sampler_summary_csv)
+            lines.append(
+                "- Sampler benchmark summary: "
+                f"`{sampler_summary_csv.relative_to(output_dir)}`"
+            )
+            if (
+                not sampler_summary_df.empty
+                and "sampler" in sampler_summary_df.columns
+                and "mean" in sampler_summary_df.columns
+            ):
+                ranked = sampler_summary_df.sort_values(
+                    by="mean", ascending=False
+                ).reset_index(drop=True)
+                best_row = ranked.iloc[0]
+                lines.append(
+                    "- Best sampler by benchmark mean: "
+                    f"`{best_row['sampler']}` (`mean={float(best_row['mean']):.6f}`)"
+                )
+                ranking_items = []
+                for _, row in ranked.iterrows():
+                    ranking_items.append(
+                        f"{row['sampler']}={float(row['mean']):.6f}"
+                    )
+                lines.append("- Sampler ranking (mean): `" + ", ".join(ranking_items) + "`")
+        except Exception as exc:
+            lines.append(f"- Could not parse sampler summary CSV: `{exc}`")
+
+    snapshot_path = _resolve_report_path(output_dir, run_extra.get("snapshot_path"))
+    if snapshot_path is not None and snapshot_path.exists():
+        snapshot_payload = _safe_read_yaml_dict(snapshot_path)
+        if snapshot_payload:
+            try:
+                rel_snapshot = snapshot_path.relative_to(output_dir)
+                lines.append(f"- Resolution snapshot: `{rel_snapshot}`")
+            except Exception:
+                lines.append(f"- Resolution snapshot: `{snapshot_path}`")
+
+            params = snapshot_payload.get("parameters", {})
+            selection = params.get("selection", {}) if isinstance(params, dict) else {}
+            provenance = (
+                selection.get("parameter_provenance", {})
+                if isinstance(selection, dict)
+                else {}
+            )
+            optuna_provenance = (
+                provenance.get("optuna_sampler", {})
+                if isinstance(provenance, dict)
+                else {}
+            )
+            if isinstance(optuna_provenance, dict):
+                decision_method = optuna_provenance.get("method")
+                decision_source_file = optuna_provenance.get("source_file")
+                if decision_method:
+                    lines.append(
+                        f"- Optuna sampler decision provenance: `{decision_method}`"
+                    )
+                if decision_source_file:
+                    lines.append(
+                        f"- Optuna sampler decision artifact: `{decision_source_file}`"
+                    )
+                if decision_method == "auto_compare":
+                    lines.append(
+                        "- Interpretation: sampler was selected in resolution "
+                        "stage via multi-seed auto-compare."
+                    )
+                    if production_sampler_source == "config_policy":
+                        lines.append(
+                            "- Production-stage `config_policy` means the validated "
+                            "snapshot value was applied (no re-selection during production)."
+                        )
+    lines.append(
+        "- Scientific contract: determine sampler in parameter-resolution stage, "
+        "then freeze and apply it via validated snapshot for reproducible production runs."
+    )
     lines.append("")
 
     lines.append("## Validation")
