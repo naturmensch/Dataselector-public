@@ -117,6 +117,10 @@ def atomic_write_features_with_meta(
             try:
                 lock_path.unlink(missing_ok=True)
             except Exception:
+                # Best-effort cleanup: do not escalate errors from unlinking a
+                # transient lockfile. Failing here should not invalidate the
+                # correctness of the immutable cache object written above and
+                # is therefore intentionally non-fatal.
                 pass
 
 
