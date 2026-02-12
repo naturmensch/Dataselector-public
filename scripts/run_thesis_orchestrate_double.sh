@@ -14,6 +14,8 @@ Options:
   --build-splits MODE          MODE in {true,false,auto} (default: false).
   --with-splits                Shortcut for --build-splits true.
   --no-splits                  Shortcut for --build-splits false.
+  --anchor-tile NAME           Pre-select an anchor tile (exports DATASELECTOR_ANCHOR_TILE).
+  --hamburg                    Shortcut for --anchor-tile "Hamburg".
   -h, --help                   Show this help.
 
 Environment overrides:
