@@ -225,6 +225,30 @@ For thesis workflows, responsibilities are intentionally separated:
 Sampler evidence for contract validation is persisted run-locally at:
 `outputs/runs/<run_id>/parameter_resolution/sampler_resolution/selected_sampler.json`.
 
+### 4.0.1.4 Sampler Resolution Contract (Critical Interpretation)
+
+The thesis orchestrator intentionally separates sampler decision from production
+execution:
+
+1. resolution stage runs with `--compute-params` and resolves the sampler in
+   this order: explicit policy -> existing artifact -> multi-seed auto-compare.
+2. when auto-compare is used, benchmark evidence is written under
+   `parameter_resolution/sampler_resolution/` (including `summary.csv` and
+   `selected_sampler.json`).
+3. the resolved sampler is frozen into the resolution snapshot
+   (`final_config_<timestamp>.yaml`) with parameter provenance.
+4. production stage runs from `--use-params <snapshot.yaml>` and applies that
+   frozen value.
+5. therefore `resolved_sampler_source=config_policy` in production metadata is
+   expected and means snapshot application, not sampler re-selection.
+
+Scientific implication:
+
+1. this preserves methodological comparability across A/B reproducibility runs.
+2. sampler choice is benchmarked once per policy context and then fixed.
+3. re-evaluate sampler only when data domain, constraints, feature extractor, or
+   trial budget changes materially.
+
 ### 4.A Parameter Resolution + Snapshot Contract
 
 The canonical thesis path now supports explicit resolver/snapshot flags:
@@ -529,3 +553,64 @@ micromamba run -n dataselector python -m dataselector thesis-pipeline \
   --output-dir "outputs/runs/thesis_run_A_${RUN_TAG}" \
   | tee "outputs/run_logs/thesis_run_A_${RUN_TAG}.log"
 ```
+
+## 9) Handoff to masterarbeit-strassenerkennung (Server Workflow)
+
+Dataselector liefert die finale Auswahl. Train/Val/Test-Splits bleiben im
+Trainings-Repo autoritativ (`split_authority = masterarbeit_strassenerkennung_cv`).
+
+### 9.1 Handoff-Artefakte erzeugen
+
+```bash
+bash scripts/handoff_check.sh prepare \
+  --run-dir outputs/runs/<run_id> \
+  --out handoff/<selection_id>
+
+bash scripts/handoff_check.sh verify-local \
+  --handoff-dir handoff/<selection_id>
+```
+
+`verify-local` prüft:
+
+1. Handoff-Schema (`selected_maps.csv`, `handoff_manifest.json`, `mask_requirements.csv`)
+2. Bildverfügbarkeit unter `data/images`
+3. PNG-Sidecars (`*.png.aux.xml`)
+4. Exclusion-Policy-Verstöße (z. B. ausgeschlossene Sonderkacheln)
+
+Exit-Codes:
+
+1. `0`: alles ok
+2. `2`: Schema-/Manifestfehler
+3. `3`: Bilddaten unvollständig
+4. `4`: Policy-Verstoß
+
+### 9.2 Transfer lokal -> Server
+
+```bash
+# Handoff-Ordner übertragen
+rsync -avh handoff/<selection_id>/ <server>:/path/to/handoff/<selection_id>/
+
+# Nur geforderte Masken übertragen
+cut -d, -f2 handoff/<selection_id>/mask_requirements.csv | tail -n +2 > /tmp/mask_files.txt
+rsync -avh --files-from=/tmp/mask_files.txt annotations/masks/ <server>:/path/to/masks/
+```
+
+Falls Rohkarten auf dem Server fehlen: zusätzlich selektierte Bilder inklusive
+Sidecars übertragen.
+
+### 9.3 Server-Check im Trainings-Repo
+
+Im Repo `masterarbeit-strassenerkennung`:
+
+```bash
+bash scripts/setup/handoff_check.sh verify-server \
+  --handoff-dir /path/to/handoff/<selection_id> \
+  --raw-tiles-dir /path/to/raw/Tiles \
+  --masks-dir /path/to/masks
+
+bash scripts/setup/handoff_check.sh materialize \
+  --handoff-dir /path/to/handoff/<selection_id> \
+  --out-root data/integration
+```
+
+Erst nach grünem `verify-local` + `verify-server` Training/Splits starten.
