@@ -88,6 +88,8 @@ selection:
   # Seeds for reproducible validation experiments (bootstrap / cv)
   random_state: 42
   validation_seeds: [42, 43, 44, 45, 46]
+  # Pin Optuna sampler by policy (evidence: outputs/selected_sampler.json — best: tpe)
+  optuna_sampler: "tpe"
   
 # Expected results are tracked in timestamped decision artifacts:
 # - reports_2026-02-09/MIN_DISTANCE_DECISION_2026-02-09.md

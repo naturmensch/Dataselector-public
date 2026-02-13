@@ -275,6 +275,16 @@ def test_thesis_orchestrate_force_requires_reason(
         )
 
 
+def test_thesis_orchestrate_default_n_trials_is_370(tmp_path: Path) -> None:
+    """Default `n_trials` for orchestrator should be 370 (policy change)."""
+    import inspect
+
+    from dataselector.workflows.thesis_orchestrate import run_thesis_orchestrate, cli_thesis_orchestrate
+
+    assert inspect.signature(run_thesis_orchestrate).parameters["n_trials"].default == 370
+    assert inspect.signature(cli_thesis_orchestrate).parameters["n_trials"].default == 370
+
+
 @pytest.mark.parametrize("anchor_env, expected_pre_names", [
     (None, None),              # Case 1: Standard, no env var
     ("Hamburg", ["Hamburg"]),  # Case 2: With Anchor-Tile Env-Var

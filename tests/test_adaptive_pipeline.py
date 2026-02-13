@@ -20,6 +20,19 @@ def test_adaptive_pipeline_importable():
     assert callable(adaptive_pipeline.main)
 
 
+def test_adaptive_pipeline_default_n_trials_is_370():
+    """Default `n_trials` for adaptive flows should be 370."""
+    import inspect
+
+    from dataselector.workflows.adaptive_pipeline import run_adaptive_pipeline, main as adaptive_main
+    from dataselector.workflows.adaptive_auto import run_adaptive_auto, main as adaptive_auto_main
+
+    assert inspect.signature(run_adaptive_pipeline).parameters["n_trials"].default == 370
+    assert inspect.signature(adaptive_main).parameters["n_trials"].default == 370
+    assert inspect.signature(run_adaptive_auto).parameters["n_trials"].default == 370
+    assert inspect.signature(adaptive_auto_main).parameters["n_trials"].default == 370
+
+
 def test_next_power_of_two():
     """Test _next_power_of_two helper function."""
     from dataselector.workflows.adaptive_pipeline import _next_power_of_two

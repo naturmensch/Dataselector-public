@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased] - 2026-02-13
+
+### Changed
+- Raise default Optuna `n_trials` from `100` → `370` for thesis/adaptive workflows; update CLI defaults and function signatures.
+- Pin `selection.optuna_sampler` to `tpe` in `config/pipeline_config.yaml` (policy: frozen after sampler recompute evidence).
+- Update docs and tests to reflect new defaults and sampler policy (evidence: `outputs/selected_sampler.json`, `outputs/runs/recompute_tpe_370`).
+
+
 ## [v1.1.0] - 2026-02-05 - Pattern C CLI Migration (Phase 1 Complete)
 
 ### Added

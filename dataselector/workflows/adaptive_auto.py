@@ -31,7 +31,7 @@ def run_adaptive_auto(
     output_dir: str = "outputs",
     experiment_name: str = "adaptive_auto",
     n_samples: int | None = None,
-    n_trials: int = 100,
+    n_trials: int = 370,
     n_boot: int = 500,
     n_candidates: int | None = None,
     sampler: str = "lhs",
@@ -167,7 +167,7 @@ def run_adaptive_auto(
         },
         "n_trials": {
             "type": int,
-            "default": 100,
+            "default": 370,
             "help": "Optuna trials for adaptive-pipeline",
         },
         "n_boot": {
@@ -242,7 +242,7 @@ def main(
     output_dir: str = "outputs",
     experiment_name: str = "adaptive_auto",
     n_samples: int | None = None,
-    n_trials: int = 100,
+    n_trials: int = 370,
     n_boot: int = 500,
     n_candidates: int | None = None,
     sampler: str = "lhs",

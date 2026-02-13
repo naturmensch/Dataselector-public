@@ -361,7 +361,7 @@ def _resolve_computed_selection_values(
 def run_thesis_pipeline(
     n_lhs: Optional[int] = None,
     n_samples: Optional[int] = None,
-    n_trials: int = 100,
+    n_trials: int = 370,
     compute_params: bool = False,
     use_params: Optional[Path] = None,
     snapshot_config: bool = False,
@@ -1456,7 +1456,7 @@ def run_thesis_pipeline(
         },
         "n_trials": {
             "type": int,
-            "default": 100,
+            "default": 370,
             "help": "Number of Optuna trials",
         },
         "compute_params": {
@@ -1570,7 +1570,7 @@ def run_thesis_pipeline(
 def main(
     n_lhs: Optional[int] = None,
     n_samples: Optional[int] = None,
-    n_trials: int = 100,
+    n_trials: int = 370,
     compute_params: bool = False,
     use_params: Optional[str] = None,
     snapshot_config: bool = False,
