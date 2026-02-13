@@ -117,6 +117,7 @@ micromamba run -n dataselector python -m dataselector thesis-orchestrate \
   --output-dir outputs/runs/thesis_orchestrated_$(date -u +%Y%m%dT%H%M%SZ)
 ```
 
+> Tip: do **not** insert an extra `--` between `micromamba run -n dataselector` and the command. Use `micromamba run -n dataselector python -m dataselector <command>` — some micromamba/shell combinations fail to forward CLI args when `--` is used.
 This command performs:
 
 1. precompute artifacts under `parameter_resolution/`

@@ -25,6 +25,8 @@ micromamba run -n dataselector python -m dataselector thesis-sampler-suite --aut
 # STEP 2: Canonical thesis orchestration (production path — uses pinned sampler and policy defaults)
 micromamba run -n dataselector python -m dataselector thesis-orchestrate
 
+> Tip: when invoking the `dataselector` env, avoid inserting an extra `--` between `micromamba run -n dataselector` and the command. Use `micromamba run -n dataselector python -m dataselector <command>` (example above). Some shells/micromamba versions treat `--` differently and it can break argument parsing.
+
 # Optional: run thesis-pipeline directly from a validated snapshot
 micromamba run -n dataselector python -m dataselector thesis-pipeline --use-params outputs/runs/<run_id>/final_config.yaml
 ```
