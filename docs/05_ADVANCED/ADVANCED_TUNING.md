@@ -12,9 +12,11 @@
 
 | Sampler | Konvergenz | Stabilität | Reproducibility | Use Case |
 |---------|-----------|-----------|-----------------|----------|
-| **TPE** | Schnell (600 trials) | Moderat | Stochastisch (Seed-variabel) | Production |
-| **QMC (Sobol)** | Moderat (750 trials) | Höher | Vollständig reproducible | Thesis |
+| **TPE** | Schnell (600 trials) | Moderat | Stochastisch (Seed-variabel) | Production (default sampler = `tpe`) |
+| **QMC (Sobol)** | Moderat (750 trials) | Höher | Vollständig reproducible | Research / sensitivity |
 | **CMA-ES** | Langsam (890 trials) | Robust | Moderat | Constraints-heavy |
+
+Note: default trial budget for thesis/adaptive workflows is `n_trials = 370` (see `docs/PARAMETER_POLICY_LEDGER.md`).
 
 ### Sampler Selection (CLI)
 

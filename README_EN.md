@@ -19,14 +19,14 @@ environment or prepend the canonical micromamba invocation.
 **Option A: CLI orchestration (RECOMMENDED):**
 
 ```bash
-# Runs inside managed env (see Installation below)
+# STEP 1: (optional) Thesis Sampler Suite — benchmark samplers (writes outputs/selected_sampler.json)
 micromamba run -n dataselector python -m dataselector thesis-sampler-suite --autoscale
 
-# STEP 2: Run XXL orchestration (Phases 0-5)
-micromamba run -n dataselector python -m dataselector xxl
+# STEP 2: Canonical thesis orchestration (production path — uses pinned sampler and policy defaults)
+micromamba run -n dataselector python -m dataselector thesis-orchestrate
 
-# Optional sampler override for XXL:
-micromamba run -n dataselector python -m dataselector xxl --best-sampler cmaes  # cmaes, qmc, or tpe
+# Optional: run thesis-pipeline directly from a validated snapshot
+micromamba run -n dataselector python -m dataselector thesis-pipeline --use-params outputs/runs/<run_id>/final_config.yaml
 ```
 
 **Option B: Manual steps (if you want to inspect intermediate results):**
@@ -58,7 +58,7 @@ micromamba run -n dataselector python -m dataselector xxl --best-sampler cmaes  
 
 **Two-command, thesis‑ready workflow:**
 - Sampler Suite (10 seeds, 1000 trials per sampler) → `outputs/selected_sampler.json`
-- XXL Pipeline (Phase 0–5) with Bootstrap UQ → `outputs/runs/...`
+- Thesis orchestration (`thesis-orchestrate` / `thesis-pipeline`) with production defaults (n_trials = 370, sampler = tpe) → `outputs/runs/...`
 
 ---
 
@@ -261,7 +261,8 @@ selection:
   min_distance_km: 28.5        # operational policy (geometric reference documented separately)
 
 optimization:
-  n_trials: 440                # default optuna trials
+  # Policy default for thesis/adaptive workflows: n_trials = 370 (see docs/PARAMETER_POLICY_LEDGER.md)
+  n_trials: 370
   n_candidates: 676            # all KDR100 tiles (100%)
 ```
 
