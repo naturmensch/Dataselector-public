@@ -75,13 +75,17 @@ def main():
     p.add_argument("--outdir", type=Path, default=Path("<qgis-data-root>"), help="Destination folder")
     p.add_argument("--overwrite", action="store_true", help="Overwrite existing files")
     p.add_argument("--dry-run", action="store_true", help="Show actions without copying")
+    p.add_argument("--flat", action="store_true", help="Do not create a subfolder inside --outdir; copy files directly into outdir")
     args = p.parse_args()
 
     if not args.csv.exists():
         print(f"[ERROR] CSV not found: {args.csv}", file=sys.stderr)
         sys.exit(2)
 
-    sys.exit(copy_selected(args.csv, args.outdir, args.overwrite, args.dry_run))
+    # by default create a subfolder inside outdir named after the selection CSV (helps keep runs isolated)
+    dest_dir = args.outdir if args.flat else (args.outdir / args.csv.stem)
+
+    sys.exit(copy_selected(args.csv, dest_dir, args.overwrite, args.dry_run))
 
 
 if __name__ == "__main__":
