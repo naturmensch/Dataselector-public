@@ -82,7 +82,8 @@ Dataselector/
 >
 > Hinweis: Falls unten Beispiele ohne Prefix stehen, fuehre sie im aktiven
 > `dataselector`-Env aus oder setze den Prefix explizit davor.
-
+>
+> Achtung: Verwende beim Start der Umgebung `micromamba run -n dataselector python -m dataselector <command>` **ohne** ein zusätzliches `--` zwischen `micromamba run -n dataselector` und dem Befehl. Einige Shells oder micromamba‑Versionen behandeln `--` speziell und verhindern dann die korrekte Weiterleitung von CLI‑Argumenten.
 ### Daten vorbereiten
 
 1. Platzieren Sie die Metadaten-Datei (`KDR100_foliage_with_files_epsg3857.csv` oder `all_png_tiles.dbf`) im `data/` Verzeichnis
