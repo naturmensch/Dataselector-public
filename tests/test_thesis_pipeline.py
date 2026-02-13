@@ -81,6 +81,16 @@ def test_thesis_pipeline_signature():
         assert param in params, f"Missing parameter: {param}"
 
 
+def test_run_thesis_pipeline_default_n_trials_is_370():
+    """Ensure default Optuna trial budget was raised to 370 (policy update)."""
+    import inspect
+
+    from dataselector.workflows.thesis_pipeline import run_thesis_pipeline, main
+
+    assert inspect.signature(run_thesis_pipeline).parameters["n_trials"].default == 370
+    assert inspect.signature(main).parameters["n_trials"].default == 370
+
+
 def test_run_thesis_pipeline_dry_run_skip_validation(tmp_path):
     """Regression guard for CLI dry-run path without validation imports."""
     from dataselector.workflows.thesis_pipeline import run_thesis_pipeline

@@ -98,7 +98,7 @@ def run_adaptive_pipeline(
     experiment_name: str = "adaptive_pipeline",
     csv_path: str | Path | None = None,
     n_lhs: int | None = None,
-    n_trials: int = 100,
+    n_trials: int = 370,
     n_boot: int = 500,
     n_candidates: int | None = None,
     n_dimensions: int = 9,
@@ -661,7 +661,7 @@ def run_adaptive_pipeline(
         },
         "n_trials": {
             "type": int,
-            "default": 100,
+            "default": 370,
             "help": "Number of Optuna trials",
         },
         "n_boot": {
@@ -779,7 +779,7 @@ def main(
     experiment_name: str = "adaptive_pipeline",
     csv_path: str | None = None,
     n_lhs: int | None = None,
-    n_trials: int = 100,
+    n_trials: int = 370,
     n_boot: int = 500,
     n_candidates: int | None = None,
     n_dimensions: int = 9,

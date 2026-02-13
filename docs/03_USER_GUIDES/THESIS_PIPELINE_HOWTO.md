@@ -109,7 +109,7 @@ Evidence:
 ### 4.0 Trigger-All Orchestration (Recommended)
 
 Use the canonical orchestrator to enforce scientific precompute -> snapshot ->
-validated run in one flow:
+validated run in one flow. Default production policy: `n_trials = 370`, `selection.optuna_sampler = tpe` (see `docs/PARAMETER_POLICY_LEDGER.md`).
 
 ```bash
 micromamba run -n dataselector python -m dataselector thesis-orchestrate \
