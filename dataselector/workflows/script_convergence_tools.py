@@ -341,14 +341,67 @@ def run_compare_min_distance_policies(
     }
 
 
-def run_compare_seed_vs_unseeded(*, config_path: str | None, output_dir: str | None) -> dict[str, str]:
-    from dataselector.workflows.compare_samplers import compare_seeded_vs_unseeded
-
-    out = compare_seeded_vs_unseeded(
-        config_path=Path(config_path) if config_path else None,
-        output_dir=Path(output_dir) if output_dir else None,
+def run_compare_seed_vs_unseeded(
+    *,
+    config_path: str | None,
+    output_dir: str | None,
+    seeds: list[int] | None = None,
+    n_samples: int | None = None,
+    alpha_visual: float | None = None,
+    beta_spatial: float | None = None,
+    gamma_temporal: float | None = None,
+    min_distance_km: float | None = None,
+    report_label: str | None = None,
+    run_production_quick: bool = False,
+    production_seeded_run: str | None = None,
+    production_unseeded_run: str | None = None,
+) -> dict[str, str]:
+    from dataselector.workflows.compare_samplers import (
+        compare_production_runs_quick_delta,
+        compare_seeded_vs_unseeded,
     )
-    return {"output_dir": str(out)}
+
+    default_seeded = "outputs/runs/thesis_orchestrate_full_20260213T151106Z_B"
+    default_unseeded = "outputs/runs/thesis_orchestrate_full_20260213T141421Z_B"
+
+    if output_dir:
+        root_out = Path(output_dir)
+    else:
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        root_out = Path("outputs/runs") / f"anchor_evidence_{ts}"
+    root_out.mkdir(parents=True, exist_ok=True)
+
+    isolated_out = root_out / "isolated"
+    isolated = compare_seeded_vs_unseeded(
+        config_path=Path(config_path) if config_path else None,
+        output_dir=isolated_out,
+        seeds=seeds,
+        n_samples=n_samples,
+        alpha_visual=alpha_visual,
+        beta_spatial=beta_spatial,
+        gamma_temporal=gamma_temporal,
+        min_distance_km=min_distance_km,
+        report_label=report_label,
+    )
+    result: dict[str, str] = {
+        "output_dir": str(root_out),
+        "isolated_output_dir": str(isolated),
+    }
+
+    if run_production_quick:
+        seeded_dir = Path(production_seeded_run or default_seeded)
+        unseeded_dir = Path(production_unseeded_run or default_unseeded)
+        production_out = root_out / "production_quick"
+        compare_production_runs_quick_delta(
+            seeded_run_dir=seeded_dir,
+            unseeded_run_dir=unseeded_dir,
+            output_dir=production_out,
+        )
+        result["production_quick_output_dir"] = str(production_out)
+        result["production_seeded_run"] = str(seeded_dir)
+        result["production_unseeded_run"] = str(unseeded_dir)
+
+    return result
 
 
 def run_seed_benchmark(*, seeds: list[int] | None, output_dir: str | None, subset_n: int) -> dict[str, str]:
@@ -697,13 +750,87 @@ def cli_compare_min_distance_policies(
             "default": None,
             "help": "Optional output directory",
         },
+        "seeds": {
+            "nargs": "+",
+            "type": int,
+            "default": None,
+            "help": "Optional seed panel (default: 42 43 44 45 46)",
+        },
+        "n_samples": {
+            "type": int,
+            "default": None,
+            "help": "Override fixed n_samples for isolated comparison",
+        },
+        "alpha_visual": {
+            "type": float,
+            "default": None,
+            "help": "Override alpha_visual for isolated comparison",
+        },
+        "beta_spatial": {
+            "type": float,
+            "default": None,
+            "help": "Override beta_spatial for isolated comparison",
+        },
+        "gamma_temporal": {
+            "type": float,
+            "default": None,
+            "help": "Override gamma_temporal for isolated comparison",
+        },
+        "min_distance_km": {
+            "type": float,
+            "default": None,
+            "help": "Override min_distance_km for isolated comparison",
+        },
+        "report_label": {
+            "type": str,
+            "default": None,
+            "help": "Optional report title for isolated markdown report",
+        },
+        "run_production_quick": {
+            "type": bool,
+            "action": "store_true",
+            "help": "Also build production quick-delta from two existing run dirs",
+        },
+        "production_seeded_run": {
+            "type": str,
+            "default": "outputs/runs/thesis_orchestrate_full_20260213T151106Z_B",
+            "help": "Seeded full-run directory for production quick-delta",
+        },
+        "production_unseeded_run": {
+            "type": str,
+            "default": "outputs/runs/thesis_orchestrate_full_20260213T141421Z_B",
+            "help": "Unseeded full-run directory for production quick-delta",
+        },
     },
 )
 def cli_compare_seed_vs_unseeded(
     config_path: str | None = None,
     output_dir: str | None = None,
+    seeds: list[int] | None = None,
+    n_samples: int | None = None,
+    alpha_visual: float | None = None,
+    beta_spatial: float | None = None,
+    gamma_temporal: float | None = None,
+    min_distance_km: float | None = None,
+    report_label: str | None = None,
+    run_production_quick: bool = False,
+    production_seeded_run: str | None = "outputs/runs/thesis_orchestrate_full_20260213T151106Z_B",
+    production_unseeded_run: str | None = "outputs/runs/thesis_orchestrate_full_20260213T141421Z_B",
 ) -> int:
-    result = run_compare_seed_vs_unseeded(config_path=config_path, output_dir=output_dir)
+    result = run_compare_seed_vs_unseeded(
+        config_path=config_path,
+        output_dir=output_dir,
+        seeds=seeds,
+        n_samples=n_samples,
+        alpha_visual=alpha_visual,
+        beta_spatial=beta_spatial,
+        gamma_temporal=gamma_temporal,
+        min_distance_km=min_distance_km,
+        report_label=report_label,
+        run_production_quick=run_production_quick,
+        production_seeded_run=production_seeded_run,
+        production_unseeded_run=production_unseeded_run,
+    )
     print(json.dumps(result, indent=2))
     return 0
 

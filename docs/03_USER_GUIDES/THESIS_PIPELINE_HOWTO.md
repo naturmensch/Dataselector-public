@@ -65,10 +65,10 @@ This determines:
 2. Optuna sampler (`TPESampler`, `QMCSampler`, `CmaEsSampler`)
 3. fixed `n_initial_final` and run seed.
 
-### 3.1 Optional evidence: Hamburg-seeded vs unseeded/random baseline
+### 3.1 Optional supplementary diagnostics: Hamburg-seeded vs unseeded/random baseline
 
-If Hamburg is already annotated and you want to justify starting with Hamburg as a
-seed, create an explicit comparison artifact:
+If Hamburg is already annotated and you want to characterize seed behavior, create
+an explicit comparison artifact:
 
 ```bash
 micromamba run -n dataselector python - <<'PY'
@@ -90,6 +90,8 @@ Interpretation target:
 2. compare diversity/spatial metrics
 3. compare objective values over multiple seeds (`mean`, `std`, worst-seed)
 4. document whether Hamburg-seeding changes outcome materially or only marginally
+5. treat this as supplementary diagnostics only; primary thesis claims remain
+   `Core-only` under the Core+Case contract
 
 ### 3.2 Spatial Distance Policy (Current Thesis Standard)
 
@@ -222,6 +224,47 @@ For thesis workflows, responsibilities are intentionally separated:
    and leakage checks, keep `--build-splits false` in Dataselector runs.
 4. document this boundary explicitly in the thesis methods section as:
    `Selection contract (Dataselector)` vs. `Evaluation contract (training tool)`.
+
+### 4.0.1.5 Core+Case Contract (Hamburg als Zusatzfall)
+
+Für thesis-grade Vergleichbarkeit gilt:
+
+1. Core-Selektion ist die primäre wissenschaftliche Stichprobe.
+2. Case-Tiles (z. B. Hamburg) werden separat geführt und erst danach angehängt.
+3. Primärmetriken sind als `Core-only` zu interpretieren.
+
+Relevante Config-Keys:
+
+1. `selection.case_tile_names`
+2. `selection.case_exclude_from_core` (empfohlen: `true`)
+3. `selection.case_attach_mode` (`append_unique|append_all`)
+
+Aktueller Default in `config/pipeline_config.yaml`:
+`selection.case_tile_names: ["Hamburg"]`.
+
+Erwartete Run-Artefakte:
+
+1. `selection_core.csv`
+2. `selection_case.csv`
+3. `selection_final_with_cases.csv`
+4. `selection_contract.json`
+
+### 4.0.1.6 Validation/UQ Contract
+
+Für inferenzielle Unsicherheitsaussagen:
+
+1. `validation.replicate_mode: bootstrap_candidates`
+2. `validation.n_bootstrap` (Default: `200`)
+3. `validation.bootstrap_sample_frac` (Default: `1.0`)
+
+`seed_replay` bleibt als deterministischer Replay-Check erhalten, ist aber kein
+Ersatz für unabhängige inferenzielle Replikation.
+
+Erwartete Validation-Artefakte:
+
+1. `validation/validation_method_contract.md`
+2. `validation/validation_results_bootstrap.csv`
+3. `validation/validation_summary_stats.csv`
 
 Sampler evidence for contract validation is persisted run-locally at:
 `outputs/runs/<run_id>/parameter_resolution/sampler_resolution/selected_sampler.json`.
@@ -562,6 +605,29 @@ Trainings-Repo autoritativ (`split_authority = masterarbeit_strassenerkennung_cv
 
 ### 9.1 Handoff-Artefakte erzeugen
 
+Für den aktuellen patch-basierten Thesis-Datensatz (z. B. `29x2`) ist der
+empfohlene Flow:
+
+```bash
+bash scripts/handoff_check.sh prepare-patches \
+  --run-dir outputs/runs/<run_id> \
+  --out handoff/<selection_id>
+
+bash scripts/handoff_check.sh verify-patches \
+  --handoff-dir handoff/<selection_id>
+```
+
+`verify-patches` prüft:
+
+1. Handoff-Schema (`selected_patches.csv`, `patch_handoff_manifest.json`, `patch_mask_requirements.csv`, `patch_split_manifest.json`)
+2. Konsistenz von Patch-Bounds/Fold-Zuordnung (`patch_to_fold`)
+3. Bildverfügbarkeit unter `data/images` (Quell-Tiles)
+4. PNG-Sidecars (`*.png.aux.xml`) für Quell-Tiles
+5. Patch-Quicklooks inkl. Quicklook-Sidecars im Handoff (`quicklooks/*.png`, `quicklooks/*.png.aux.xml`)
+6. Exclusion-Policy-Verstöße auf Tile-Ebene
+
+Der tile-basierte Legacy-Flow bleibt verfügbar:
+
 ```bash
 bash scripts/handoff_check.sh prepare \
   --run-dir outputs/runs/<run_id> \
@@ -591,9 +657,15 @@ Exit-Codes:
 # Handoff-Ordner übertragen
 rsync -avh handoff/<selection_id>/ <server>:/path/to/handoff/<selection_id>/
 
-# Nur geforderte Masken übertragen
-cut -d, -f2 handoff/<selection_id>/mask_requirements.csv | tail -n +2 > /tmp/mask_files.txt
+# Nur geforderte Masken übertragen (patch-basiert)
+cut -d, -f2 handoff/<selection_id>/patch_mask_requirements.csv | tail -n +2 > /tmp/mask_files.txt
 rsync -avh --files-from=/tmp/mask_files.txt annotations/masks/ <server>:/path/to/masks/
+```
+
+Für den tile-basierten Legacy-Flow stattdessen:
+
+```bash
+cut -d, -f2 handoff/<selection_id>/mask_requirements.csv | tail -n +2 > /tmp/mask_files.txt
 ```
 
 Falls Rohkarten auf dem Server fehlen: zusätzlich selektierte Bilder inklusive

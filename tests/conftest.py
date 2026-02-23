@@ -35,6 +35,7 @@ def _register_all_cli_commands():
             "dataselector.tools.clean",
             "dataselector.tools.docs_link",
             "dataselector.workflows.adaptive_pipeline",
+            "dataselector.workflows.annotation_plan",
             "dataselector.workflows.autoscale",
             "dataselector.workflows.benchmark_sampling",
             "dataselector.workflows.bootstrap",

@@ -14,3 +14,21 @@ rules:
     match:
       shortName:
         - KDR_155b
+  - id: exclude_kdr_039_out_of_temporal_scope
+    class: temporal_scope_outlier
+    action: exclude_from_candidate_pool
+    rationale: >
+      KDR_039 (1980) lies outside the historical core analysis window used for
+      thesis-level temporal metrics and is excluded to avoid temporal skew.
+    match:
+      shortName:
+        - KDR_039
+  - id: exclude_kdr_521_out_of_temporal_scope
+    class: temporal_scope_outlier
+    action: exclude_from_candidate_pool
+    rationale: >
+      KDR_521 (1985) lies outside the historical core analysis window used for
+      thesis-level temporal metrics and is excluded to avoid temporal skew.
+    match:
+      shortName:
+        - KDR_521

@@ -1,8 +1,10 @@
 """Tests for thesis pipeline workflow."""
 
 import json
+import warnings
 from pathlib import Path
 
+import pandas as pd
 import pytest
 
 
@@ -317,6 +319,7 @@ def test_run_thesis_pipeline_preselection_forwarding_and_dedup(tmp_path, monkeyp
         pre_names=["Kiel", "Hamburg", "Kiel"],
         pre_indices=[3, 3, 1],
         hamburg=True,
+        case_exclude_from_core=False,
         validation_seeds=[42, 99],
         validation_min_distances=[28.5, 35.0],
     )
@@ -338,6 +341,9 @@ def test_run_thesis_pipeline_preselection_forwarding_and_dedup(tmp_path, monkeyp
     assert run_meta["extra"]["pre_selected_names"] == ["Kiel", "Hamburg"]
     assert run_meta["extra"]["pre_selected_indices"] == [3, 1]
     assert run_meta["extra"]["hamburg_shortcut"] is True
+    assert run_meta["extra"]["case_exclude_from_core"] is False
+    assert run_meta["extra"]["case_attach_mode"] == "append_unique"
+    assert run_meta["extra"]["case_tile_names"] == ["Hamburg"]
     assert run_meta["extra"]["n_samples"] == 37
     assert run_meta["extra"]["validation_seeds"] == [42, 99]
     assert run_meta["extra"]["validation_min_distances"] == [28.5, 35.0]
@@ -393,6 +399,162 @@ def test_run_thesis_pipeline_writes_central_parameter_provenance(tmp_path, monke
     assert "alpha_visual" in params["selection"]["_provenance"]
     assert "n_clusters" in params["clustering"]["_provenance"]
     assert "batch_size" in params["feature_extraction"]["_provenance"]
+
+
+def test_run_thesis_pipeline_core_case_artifacts(tmp_path, monkeypatch):
+    """Core+Case contract should split core selection and case append deterministically."""
+    from dataselector.workflows import thesis_pipeline as mod
+
+    ws = tmp_path
+    (ws / "data").mkdir(parents=True, exist_ok=True)
+    (ws / "config").mkdir(parents=True, exist_ok=True)
+    output_dir = ws / "outputs"
+    (output_dir / "tuning_weights").mkdir(parents=True, exist_ok=True)
+
+    pd.DataFrame(
+        {
+            "shortName": ["KDR_146", "KDR_002"],
+            "longName": ["hamburg_tile", "kiel_tile"],
+            "city": ["Hamburg", "Kiel"],
+            "ul_x": [500000.0, 501000.0],
+            "ul_y": [5900000.0, 5901000.0],
+            "lr_x": [500100.0, 501100.0],
+            "lr_y": [5899900.0, 5900900.0],
+            "year": [1910, 1911],
+        }
+    ).to_csv(ws / "data" / "new_all_tiles.csv", index=False)
+    (ws / "config" / "pipeline_config.yaml").write_text(
+        _minimal_resolved_config(n_samples=2),
+        encoding="utf-8",
+    )
+    (output_dir / "tuning_weights" / "meta.json").write_text(
+        json.dumps(
+            {"best_metrics": {"alpha": 0.4, "beta": 0.3, "gamma": 0.3}},
+            ensure_ascii=True,
+        ),
+        encoding="utf-8",
+    )
+    pd.DataFrame(
+        {
+            "shortName": ["KDR_146", "KDR_002"],
+            "longName": ["hamburg_tile", "kiel_tile"],
+            "city": ["Hamburg", "Kiel"],
+            "year": [1910, 1911],
+            "selection_rank": [0, 1],
+        }
+    ).to_csv(
+        output_dir / "tuning_weights" / "selection_a0.4_b0.3_g0.3.csv",
+        index=False,
+    )
+
+    monkeypatch.chdir(ws)
+    monkeypatch.setattr(
+        "dataselector.workflows.generate_reports.generate_thesis_final_report",
+        lambda **_kwargs: None,
+    )
+
+    success = mod.run_thesis_pipeline(
+        n_lhs=5,
+        n_trials=2,
+        skip_exploration=True,
+        skip_optimization=True,
+        skip_validation=True,
+        dry_run=False,
+        output_dir=output_dir,
+        seed=11,
+        case_names=["Hamburg"],
+        case_exclude_from_core=True,
+        case_attach_mode="append_unique",
+    )
+    assert success is True
+
+    core_df = pd.read_csv(output_dir / "selection_core.csv")
+    case_df = pd.read_csv(output_dir / "selection_case.csv")
+    final_df = pd.read_csv(output_dir / "selection_final_with_cases.csv")
+    contract = json.loads((output_dir / "selection_contract.json").read_text("utf-8"))
+
+    assert set(core_df["city"]) == {"Kiel"}
+    assert set(case_df["city"]) == {"Hamburg"}
+    assert set(final_df["city"]) == {"Hamburg", "Kiel"}
+    assert contract["case_exclude_from_core"] is True
+    assert contract["case_attach_mode"] == "append_unique"
+    assert contract["core_count"] == 1
+    assert contract["case_count_resolved"] == 1
+    assert contract["case_count_attached"] == 1
+    assert contract["case_count"] == 1
+    assert contract["final_count"] == 2
+
+
+def test_run_thesis_pipeline_core_case_empty_append_has_no_futurewarning(
+    tmp_path, monkeypatch
+):
+    """append_unique with already-present case tile must not emit pandas FutureWarning."""
+    from dataselector.workflows import thesis_pipeline as mod
+
+    ws = tmp_path
+    (ws / "data").mkdir(parents=True, exist_ok=True)
+    (ws / "config").mkdir(parents=True, exist_ok=True)
+    output_dir = ws / "outputs"
+    (output_dir / "tuning_weights").mkdir(parents=True, exist_ok=True)
+
+    pd.DataFrame(
+        {
+            "shortName": ["KDR_146", "KDR_002"],
+            "longName": ["hamburg_tile", "kiel_tile"],
+            "city": ["Hamburg", "Kiel"],
+            "ul_x": [500000.0, 501000.0],
+            "ul_y": [5900000.0, 5901000.0],
+            "lr_x": [500100.0, 501100.0],
+            "lr_y": [5899900.0, 5900900.0],
+            "year": [1910, 1911],
+        }
+    ).to_csv(ws / "data" / "new_all_tiles.csv", index=False)
+    (ws / "config" / "pipeline_config.yaml").write_text(
+        _minimal_resolved_config(n_samples=2),
+        encoding="utf-8",
+    )
+    (output_dir / "tuning_weights" / "meta.json").write_text(
+        json.dumps({"best_metrics": {"alpha": 0.4, "beta": 0.3, "gamma": 0.3}}),
+        encoding="utf-8",
+    )
+    pd.DataFrame(
+        {
+            "shortName": ["KDR_146", "KDR_002"],
+            "longName": ["hamburg_tile", "kiel_tile"],
+            "city": ["Hamburg", "Kiel"],
+            "year": [1910, 1911],
+            "selection_rank": [0, 1],
+        }
+    ).to_csv(output_dir / "tuning_weights" / "selection_a0.4_b0.3_g0.3.csv", index=False)
+
+    monkeypatch.chdir(ws)
+    monkeypatch.setattr(
+        "dataselector.workflows.generate_reports.generate_thesis_final_report",
+        lambda **_kwargs: None,
+    )
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("error", category=FutureWarning)
+        success = mod.run_thesis_pipeline(
+            n_lhs=5,
+            n_trials=2,
+            skip_exploration=True,
+            skip_optimization=True,
+            skip_validation=True,
+            dry_run=False,
+            output_dir=output_dir,
+            seed=11,
+            case_names=["Hamburg"],
+            case_exclude_from_core=False,
+            case_attach_mode="append_unique",
+        )
+
+    assert success is True
+    final_df = pd.read_csv(output_dir / "selection_final_with_cases.csv")
+    contract = json.loads((output_dir / "selection_contract.json").read_text("utf-8"))
+    assert set(final_df["city"]) == {"Hamburg", "Kiel"}
+    assert contract["case_count_attached"] == 0
+    assert contract["final_count"] == 2
 
 
 def test_run_thesis_pipeline_compute_params_uses_autoscale_artifact(tmp_path, monkeypatch):
@@ -602,6 +764,12 @@ def test_cli_integration():
     assert "--pre-names" in out
     assert "--pre-indices" in out
     assert "--hamburg" in out
+    assert "--case-names" in out
+    assert "--case-exclude-from-core" in out
+    assert "--case-attach-mode" in out
     assert "--n-samples" in out
     assert "--validation-seeds" in out
     assert "--validation-min-distances" in out
+    assert "--validation-replicate-mode" in out
+    assert "--validation-n-bootstrap" in out
+    assert "--validation-bootstrap-sample-frac" in out

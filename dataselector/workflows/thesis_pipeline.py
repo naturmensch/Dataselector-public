@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+import pandas as pd
+
 from dataselector.cli_decorators import cli_command
 from dataselector.runtime import activate_repro_mode, write_run_metadata
 from dataselector.runtime.parameter_snapshot import (
@@ -358,6 +360,243 @@ def _resolve_computed_selection_values(
     return {}, None, None, None
 
 
+def _parse_case_attach_mode(value: Any) -> str:
+    mode = str(value).strip().lower()
+    allowed = {"append_unique", "append_all"}
+    if mode not in allowed:
+        raise ValueError(
+            "selection.case_attach_mode must be one of append_unique|append_all "
+            f"(got {value!r})"
+        )
+    return mode
+
+
+def _dedupe_str_list(values: list[Any] | None) -> list[str]:
+    if not values:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in values:
+        text = str(raw).strip()
+        if not text:
+            continue
+        key = text.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(text)
+    return out
+
+
+def _resolve_named_indices(
+    metadata: pd.DataFrame,
+    names: list[str],
+    *,
+    alias_map: dict[str, list[str]] | None = None,
+) -> tuple[list[int], dict[int, str], list[str]]:
+    resolved: list[int] = []
+    index_to_name: dict[int, str] = {}
+    unresolved: list[str] = []
+    aliases = alias_map or {"hamburg": ["KDR_146"]}
+
+    for nm in names:
+        text = str(nm).strip()
+        if not text:
+            continue
+        terms = [text]
+        terms.extend(aliases.get(text.lower(), []))
+        mask = pd.Series(False, index=metadata.index)
+        for term in terms:
+            needle = str(term).strip().lower()
+            if not needle:
+                continue
+            if "longName" in metadata.columns:
+                mask = mask | metadata["longName"].astype(str).str.lower().str.contains(
+                    needle
+                )
+            if "shortName" in metadata.columns:
+                mask = mask | (
+                    metadata["shortName"].astype(str).str.lower() == needle
+                )
+            if "city" in metadata.columns:
+                mask = mask | (metadata["city"].astype(str).str.lower() == needle)
+        idxs = [int(i) for i in mask[mask].index.tolist()]
+        if not idxs:
+            unresolved.append(text)
+            continue
+        for idx in idxs:
+            if idx not in index_to_name:
+                index_to_name[idx] = text
+            resolved.append(idx)
+    resolved = list(dict.fromkeys(int(i) for i in resolved))
+    return resolved, index_to_name, unresolved
+
+
+def _find_primary_selection_csv(output_dir: Path) -> tuple[Path | None, str]:
+    tuning_meta_json = output_dir / "tuning_weights" / "meta.json"
+    tuning_weights_dir = output_dir / "tuning_weights"
+    selected_tiles_file: Path | None = None
+    selected_from = "not_available"
+
+    if tuning_meta_json.exists():
+        try:
+            tuning_meta = json.loads(tuning_meta_json.read_text(encoding="utf-8"))
+            best_metrics = tuning_meta.get("best_metrics", {})
+            alpha = best_metrics.get("alpha")
+            beta = best_metrics.get("beta")
+            gamma = best_metrics.get("gamma")
+            if alpha is not None and beta is not None and gamma is not None:
+                exact_name = f"selection_a{alpha}_b{beta}_g{gamma}.csv"
+                exact_path = tuning_weights_dir / exact_name
+                if exact_path.exists():
+                    selected_tiles_file = exact_path
+                else:
+                    pattern = (
+                        f"selection_a{float(alpha):.6f}*_b{float(beta):.6f}*_g{float(gamma):.6f}*.csv"
+                    )
+                    candidates = sorted(tuning_weights_dir.glob(pattern))
+                    if candidates:
+                        selected_tiles_file = candidates[0]
+                if selected_tiles_file is not None:
+                    selected_from = "tuning_weights_best_metrics"
+        except Exception:
+            selected_tiles_file = None
+
+    if selected_tiles_file is None:
+        validation_selection_files = sorted(
+            (output_dir / "validation").glob("selection_a*_b*_g*_d*_s*.csv")
+        )
+        if validation_selection_files:
+            selected_tiles_file = validation_selection_files[0]
+            selected_from = "validation_fallback"
+
+    return selected_tiles_file, selected_from
+
+
+def _materialize_core_case_artifacts(
+    *,
+    output_dir: Path,
+    case_names: list[str],
+    case_exclude_from_core: bool,
+    case_attach_mode: str,
+) -> dict[str, Any]:
+    from dataselector.data.io import load_metadata
+    from dataselector.data.metadata_source import canonical_metadata_path
+
+    metadata = load_metadata(
+        str(canonical_metadata_path(Path.cwd())),
+        resolve_images=False,
+    )
+    primary_sel_path, selection_source = _find_primary_selection_csv(output_dir)
+
+    core_raw: pd.DataFrame
+    if primary_sel_path is not None and primary_sel_path.exists():
+        core_raw = pd.read_csv(primary_sel_path)
+    else:
+        core_raw = pd.DataFrame(columns=list(metadata.columns))
+
+    if "selection_rank" in core_raw.columns:
+        core_raw["selection_rank"] = (
+            pd.to_numeric(core_raw["selection_rank"], errors="coerce")
+            .fillna(0)
+            .astype(int)
+        )
+        core_raw = core_raw.sort_values("selection_rank").reset_index(drop=True)
+    else:
+        core_raw = core_raw.reset_index(drop=True)
+        core_raw["selection_rank"] = range(len(core_raw))
+
+    case_indices, idx_to_case_name, unresolved_cases = _resolve_named_indices(
+        metadata,
+        case_names,
+    )
+    case_df = metadata.iloc[case_indices].copy() if case_indices else metadata.iloc[[]].copy()
+    if len(case_df) > 0:
+        case_df["case_name"] = [idx_to_case_name.get(int(i), "") for i in case_df.index]
+        case_df["case_reason"] = "manual_case_tile"
+        case_df = case_df.reset_index(drop=True)
+    case_df["selection_rank"] = range(len(case_df))
+
+    def _key_series(df: pd.DataFrame) -> pd.Series:
+        if "shortName" in df.columns:
+            return df["shortName"].astype(str).str.lower()
+        if "longName" in df.columns:
+            return df["longName"].astype(str).str.lower()
+        return pd.Series([str(i) for i in range(len(df))], index=df.index)
+
+    core_keys = _key_series(core_raw) if len(core_raw) > 0 else pd.Series(dtype=str)
+    case_keys = set(_key_series(case_df).tolist()) if len(case_df) > 0 else set()
+
+    if case_exclude_from_core and len(core_raw) > 0 and case_keys:
+        keep_mask = ~core_keys.isin(case_keys)
+        core_df = core_raw.loc[keep_mask].reset_index(drop=True)
+    else:
+        core_df = core_raw.copy().reset_index(drop=True)
+    core_df["selection_rank"] = range(len(core_df))
+
+    if case_attach_mode == "append_all":
+        append_df = case_df.copy()
+    else:
+        if len(case_df) == 0:
+            append_df = case_df.copy()
+        else:
+            existing_keys = set(_key_series(core_df).tolist()) if len(core_df) > 0 else set()
+            append_mask = ~_key_series(case_df).isin(existing_keys)
+            append_df = case_df.loc[append_mask].reset_index(drop=True)
+
+    if len(core_df) == 0:
+        final_df = append_df.copy().reset_index(drop=True)
+    elif len(append_df) == 0:
+        final_df = core_df.copy().reset_index(drop=True)
+    else:
+        final_df = pd.concat([core_df, append_df], ignore_index=True)
+    if len(final_df) > 0:
+        final_df["selection_rank"] = range(len(final_df))
+
+    core_path = output_dir / "selection_core.csv"
+    case_path = output_dir / "selection_case.csv"
+    final_path = output_dir / "selection_final_with_cases.csv"
+    contract_path = output_dir / "selection_contract.json"
+
+    core_df.to_csv(core_path, index=False)
+    case_df.to_csv(case_path, index=False)
+    final_df.to_csv(final_path, index=False)
+
+    contract = {
+        "contract_version": "core_case_v1",
+        "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "selection_source": selection_source,
+        "selection_source_file": None,
+        "case_tile_names": case_names,
+        "case_exclude_from_core": bool(case_exclude_from_core),
+        "case_attach_mode": case_attach_mode,
+        "core_count_raw": int(len(core_raw)),
+        "core_count": int(len(core_df)),
+        "case_count_resolved": int(len(case_df)),
+        "case_count_attached": int(len(append_df)),
+        "case_count": int(len(case_df)),
+        "final_count": int(len(final_df)),
+        "unresolved_case_names": unresolved_cases,
+    }
+    if primary_sel_path is not None and primary_sel_path.exists():
+        try:
+            contract["selection_source_file"] = str(primary_sel_path.relative_to(output_dir))
+        except Exception:
+            contract["selection_source_file"] = str(primary_sel_path)
+    contract_path.write_text(
+        json.dumps(contract, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+    return {
+        "selection_core_path": str(core_path),
+        "selection_case_path": str(case_path),
+        "selection_final_with_cases_path": str(final_path),
+        "selection_contract_path": str(contract_path),
+        **contract,
+    }
+
+
 def run_thesis_pipeline(
     n_lhs: Optional[int] = None,
     n_samples: Optional[int] = None,
@@ -380,8 +619,14 @@ def run_thesis_pipeline(
     pre_names: Optional[list[str]] = None,
     pre_indices: Optional[list[int]] = None,
     hamburg: bool = False,
+    case_names: Optional[list[str]] = None,
+    case_exclude_from_core: Optional[bool] = None,
+    case_attach_mode: Optional[str] = None,
     validation_seeds: Optional[list[int]] = None,
     validation_min_distances: Optional[list[float]] = None,
+    validation_replicate_mode: Optional[str] = None,
+    validation_n_bootstrap: Optional[int] = None,
+    validation_bootstrap_sample_frac: Optional[float] = None,
 ) -> bool:
     """
     Run complete thesis optimization pipeline.
@@ -404,8 +649,14 @@ def run_thesis_pipeline(
         pre_names: Optional pre-selected tile names
         pre_indices: Optional pre-selected tile indices
         hamburg: Convenience flag to add "Hamburg" to pre-selected names
+        case_names: Optional case tile names (appended after core selection)
+        case_exclude_from_core: Exclude case tiles from core selection
+        case_attach_mode: How to attach case tiles (`append_unique` or `append_all`)
         validation_seeds: Optional validation seed list (quick gate default: [seed])
         validation_min_distances: Optional min_distance list for validation
+        validation_replicate_mode: Validation replicate mode (`seed_replay` or `bootstrap_candidates`)
+        validation_n_bootstrap: Number of bootstrap replicates for validation
+        validation_bootstrap_sample_frac: Candidate sample fraction for bootstrap replicates
 
     Returns:
         True if all phases succeeded, False otherwise
@@ -437,6 +688,13 @@ def run_thesis_pipeline(
         os.environ.setdefault("DATASELECTOR_METRIC_EPSG", "25832")
 
     metadata_crs_info: dict[str, Any] = {}
+    metadata_tile_exclusion_info: dict[str, Any] = {
+        "tile_exclusions_applied": None,
+        "tile_exclusions_count": None,
+        "tile_excluded_shortnames": None,
+        "tile_exclusion_policy_sha256": None,
+        "effective_tile_count": None,
+    }
     try:
         from dataselector.data.io import load_metadata
 
@@ -451,6 +709,14 @@ def run_thesis_pipeline(
             "transform_applied": bool(md_preview.attrs.get("transform_applied"))
             if hasattr(md_preview, "attrs")
             else False,
+        }
+        attrs = md_preview.attrs if hasattr(md_preview, "attrs") else {}
+        metadata_tile_exclusion_info = {
+            "tile_exclusions_applied": bool(attrs.get("tile_exclusions_applied", False)),
+            "tile_exclusions_count": int(attrs.get("tile_exclusions_count", 0)),
+            "tile_excluded_shortnames": list(attrs.get("tile_excluded_shortnames", [])),
+            "tile_exclusion_policy_sha256": attrs.get("tile_exclusion_policy_sha256"),
+            "effective_tile_count": int(attrs.get("effective_tile_count", len(md_preview))),
         }
     except Exception as exc:
         metadata_crs_info = {
@@ -918,6 +1184,146 @@ def run_thesis_pipeline(
     else:
         validation_min_distances = [float(d) for d in validation_min_distances]
 
+    if validation_replicate_mode is None:
+        cfg_validation_mode = _config_first(
+            parameters,
+            ["validation.replicate_mode", "selection.validation_replicate_mode"],
+        )
+        if cfg_validation_mode is None:
+            validation_replicate_mode = "bootstrap_candidates"
+            _record_param_provenance(
+                parameters,
+                "selection",
+                "validation_replicate_mode",
+                method="workflow_default_policy",
+                compute_args={"default": "bootstrap_candidates"},
+            )
+        else:
+            validation_replicate_mode = str(cfg_validation_mode).strip().lower()
+            _record_param_provenance(
+                parameters,
+                "selection",
+                "validation_replicate_mode",
+                method=policy_method,
+                source_file=policy_source_file,
+                source_hash=policy_source_hash,
+                compute_args={"source": "config"},
+            )
+    else:
+        validation_replicate_mode = str(validation_replicate_mode).strip().lower()
+        _record_param_provenance(
+            parameters,
+            "selection",
+            "validation_replicate_mode",
+            method="explicit_cli",
+            compute_args={"source": "cli"},
+        )
+
+    if validation_replicate_mode not in {"seed_replay", "bootstrap_candidates"}:
+        raise ValueError(
+            "validation_replicate_mode must be seed_replay|bootstrap_candidates "
+            f"(got {validation_replicate_mode!r})"
+        )
+    parameters.setdefault("selection", {})[
+        "validation_replicate_mode"
+    ] = validation_replicate_mode
+
+    if validation_n_bootstrap is None:
+        cfg_n_boot = _config_first(
+            parameters,
+            ["validation.n_bootstrap", "selection.validation_n_bootstrap"],
+        )
+        validation_n_bootstrap = (
+            int(cfg_n_boot) if cfg_n_boot is not None else 200
+        )
+    else:
+        validation_n_bootstrap = int(validation_n_bootstrap)
+    if validation_n_bootstrap <= 0:
+        raise ValueError("validation_n_bootstrap must be > 0")
+    parameters.setdefault("selection", {})["validation_n_bootstrap"] = int(
+        validation_n_bootstrap
+    )
+
+    if validation_bootstrap_sample_frac is None:
+        cfg_frac = _config_first(
+            parameters,
+            [
+                "validation.bootstrap_sample_frac",
+                "selection.validation_bootstrap_sample_frac",
+            ],
+        )
+        validation_bootstrap_sample_frac = (
+            float(cfg_frac) if cfg_frac is not None else 1.0
+        )
+    else:
+        validation_bootstrap_sample_frac = float(validation_bootstrap_sample_frac)
+    if validation_bootstrap_sample_frac <= 0.0:
+        raise ValueError("validation_bootstrap_sample_frac must be > 0")
+    parameters.setdefault("selection", {})[
+        "validation_bootstrap_sample_frac"
+    ] = float(validation_bootstrap_sample_frac)
+
+    # Core+Case contract resolution
+    cfg_case_names = _config_first(
+        parameters,
+        ["selection.case_tile_names", "selection.case_names"],
+    )
+    if case_names is None and cfg_case_names is None:
+        case_names_list: list[str] = []
+    elif case_names is None:
+        if not isinstance(cfg_case_names, (list, tuple)):
+            raise ValueError(
+                "selection.case_tile_names must be a list when configured "
+                f"(got {type(cfg_case_names)})"
+            )
+        case_names_list = [str(v) for v in cfg_case_names]
+    else:
+        case_names_list = [str(v) for v in case_names]
+
+    # Hamburg convenience now maps to case tile by default.
+    if hamburg:
+        case_names_list.append("Hamburg")
+    case_names_list = _dedupe_str_list(case_names_list)
+    parameters.setdefault("selection", {})["case_tile_names"] = list(case_names_list)
+    _record_param_provenance(
+        parameters,
+        "selection",
+        "case_tile_names",
+        method="explicit_cli"
+        if case_names is not None or hamburg
+        else policy_method if cfg_case_names is not None else "workflow_default_policy",
+        source_file=policy_source_file if cfg_case_names is not None else None,
+        source_hash=policy_source_hash if cfg_case_names is not None else None,
+    )
+
+    if case_exclude_from_core is None:
+        cfg_case_exclude = _config_first(
+            parameters,
+            ["selection.case_exclude_from_core"],
+        )
+        case_exclude_from_core_flag = (
+            _parse_bool(cfg_case_exclude, label="selection.case_exclude_from_core")
+            if cfg_case_exclude is not None
+            else True
+        )
+    else:
+        case_exclude_from_core_flag = _parse_bool(
+            case_exclude_from_core,
+            label="case_exclude_from_core",
+        )
+    parameters.setdefault("selection", {})["case_exclude_from_core"] = bool(
+        case_exclude_from_core_flag
+    )
+
+    if case_attach_mode is None:
+        cfg_attach_mode = _config_first(parameters, ["selection.case_attach_mode"])
+        case_attach_mode_resolved = _parse_case_attach_mode(
+            cfg_attach_mode if cfg_attach_mode is not None else "append_unique"
+        )
+    else:
+        case_attach_mode_resolved = _parse_case_attach_mode(case_attach_mode)
+    parameters.setdefault("selection", {})["case_attach_mode"] = case_attach_mode_resolved
+
     resolved_sampler, sampler_source, sampler_artifact_path = _resolve_optuna_sampler(
         config=parameters,
         output_dir=output_dir,
@@ -983,11 +1389,14 @@ def run_thesis_pipeline(
         notes="Optuna trial budget for thesis pipeline",
     )
 
-    pre_names_list = list(pre_names) if pre_names is not None else []
-    if hamburg:
+    pre_names_list = _dedupe_str_list(list(pre_names) if pre_names is not None else [])
+    if not case_exclude_from_core_flag and hamburg and "Hamburg".lower() not in {
+        n.lower() for n in pre_names_list
+    }:
         pre_names_list.append("Hamburg")
-    # Keep deterministic ordering while removing duplicates.
-    pre_names_list = list(dict.fromkeys(pre_names_list))
+    if case_exclude_from_core_flag and case_names_list:
+        blocked = {name.lower() for name in case_names_list}
+        pre_names_list = [nm for nm in pre_names_list if nm.lower() not in blocked]
     pre_indices_list = (
         list(dict.fromkeys(int(idx) for idx in pre_indices))
         if pre_indices is not None
@@ -1139,7 +1548,19 @@ def run_thesis_pipeline(
                     "computed_selection_method": computed_selection_method,
                     "computed_selection_source_file": computed_selection_source_file,
                     "computed_selection_source_hash": computed_selection_source_hash,
+                    "validation_seeds": validation_seeds,
+                    "validation_min_distances": validation_min_distances,
+                    "validation_replicate_mode": validation_replicate_mode,
+                    "validation_n_bootstrap": validation_n_bootstrap,
+                    "validation_bootstrap_sample_frac": validation_bootstrap_sample_frac,
+                    "pre_selected_names": pre_names_list if pre_names_list else None,
+                    "pre_selected_indices": pre_indices_list if pre_indices_list else None,
+                    "hamburg_shortcut": bool(hamburg),
+                    "case_tile_names": case_names_list if case_names_list else None,
+                    "case_exclude_from_core": bool(case_exclude_from_core_flag),
+                    "case_attach_mode": case_attach_mode_resolved,
                     "metadata_crs": metadata_crs_info,
+                    **metadata_tile_exclusion_info,
                 },
             )
         except Exception as exc:
@@ -1158,9 +1579,12 @@ def run_thesis_pipeline(
         f"n_trials: {n_trials}"
     )
     print(
-        "validation: seeds={}, min_distances={}".format(
+        "validation: seeds={}, min_distances={}, mode={}, n_bootstrap={}, bootstrap_sample_frac={}".format(
             validation_seeds,
             validation_min_distances,
+            validation_replicate_mode,
+            validation_n_bootstrap,
+            validation_bootstrap_sample_frac,
         )
     )
     print(
@@ -1183,9 +1607,17 @@ def run_thesis_pipeline(
             pre_indices_list if pre_indices_list else None,
         )
     )
+    print(
+        "Core+Case: case_names={}, case_exclude_from_core={}, case_attach_mode={}".format(
+            case_names_list if case_names_list else None,
+            bool(case_exclude_from_core_flag),
+            case_attach_mode_resolved,
+        )
+    )
     print("=" * 80)
 
     all_success = True
+    selection_contract_extra: dict[str, Any] = {}
 
     # Phase 1: Exploration (LHS Sweep)
     if not skip_exploration:
@@ -1323,6 +1755,9 @@ def run_thesis_pipeline(
                     umap_n_jobs=resolved_umap_n_jobs,
                     pre_selected_names=pre_names_list if pre_names_list else None,
                     pre_selected_indices=pre_indices_list if pre_indices_list else None,
+                    replicate_mode=validation_replicate_mode,
+                    n_bootstrap=validation_n_bootstrap,
+                    bootstrap_sample_frac=validation_bootstrap_sample_frac,
                 )
                 elapsed = time.time() - t0
                 print(f"✅ Phase 3 erfolgreich (Dauer: {elapsed:.1f}s)")
@@ -1337,6 +1772,24 @@ def run_thesis_pipeline(
 
     # Phase 4: Summary (always run unless dry-run)
     if not dry_run:
+        try:
+            selection_contract_extra = _materialize_core_case_artifacts(
+                output_dir=output_dir,
+                case_names=case_names_list,
+                case_exclude_from_core=bool(case_exclude_from_core_flag),
+                case_attach_mode=case_attach_mode_resolved,
+            )
+            print(
+                "✅ Core+Case artifacts written: core={}, case={}, final={}".format(
+                    selection_contract_extra.get("selection_core_path"),
+                    selection_contract_extra.get("selection_case_path"),
+                    selection_contract_extra.get("selection_final_with_cases_path"),
+                )
+            )
+        except Exception as e:
+            print(f"❌ FEHLER beim Core+Case-Artifact-Export: {e}")
+            all_success = False
+
         print("\n" + "=" * 80)
         print("PHASE 4: SUMMARY REPORT")
         print("=" * 80)
@@ -1428,10 +1881,18 @@ def run_thesis_pipeline(
                 "cache_mode": str(cache_mode),
                 "validation_seeds": validation_seeds,
                 "validation_min_distances": validation_min_distances,
+                "validation_replicate_mode": validation_replicate_mode,
+                "validation_n_bootstrap": validation_n_bootstrap,
+                "validation_bootstrap_sample_frac": validation_bootstrap_sample_frac,
                 "pre_selected_names": pre_names_list if pre_names_list else None,
                 "pre_selected_indices": pre_indices_list if pre_indices_list else None,
                 "hamburg_shortcut": bool(hamburg),
+                "case_tile_names": case_names_list if case_names_list else None,
+                "case_exclude_from_core": bool(case_exclude_from_core_flag),
+                "case_attach_mode": case_attach_mode_resolved,
                 "metadata_crs": metadata_crs_info,
+                **metadata_tile_exclusion_info,
+                **selection_contract_extra,
             },
         )
     except Exception as exc:
@@ -1551,7 +2012,25 @@ def run_thesis_pipeline(
         "hamburg": {
             "type": bool,
             "action": "store_true",
-            "help": "Add Hamburg to pre-names",
+            "help": "Convenience shortcut: add Hamburg to case tiles (core+case contract)",
+        },
+        "case_names": {
+            "type": str,
+            "nargs": "*",
+            "default": None,
+            "help": "Additional case tiles appended after core selection",
+        },
+        "case_exclude_from_core": {
+            "type": str,
+            "default": None,
+            "choices": ["true", "false"],
+            "help": "Exclude case tiles from core selection (default: true)",
+        },
+        "case_attach_mode": {
+            "type": str,
+            "default": None,
+            "choices": ["append_unique", "append_all"],
+            "help": "How case tiles are attached after core selection",
         },
         "validation_seeds": {
             "type": int,
@@ -1564,6 +2043,22 @@ def run_thesis_pipeline(
             "nargs": "+",
             "default": None,
             "help": "Validation min_distance list in km (quick gate default: policy value)",
+        },
+        "validation_replicate_mode": {
+            "type": str,
+            "default": None,
+            "choices": ["seed_replay", "bootstrap_candidates"],
+            "help": "Validation replicate mode (inferential default: bootstrap_candidates)",
+        },
+        "validation_n_bootstrap": {
+            "type": int,
+            "default": None,
+            "help": "Number of bootstrap replicates for validation",
+        },
+        "validation_bootstrap_sample_frac": {
+            "type": float,
+            "default": None,
+            "help": "Bootstrap candidate sampling fraction",
         },
     },
 )
@@ -1589,8 +2084,14 @@ def main(
     pre_names: Optional[list[str]] = None,
     pre_indices: Optional[list[int]] = None,
     hamburg: bool = False,
+    case_names: Optional[list[str]] = None,
+    case_exclude_from_core: Optional[str] = None,
+    case_attach_mode: Optional[str] = None,
     validation_seeds: Optional[list[int]] = None,
     validation_min_distances: Optional[list[float]] = None,
+    validation_replicate_mode: Optional[str] = None,
+    validation_n_bootstrap: Optional[int] = None,
+    validation_bootstrap_sample_frac: Optional[float] = None,
 ) -> int:
     """CLI entry point for thesis pipeline."""
     # Convert str path to Path object
@@ -1619,8 +2120,18 @@ def main(
         pre_names=pre_names,
         pre_indices=pre_indices,
         hamburg=hamburg,
+        case_names=case_names,
+        case_exclude_from_core=(
+            _parse_bool(case_exclude_from_core, label="case_exclude_from_core")
+            if case_exclude_from_core is not None
+            else None
+        ),
+        case_attach_mode=case_attach_mode,
         validation_seeds=validation_seeds,
         validation_min_distances=validation_min_distances,
+        validation_replicate_mode=validation_replicate_mode,
+        validation_n_bootstrap=validation_n_bootstrap,
+        validation_bootstrap_sample_frac=validation_bootstrap_sample_frac,
     )
     return 0 if success else 1
 

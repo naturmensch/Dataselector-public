@@ -53,6 +53,11 @@ selection:
   # Optional: Pre-selection (seed) — set names (e.g. ['Hamburg']) or indices (e.g. [145])
   pre_selected_names: null  # DISABLED FOR OPTUNA COMPARISON
   # pre_selected_indices: [145]
+  # Core+Case contract: case tiles are appended after core selection and do not
+  # drive the core sampler by default.
+  case_tile_names: ["Hamburg"]
+  case_exclude_from_core: true
+  case_attach_mode: append_unique
   
   # Spatial constraint
   # Policy split:
@@ -90,6 +95,11 @@ selection:
   validation_seeds: [42, 43, 44, 45, 46]
   # Pin Optuna sampler by policy (evidence: outputs/selected_sampler.json — best: tpe)
   optuna_sampler: "tpe"
+
+validation:
+  replicate_mode: bootstrap_candidates
+  n_bootstrap: 200
+  bootstrap_sample_frac: 1.0
   
 # Expected results are tracked in timestamped decision artifacts:
 # - reports_2026-02-09/MIN_DISTANCE_DECISION_2026-02-09.md

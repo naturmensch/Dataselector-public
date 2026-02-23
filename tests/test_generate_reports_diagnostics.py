@@ -191,3 +191,118 @@ def test_report_documents_sampler_resolution_contract(tmp_path: Path):
     assert "- Production optuna sampler: `qmc` (source: `config_policy`)" in report
     assert "- Optuna sampler decision provenance: `auto_compare`" in report
     assert "no re-selection during production" in report
+
+
+def test_report_writes_method_audit_and_key_claims(tmp_path: Path):
+    run_dir = tmp_path / "run_method_artifacts"
+    _write_minimal_artifacts(run_dir, n_selected_values=[1, 2, 3])
+
+    pd.DataFrame(
+        [
+            {"selection_rank": 0, "shortName": "KDR_001", "city": "CityA", "year": 1900},
+            {"selection_rank": 1, "shortName": "KDR_002", "city": "CityB", "year": 1910},
+        ]
+    ).to_csv(run_dir / "selection_core.csv", index=False)
+    pd.DataFrame(
+        [{"selection_rank": 0, "shortName": "KDR_146", "city": "Hamburg", "year": 1918}]
+    ).to_csv(run_dir / "selection_case.csv", index=False)
+    pd.DataFrame(
+        [
+            {"selection_rank": 0, "shortName": "KDR_001", "city": "CityA", "year": 1900},
+            {"selection_rank": 1, "shortName": "KDR_002", "city": "CityB", "year": 1910},
+            {"selection_rank": 2, "shortName": "KDR_146", "city": "Hamburg", "year": 1918},
+        ]
+    ).to_csv(run_dir / "selection_final_with_cases.csv", index=False)
+    (run_dir / "selection_contract.json").write_text(
+        json.dumps(
+            {
+                "case_exclude_from_core": True,
+                "case_attach_mode": "append_unique",
+                "case_tile_names": ["Hamburg"],
+                "core_count": 2,
+                "case_count_resolved": 1,
+                "case_count_attached": 1,
+                "case_count": 1,
+                "final_count": 3,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    validation_dir = run_dir / "validation"
+    validation_dir.mkdir(parents=True, exist_ok=True)
+    (validation_dir / "validation_method_contract.md").write_text(
+        "\n".join(
+            [
+                "# Validation Method Contract",
+                "- Requested replicate mode: `bootstrap_candidates`",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    pd.DataFrame([{"metric": "n_selected", "mean": 30.0}]).to_csv(
+        validation_dir / "validation_summary_stats.csv", index=False
+    )
+    pd.DataFrame([{"replicate_mode": "bootstrap_candidates"}]).to_csv(
+        validation_dir / "validation_results_bootstrap.csv", index=False
+    )
+    (run_dir / "data_quality").mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([{"phase": "after_exclusion", "year_max": 1921}]).to_csv(
+        run_dir / "data_quality" / "year_scope_audit.csv", index=False
+    )
+
+    (run_dir / "run_metadata.json").write_text(
+        json.dumps(
+            {
+                "extra": {
+                    "validation_replicate_mode": "bootstrap_candidates",
+                    "tile_exclusions_applied": True,
+                    "tile_exclusions_count": 2,
+                    "tile_exclusion_policy_sha256": "abc123",
+                    "case_tile_names": ["Hamburg"],
+                    "pipeline_metadata_snapshot": {
+                        "extra": {"case_tile_names": []}
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report_file = _generate_single_run_thesis_report(run_dir, timestamp="T4")
+    report = report_file.read_text(encoding="utf-8")
+
+    method_audit = run_dir / "THESIS_METHOD_AUDIT.md"
+    key_claims = run_dir / "THESIS_KEY_CLAIMS.csv"
+    assert method_audit.exists()
+    assert key_claims.exists()
+    assert "## Method Audit" in report
+    assert "THESIS_METHOD_AUDIT.md" in report
+    assert "THESIS_KEY_CLAIMS.csv" in report
+
+    claims_df = pd.read_csv(key_claims)
+    assert {"claim", "evidence_file", "status"}.issubset(claims_df.columns)
+    assert (claims_df["status"] == "supported").any()
+
+    method_audit_text = method_audit.read_text(encoding="utf-8")
+    assert "- `case_count_resolved`: `1`" in method_audit_text
+    assert "- `case_count_attached`: `1`" in method_audit_text
+
+    tile_claim = claims_df.loc[
+        claims_df["claim"]
+        == "Tile exclusion policy is applied and provenance-tracked in run metadata"
+    ]
+    assert len(tile_claim) == 1
+    assert tile_claim.iloc[0]["status"] == "supported"
+
+    hamburg_claim = claims_df.loc[
+        claims_df["claim"]
+        == "Hamburg is handled as case-only (excluded from core selection)"
+    ]
+    assert len(hamburg_claim) == 1
+    assert hamburg_claim.iloc[0]["status"] == "supported"
+
+    assert "## Snapshot Reconciliation" in method_audit_text
+    assert "- `pipeline_snapshot_case_tile_names`: `[]`" in method_audit_text
+    assert "- `final_case_tile_names`: `['Hamburg']`" in method_audit_text
+    assert "- `reconciliation_status`: `documented_difference`" in method_audit_text

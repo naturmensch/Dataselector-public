@@ -76,6 +76,122 @@ def test_thesis_orchestrate_precompute_only_success(tmp_path: Path, monkeypatch:
     assert meta["extra"]["orchestrator_mode"] == "precompute_only"
 
 
+def test_thesis_orchestrate_writes_tile_exclusion_metadata_without_splits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from dataselector.workflows import thesis_orchestrate as mod
+
+    _write_minimal_inputs(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(mod, "_require_torch", lambda: None)
+    monkeypatch.setattr(mod, "run_optuna_autoscale_workflow", lambda **_: 0)
+    monkeypatch.setattr(
+        mod,
+        "_write_year_scope_audit",
+        lambda **_: {
+            "year_scope_audit_path": "outputs/runs/ignored/data_quality/year_scope_audit.csv",
+            "year_scope_before_n": 676,
+            "year_scope_after_n": 673,
+            "year_scope_before_max": 1985,
+            "year_scope_after_max": 1940,
+            "tile_exclusions_applied": True,
+            "tile_exclusions_count": 3,
+            "tile_excluded_shortnames": ["KDR_039", "KDR_521", "KDR_999"],
+            "tile_exclusion_policy_sha256": "abc123",
+            "effective_tile_count": 673,
+        },
+    )
+
+    def _fake_run_thesis_pipeline(**kwargs):
+        out_dir = Path(kwargs["output_dir"])
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "final_config.yaml").write_text("parameters: {}\n", encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(mod, "run_thesis_pipeline", _fake_run_thesis_pipeline)
+    monkeypatch.setattr(mod, "validate_snapshot_file", lambda _p: [])
+    monkeypatch.setattr(mod, "load_snapshot", lambda _p: {"parameters": {}})
+    monkeypatch.setattr(mod, "load_parameter_contract", lambda _p: {"parameters": {}})
+    monkeypatch.setattr(mod, "validate_snapshot_against_contract", lambda **_: [])
+
+    out_dir = tmp_path / "outputs" / "runs" / "orch_tile_meta"
+    rc = mod.run_thesis_orchestrate(
+        config="config/pipeline_config.yaml",
+        output_dir=str(out_dir),
+        precompute_only=True,
+        run_after_precompute=False,
+        build_splits="false",
+    )
+
+    assert rc == 0
+    meta = json.loads((out_dir / "run_metadata.json").read_text(encoding="utf-8"))
+    extra = meta["extra"]
+    assert extra["tile_exclusions_applied"] is True
+    assert extra["tile_exclusions_count"] == 3
+    assert extra["tile_excluded_shortnames"] == ["KDR_039", "KDR_521", "KDR_999"]
+    assert extra["tile_exclusion_policy_sha256"] == "abc123"
+    assert extra["effective_tile_count"] == 673
+
+
+def test_thesis_orchestrate_keeps_year_scope_and_tile_exclusion_metadata_consistent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from dataselector.workflows import thesis_orchestrate as mod
+
+    _write_minimal_inputs(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    monkeypatch.setattr(mod, "_require_torch", lambda: None)
+    monkeypatch.setattr(mod, "run_optuna_autoscale_workflow", lambda **_: 0)
+    monkeypatch.setattr(
+        mod,
+        "_write_year_scope_audit",
+        lambda **_: {
+            "year_scope_audit_path": "outputs/runs/ignored/data_quality/year_scope_audit.csv",
+            "year_scope_before_n": 676,
+            "year_scope_after_n": 673,
+            "year_scope_before_max": 1985,
+            "year_scope_after_max": 1940,
+            "tile_exclusions_applied": True,
+            "tile_exclusions_count": 3,
+            "tile_excluded_shortnames": ["KDR_039", "KDR_521", "KDR_999"],
+            "tile_exclusion_policy_sha256": "abc123",
+            "effective_tile_count": 673,
+        },
+    )
+
+    def _fake_run_thesis_pipeline(**kwargs):
+        out_dir = Path(kwargs["output_dir"])
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "final_config.yaml").write_text("parameters: {}\n", encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(mod, "run_thesis_pipeline", _fake_run_thesis_pipeline)
+    monkeypatch.setattr(mod, "validate_snapshot_file", lambda _p: [])
+    monkeypatch.setattr(mod, "load_snapshot", lambda _p: {"parameters": {}})
+    monkeypatch.setattr(mod, "load_parameter_contract", lambda _p: {"parameters": {}})
+    monkeypatch.setattr(mod, "validate_snapshot_against_contract", lambda **_: [])
+
+    out_dir = tmp_path / "outputs" / "runs" / "orch_year_scope_tile_consistency"
+    rc = mod.run_thesis_orchestrate(
+        config="config/pipeline_config.yaml",
+        output_dir=str(out_dir),
+        precompute_only=True,
+        run_after_precompute=False,
+        build_splits="false",
+    )
+
+    assert rc == 0
+    meta = json.loads((out_dir / "run_metadata.json").read_text(encoding="utf-8"))
+    extra = meta["extra"]
+    assert extra["year_scope_before_n"] == 676
+    assert extra["year_scope_after_n"] == 673
+    assert extra["tile_exclusions_count"] == 3
+    assert extra["year_scope_before_n"] - extra["year_scope_after_n"] == extra["tile_exclusions_count"]
+    assert extra["year_scope_after_n"] == extra["effective_tile_count"]
+
+
 def test_thesis_orchestrate_preserves_pipeline_metadata(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

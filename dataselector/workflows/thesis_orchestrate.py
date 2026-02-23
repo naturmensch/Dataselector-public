@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import yaml
 
 from dataselector.cli_decorators import cli_command
@@ -338,6 +339,68 @@ def _build_leakage_safe_splits(
     }
 
 
+def _write_year_scope_audit(
+    *,
+    out_dir: Path,
+    tile_exclusion_policy: Path,
+) -> dict[str, Any]:
+    data_quality_dir = out_dir / "data_quality"
+    data_quality_dir.mkdir(parents=True, exist_ok=True)
+    audit_path = data_quality_dir / "year_scope_audit.csv"
+
+    raw_meta = load_metadata(
+        "data/new_all_tiles.csv",
+        resolve_images=False,
+        strict_metric_crs=False,
+        tile_exclusion_policy=tile_exclusion_policy,
+        apply_tile_exclusion=False,
+    )
+    filt_meta = load_metadata(
+        "data/new_all_tiles.csv",
+        resolve_images=False,
+        strict_metric_crs=False,
+        tile_exclusion_policy=tile_exclusion_policy,
+        apply_tile_exclusion=True,
+    )
+
+    def _row(scope: str, frame: pd.DataFrame) -> dict[str, Any]:
+        years = pd.to_numeric(frame.get("year"), errors="coerce")
+        return {
+            "scope": scope,
+            "n_tiles": int(len(frame)),
+            "year_min": int(years.min()) if years.notna().any() else None,
+            "year_max": int(years.max()) if years.notna().any() else None,
+            "n_year_ge_1950": int((years >= 1950).fillna(False).sum()),
+        }
+
+    rows = [_row("before_exclusion", raw_meta), _row("after_exclusion", filt_meta)]
+    pd.DataFrame(rows).to_csv(audit_path, index=False)
+
+    filt_attrs = filt_meta.attrs if hasattr(filt_meta, "attrs") else {}
+    tile_exclusions_applied = bool(
+        filt_attrs.get("tile_exclusions_applied", len(raw_meta) != len(filt_meta))
+    )
+    tile_exclusions_count = int(
+        filt_attrs.get("tile_exclusions_count", max(0, len(raw_meta) - len(filt_meta)))
+    )
+    tile_excluded_shortnames = list(filt_attrs.get("tile_excluded_shortnames", []))
+    tile_exclusion_policy_sha256 = filt_attrs.get("tile_exclusion_policy_sha256")
+    effective_tile_count = int(filt_attrs.get("effective_tile_count", len(filt_meta)))
+
+    return {
+        "year_scope_audit_path": str(audit_path),
+        "year_scope_before_n": int(len(raw_meta)),
+        "year_scope_after_n": int(len(filt_meta)),
+        "year_scope_before_max": rows[0]["year_max"],
+        "year_scope_after_max": rows[1]["year_max"],
+        "tile_exclusions_applied": tile_exclusions_applied,
+        "tile_exclusions_count": tile_exclusions_count,
+        "tile_excluded_shortnames": tile_excluded_shortnames,
+        "tile_exclusion_policy_sha256": tile_exclusion_policy_sha256,
+        "effective_tile_count": effective_tile_count,
+    }
+
+
 def run_thesis_orchestrate(
     *,
     config: str = "config/pipeline_config.yaml",
@@ -394,6 +457,7 @@ def run_thesis_orchestrate(
     resolution_dir = out_dir / "parameter_resolution"
     resolution_dir.mkdir(parents=True, exist_ok=True)
     split_extra: dict[str, Any] = {}
+    year_scope_extra: dict[str, Any] = {}
 
     # --- ANCHOR TILE LOGIC ---
     anchor_tile_env = os.environ.get("DATASELECTOR_ANCHOR_TILE")
@@ -409,6 +473,13 @@ def run_thesis_orchestrate(
     if tile_policy_path.exists():
         os.environ["DATASELECTOR_APPLY_TILE_EXCLUSION"] = "1"
         os.environ["DATASELECTOR_TILE_EXCLUSION_POLICY"] = str(tile_policy_path)
+        try:
+            year_scope_extra = _write_year_scope_audit(
+                out_dir=out_dir,
+                tile_exclusion_policy=tile_policy_path,
+            )
+        except Exception as exc:
+            year_scope_extra = {"year_scope_audit_error": str(exc)}
 
     # 1) Precompute required artifacts (autoscale best + selected_n_samples).
     run_optuna_autoscale_workflow(
@@ -484,6 +555,7 @@ def run_thesis_orchestrate(
                 "contract_validation_errors": contract_errors,
                 "force_override_used": bool(force),
                 "force_override_reason": force_override_reason if force else None,
+                **year_scope_extra,
                 **split_extra,
             },
         )
@@ -544,6 +616,7 @@ def run_thesis_orchestrate(
             "run_after_precompute": bool(run_after_precompute),
             "strict_scientific": bool(strict_scientific),
             "run_success": bool(run_ok),
+            **year_scope_extra,
             **split_extra,
         },
     )

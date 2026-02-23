@@ -19,6 +19,7 @@ import dataselector.tools.docs_link
 import dataselector.workflows.adaptive_auto
 import dataselector.workflows.adaptive_pipeline
 import dataselector.workflows.apply_optuna_best
+import dataselector.workflows.annotation_plan
 
 # Import ALL workflow modules to trigger @cli_command decorator execution
 import dataselector.workflows.autoscale

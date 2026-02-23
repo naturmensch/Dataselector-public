@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -55,6 +56,334 @@ def _resolve_report_path(run_dir: Path, path_value: object) -> Optional[Path]:
         return repo_relative
 
     return run_relative
+
+
+def _rel_or_abs(base: Path, path: Path) -> str:
+    try:
+        return str(path.relative_to(base))
+    except Exception:
+        return str(path)
+
+
+def _parse_requested_validation_mode(method_contract_path: Path) -> Optional[str]:
+    if not method_contract_path.exists():
+        return None
+    text = method_contract_path.read_text(encoding="utf-8")
+    match = re.search(r"Requested replicate mode:\s*`([^`]+)`", text)
+    if match:
+        return str(match.group(1)).strip().lower()
+    return None
+
+
+def _build_claim_rows(
+    *,
+    output_dir: Path,
+    run_metadata: dict,
+) -> list[dict[str, str]]:
+    def _contains_hamburg_name(values: object) -> bool:
+        if isinstance(values, str):
+            return values.strip().lower() == "hamburg"
+        if isinstance(values, (list, tuple, set)):
+            return any(str(v).strip().lower() == "hamburg" for v in values)
+        return False
+
+    def _selection_case_contains_hamburg(case_csv: Path) -> bool:
+        if not case_csv.exists():
+            return False
+        try:
+            case_df = pd.read_csv(case_csv)
+        except Exception:
+            return False
+        if case_df.empty:
+            return False
+
+        if "city" in case_df.columns:
+            city_series = case_df["city"].astype(str).str.strip().str.lower()
+            if bool((city_series == "hamburg").any()):
+                return True
+
+        for tile_col in ("shortName", "filename", "image_filename"):
+            if tile_col in case_df.columns:
+                tile_series = case_df[tile_col].astype(str).str.strip().str.upper()
+                if bool((tile_series == "KDR_146").any()):
+                    return True
+
+        return False
+
+    run_extra = run_metadata.get("extra", {}) if isinstance(run_metadata, dict) else {}
+    selection_core_csv = output_dir / "selection_core.csv"
+    selection_case_csv = output_dir / "selection_case.csv"
+    selection_final_csv = output_dir / "selection_final_with_cases.csv"
+    selection_contract_json = output_dir / "selection_contract.json"
+    validation_method_contract = output_dir / "validation" / "validation_method_contract.md"
+    validation_bootstrap_csv = output_dir / "validation" / "validation_results_bootstrap.csv"
+    validation_summary_csv = output_dir / "validation" / "validation_summary_stats.csv"
+    year_scope_audit_csv = output_dir / "data_quality" / "year_scope_audit.csv"
+    run_metadata_json = output_dir / "run_metadata.json"
+
+    requested_mode = (
+        str(run_extra.get("validation_replicate_mode")).strip().lower()
+        if run_extra.get("validation_replicate_mode") is not None
+        else None
+    )
+    if not requested_mode:
+        requested_mode = _parse_requested_validation_mode(validation_method_contract)
+
+    selection_contract = _safe_read_json_dict(selection_contract_json)
+    case_exclude_from_core = bool(selection_contract.get("case_exclude_from_core", False))
+
+    claims: list[dict[str, str]] = []
+
+    core_case_ready = (
+        selection_core_csv.exists()
+        and selection_case_csv.exists()
+        and selection_final_csv.exists()
+        and selection_contract_json.exists()
+    )
+    claims.append(
+        {
+            "claim": "Primary thesis metrics are evaluated on the core selection only",
+            "evidence_file": "; ".join(
+                _rel_or_abs(output_dir, p)
+                for p in [selection_core_csv, selection_contract_json]
+            ),
+            "status": "supported" if core_case_ready else "missing_evidence",
+        }
+    )
+    claims.append(
+        {
+            "claim": "Case tiles are documented separately and attached to the final operational set",
+            "evidence_file": "; ".join(
+                _rel_or_abs(output_dir, p)
+                for p in [selection_case_csv, selection_final_csv, selection_contract_json]
+            ),
+            "status": (
+                "supported"
+                if core_case_ready and case_exclude_from_core
+                else ("requires_review" if core_case_ready else "missing_evidence")
+            ),
+        }
+    )
+    hamburg_claim_artifacts_ready = selection_contract_json.exists() and selection_case_csv.exists()
+    hamburg_in_case_names = _contains_hamburg_name(selection_contract.get("case_tile_names"))
+    hamburg_in_case_csv = _selection_case_contains_hamburg(selection_case_csv)
+    claims.append(
+        {
+            "claim": "Hamburg is handled as case-only (excluded from core selection)",
+            "evidence_file": "; ".join(
+                _rel_or_abs(output_dir, p)
+                for p in [selection_contract_json, selection_case_csv]
+            ),
+            "status": (
+                "supported"
+                if (
+                    hamburg_claim_artifacts_ready
+                    and case_exclude_from_core
+                    and hamburg_in_case_names
+                    and hamburg_in_case_csv
+                )
+                else (
+                    "requires_review"
+                    if hamburg_claim_artifacts_ready
+                    else "missing_evidence"
+                )
+            ),
+        }
+    )
+
+    validation_ready = validation_method_contract.exists() and validation_summary_csv.exists()
+    bootstrap_ready = validation_bootstrap_csv.exists()
+    claims.append(
+        {
+            "claim": "Inferential uncertainty quantification uses bootstrap candidate resampling",
+            "evidence_file": "; ".join(
+                _rel_or_abs(output_dir, p)
+                for p in [
+                    validation_method_contract,
+                    validation_bootstrap_csv,
+                    validation_summary_csv,
+                ]
+            ),
+            "status": (
+                "supported"
+                if validation_ready and bootstrap_ready and requested_mode == "bootstrap_candidates"
+                else ("requires_review" if validation_ready else "missing_evidence")
+            ),
+        }
+    )
+
+    tile_exclusions_applied = bool(run_extra.get("tile_exclusions_applied", False))
+    tile_policy_hash = run_extra.get("tile_exclusion_policy_sha256")
+    claims.append(
+        {
+            "claim": "Tile exclusion policy is applied and provenance-tracked in run metadata",
+            "evidence_file": _rel_or_abs(output_dir, run_metadata_json),
+            "status": (
+                "supported"
+                if run_metadata_json.exists() and tile_exclusions_applied and bool(tile_policy_hash)
+                else ("requires_review" if run_metadata_json.exists() else "missing_evidence")
+            ),
+        }
+    )
+    claims.append(
+        {
+            "claim": "Temporal scope audit artifact is present for exclusion transparency",
+            "evidence_file": _rel_or_abs(output_dir, year_scope_audit_csv),
+            "status": "supported" if year_scope_audit_csv.exists() else "missing_evidence",
+        }
+    )
+    return claims
+
+
+def _write_thesis_method_artifacts(
+    *,
+    output_dir: Path,
+    run_metadata: dict,
+) -> tuple[Path, Path]:
+    claims = _build_claim_rows(output_dir=output_dir, run_metadata=run_metadata)
+    claims_df = pd.DataFrame(claims, columns=["claim", "evidence_file", "status"])
+    claims_csv = output_dir / "THESIS_KEY_CLAIMS.csv"
+    claims_df.to_csv(claims_csv, index=False)
+
+    supported = int((claims_df["status"] == "supported").sum())
+    missing = int((claims_df["status"] == "missing_evidence").sum())
+    review = int((claims_df["status"] == "requires_review").sum())
+
+    run_extra = run_metadata.get("extra", {}) if isinstance(run_metadata, dict) else {}
+    requested_mode = (
+        str(run_extra.get("validation_replicate_mode")).strip().lower()
+        if run_extra.get("validation_replicate_mode") is not None
+        else None
+    )
+    if not requested_mode:
+        requested_mode = _parse_requested_validation_mode(
+            output_dir / "validation" / "validation_method_contract.md"
+        )
+
+    selection_contract = _safe_read_json_dict(output_dir / "selection_contract.json")
+    selection_contract_mode = (
+        "core_case"
+        if (output_dir / "selection_contract.json").exists()
+        else "legacy_single_selection"
+    )
+
+    lines = []
+    lines.append("# Thesis Method Audit")
+    lines.append("")
+    lines.append(f"- Generated: `{datetime.now(timezone.utc).isoformat()}Z`")
+    lines.append(f"- Run directory: `{output_dir}`")
+    lines.append(f"- Selection contract mode: `{selection_contract_mode}`")
+    if requested_mode:
+        lines.append(f"- Validation replicate mode (requested): `{requested_mode}`")
+    lines.append("")
+    lines.append("## Claim Status")
+    lines.append("")
+    lines.append(
+        f"- Supported claims: **{supported}** | Requires review: **{review}** | Missing evidence: **{missing}**"
+    )
+    lines.append("")
+    lines.append("| Claim | Status | Evidence |")
+    lines.append("|---|---|---|")
+    for row in claims:
+        evidence = row["evidence_file"].replace("|", "\\|")
+        lines.append(
+            f"| {row['claim']} | `{row['status']}` | `{evidence}` |"
+        )
+    lines.append("")
+    lines.append("## Core+Case Contract")
+    lines.append("")
+    if selection_contract:
+        case_count_resolved = selection_contract.get("case_count_resolved")
+        if case_count_resolved is None:
+            case_count_resolved = selection_contract.get("case_count")
+        case_count_attached = selection_contract.get("case_count_attached")
+        if case_count_attached is None:
+            case_count_attached = selection_contract.get("case_count")
+        lines.append(
+            f"- `case_exclude_from_core`: `{selection_contract.get('case_exclude_from_core')}`"
+        )
+        lines.append(
+            f"- `case_attach_mode`: `{selection_contract.get('case_attach_mode')}`"
+        )
+        lines.append(f"- `core_count`: `{selection_contract.get('core_count')}`")
+        lines.append(f"- `case_count_resolved`: `{case_count_resolved}`")
+        lines.append(f"- `case_count_attached`: `{case_count_attached}`")
+        lines.append(f"- `final_count`: `{selection_contract.get('final_count')}`")
+    else:
+        lines.append("- Selection contract artifact missing or unreadable.")
+    lines.append("")
+    lines.append("## Snapshot Reconciliation")
+    lines.append("")
+    snapshot_case_names: list[str] = []
+    pipeline_snapshot = run_extra.get("pipeline_metadata_snapshot")
+    if isinstance(pipeline_snapshot, dict):
+        snapshot_extra = pipeline_snapshot.get("extra", {})
+        if isinstance(snapshot_extra, dict):
+            raw_snapshot_cases = snapshot_extra.get("case_tile_names")
+            if isinstance(raw_snapshot_cases, (list, tuple, set)):
+                snapshot_case_names = [str(v) for v in raw_snapshot_cases]
+            elif isinstance(raw_snapshot_cases, str):
+                snapshot_case_names = [raw_snapshot_cases]
+
+    final_case_names: list[str] = []
+    raw_final_case_names = selection_contract.get("case_tile_names")
+    if isinstance(raw_final_case_names, (list, tuple, set)):
+        final_case_names = [str(v) for v in raw_final_case_names]
+    elif isinstance(raw_final_case_names, str):
+        final_case_names = [raw_final_case_names]
+    elif isinstance(run_extra.get("case_tile_names"), (list, tuple, set)):
+        final_case_names = [str(v) for v in run_extra.get("case_tile_names", [])]
+
+    norm_snapshot = [v.strip().lower() for v in snapshot_case_names]
+    norm_final = [v.strip().lower() for v in final_case_names]
+    if not snapshot_case_names and not isinstance(pipeline_snapshot, dict):
+        reconciliation_status = "snapshot_missing"
+    elif norm_snapshot == norm_final:
+        reconciliation_status = "aligned"
+    else:
+        reconciliation_status = "documented_difference"
+
+    lines.append(f"- `pipeline_snapshot_case_tile_names`: `{snapshot_case_names}`")
+    lines.append(f"- `final_case_tile_names`: `{final_case_names}`")
+    lines.append(f"- `reconciliation_status`: `{reconciliation_status}`")
+    if reconciliation_status == "documented_difference":
+        lines.append(
+            "- Reconciliation note: snapshot and final case tiles differ; this is allowed when the final run-level contract explicitly documents the resolved Case policy."
+        )
+    elif reconciliation_status == "aligned":
+        lines.append("- Reconciliation note: snapshot and final case tiles are consistent.")
+    else:
+        lines.append(
+            "- Reconciliation note: no pipeline snapshot metadata found; interpret final run contract as authoritative."
+        )
+    lines.append("")
+    lines.append("## Validation Contract")
+    lines.append("")
+    lines.append(
+        f"- Validation method file: `{_rel_or_abs(output_dir, output_dir / 'validation' / 'validation_method_contract.md')}`"
+    )
+    lines.append(
+        f"- Validation summary stats: `{_rel_or_abs(output_dir, output_dir / 'validation' / 'validation_summary_stats.csv')}`"
+    )
+    lines.append(
+        f"- Bootstrap results: `{_rel_or_abs(output_dir, output_dir / 'validation' / 'validation_results_bootstrap.csv')}`"
+    )
+    lines.append("")
+    lines.append("## Tile Exclusion & Year Scope")
+    lines.append("")
+    lines.append(f"- tile_exclusions_applied: `{run_extra.get('tile_exclusions_applied')}`")
+    lines.append(f"- tile_exclusions_count: `{run_extra.get('tile_exclusions_count')}`")
+    lines.append(
+        f"- tile_exclusion_policy_sha256: `{run_extra.get('tile_exclusion_policy_sha256')}`"
+    )
+    lines.append(
+        f"- year_scope_audit: `{_rel_or_abs(output_dir, output_dir / 'data_quality' / 'year_scope_audit.csv')}`"
+    )
+    lines.append("")
+
+    audit_md = output_dir / "THESIS_METHOD_AUDIT.md"
+    audit_md.write_text("\n".join(lines), encoding="utf-8")
+    return audit_md, claims_csv
 
 
 def summarize_csv_metrics(csv_path: Path) -> dict:
@@ -864,122 +1193,210 @@ def _generate_single_run_thesis_report(
 
     lines.append("## Tile Selection")
     lines.append("")
-    selected_tiles_file: Optional[Path] = None
-    selected_from = "not available"
+    selection_core_csv = output_dir / "selection_core.csv"
+    selection_case_csv = output_dir / "selection_case.csv"
+    selection_final_csv = output_dir / "selection_final_with_cases.csv"
+    selection_contract_json = output_dir / "selection_contract.json"
 
-    if tuning_meta_json.exists():
-        try:
-            tuning_meta = json.loads(tuning_meta_json.read_text(encoding="utf-8"))
-            best_metrics = tuning_meta.get("best_metrics", {})
-            alpha = best_metrics.get("alpha")
-            beta = best_metrics.get("beta")
-            gamma = best_metrics.get("gamma")
-            if alpha is not None and beta is not None and gamma is not None:
-                exact_name = f"selection_a{alpha}_b{beta}_g{gamma}.csv"
-                exact_path = tuning_weights_dir / exact_name
-                if exact_path.exists():
-                    selected_tiles_file = exact_path
-                else:
-                    candidate_pattern = (
-                        f"selection_a{float(alpha):.6f}*_b{float(beta):.6f}*_g{float(gamma):.6f}*.csv"
-                    )
-                    candidates = sorted(tuning_weights_dir.glob(candidate_pattern))
-                    if candidates:
-                        selected_tiles_file = candidates[0]
-        except Exception:
-            selected_tiles_file = None
+    def _fmt_value(value: object) -> str:
+        if pd.isna(value):
+            return "-"
+        text = str(value).strip()
+        if not text:
+            return "-"
+        if any(0x2500 <= ord(ch) <= 0x257F for ch in text):
+            try:
+                text = text.encode("cp437").decode("utf-8")
+            except Exception:
+                pass
+        return text.replace("|", "\\|")
 
-    if selected_tiles_file is None:
-        validation_selection_files = sorted(
-            (output_dir / "validation").glob("selection_a*_b*_g*_d*_s*.csv")
-        )
-        if validation_selection_files:
-            selected_tiles_file = validation_selection_files[0]
-            selected_from = "validation fallback"
+    def _render_selection_table(df_selected: pd.DataFrame) -> list[str]:
+        rendered: list[str] = []
+        tile_col = None
+        for candidate_col in ("shortName", "filename", "image_filename"):
+            if candidate_col in df_selected.columns:
+                tile_col = candidate_col
+                break
+        if tile_col is None:
+            tile_col = "tile"
+            df_selected[tile_col] = "-"
 
-    if selected_tiles_file is not None and selected_tiles_file.exists():
-        try:
-            df_selected = pd.read_csv(selected_tiles_file)
-            if "selection_rank" in df_selected.columns:
-                df_selected = df_selected.sort_values("selection_rank")
-
-            tile_col = None
-            for candidate_col in ("shortName", "filename", "image_filename"):
-                if candidate_col in df_selected.columns:
-                    tile_col = candidate_col
-                    break
-            if tile_col is None:
-                tile_col = "tile"
-                df_selected[tile_col] = "-"
-
-            if "selection_rank" in df_selected.columns:
-                df_selected["selection_rank"] = (
-                    pd.to_numeric(df_selected["selection_rank"], errors="coerce")
-                    .fillna(0)
-                    .astype(int)
-                )
-            else:
-                df_selected["selection_rank"] = list(range(len(df_selected)))
-
-            city_col = "city" if "city" in df_selected.columns else None
-            year_col = "year" if "year" in df_selected.columns else None
-
-            def _fmt_value(value: object) -> str:
-                if pd.isna(value):
-                    return "-"
-                text = str(value).strip()
-                if not text:
-                    return "-"
-                # Fix common UTF-8 mojibake rendered through CP437 glyphs (e.g. "R├╝" -> "Rü").
-                if any(0x2500 <= ord(ch) <= 0x257F for ch in text):
-                    try:
-                        text = text.encode("cp437").decode("utf-8")
-                    except Exception:
-                        # Non-fatal fallback: keep original text if CP437->UTF-8
-                        # re-decoding fails. This is only for report formatting
-                        # and must not cause the report generation to fail.
-                        pass
-                return text.replace("|", "\\|")
-
-            unique_cities = 0
-            if city_col is not None:
-                unique_cities = int(df_selected[city_col].dropna().astype(str).nunique())
-
-            if selected_from == "not available":
-                selected_from = "tuning_weights best_metrics"
-            lines.append(
-                f"- Selection file: `{selected_tiles_file.relative_to(output_dir)}`"
+        if "selection_rank" in df_selected.columns:
+            df_selected["selection_rank"] = (
+                pd.to_numeric(df_selected["selection_rank"], errors="coerce")
+                .fillna(0)
+                .astype(int)
             )
-            lines.append(f"- Selection source: `{selected_from}`")
-            lines.append(f"- Selected tiles: **{len(df_selected)}**")
-            if unique_cities > 0:
-                lines.append(f"- Unique cities: **{unique_cities}**")
-            lines.append("")
-            lines.append("| Rank | Tile | City | Year |")
-            lines.append("|---:|---|---|---:|")
-            for _, row in df_selected.iterrows():
-                rank = int(row["selection_rank"])
-                tile_id = _fmt_value(row.get(tile_col, "-"))
-                city = _fmt_value(row.get(city_col, "-")) if city_col else "-"
-                year_value = row.get(year_col, "-") if year_col else "-"
-                if pd.isna(year_value):
-                    year = "-"
+            df_selected = df_selected.sort_values("selection_rank")
+        else:
+            df_selected = df_selected.reset_index(drop=True)
+            df_selected["selection_rank"] = range(len(df_selected))
+
+        city_col = "city" if "city" in df_selected.columns else None
+        year_col = "year" if "year" in df_selected.columns else None
+        rendered.append("| Rank | Tile | City | Year |")
+        rendered.append("|---:|---|---|---:|")
+        for _, row in df_selected.iterrows():
+            rank = int(row["selection_rank"])
+            tile_id = _fmt_value(row.get(tile_col, "-"))
+            city = _fmt_value(row.get(city_col, "-")) if city_col else "-"
+            year_value = row.get(year_col, "-") if year_col else "-"
+            if pd.isna(year_value):
+                year = "-"
+            else:
+                try:
+                    year = str(int(float(year_value)))
+                except Exception:
+                    year = _fmt_value(year_value)
+            rendered.append(f"| {rank} | `{tile_id}` | {city} | {year} |")
+        return rendered
+
+    def _unique_city_count(df_selected: pd.DataFrame) -> Optional[int]:
+        if "city" not in df_selected.columns:
+            return None
+        series = df_selected["city"].astype(str).str.strip()
+        series = series[series != ""]
+        return int(series.nunique())
+
+    if (
+        selection_core_csv.exists()
+        and selection_case_csv.exists()
+        and selection_final_csv.exists()
+    ):
+        core_df = pd.read_csv(selection_core_csv)
+        case_df = pd.read_csv(selection_case_csv)
+        final_df = pd.read_csv(selection_final_csv)
+        lines.append("- Selection contract: `core_vs_case`")
+        lines.append(f"- Core-only selection: **{len(core_df)}** tiles")
+        lines.append(f"- Case tiles: **{len(case_df)}**")
+        lines.append(f"- Operative set (Core+Case): **{len(final_df)}**")
+        core_unique_cities = _unique_city_count(core_df)
+        if core_unique_cities is not None:
+            lines.append(f"- Core unique cities: **{core_unique_cities}**")
+        final_unique_cities = _unique_city_count(final_df)
+        if final_unique_cities is not None:
+            lines.append(
+                f"- Operative unique cities (Core+Case): **{final_unique_cities}**"
+            )
+        lines.append("- Primary metrics interpretation: **Core-only**")
+        if selection_contract_json.exists():
+            lines.append(
+                f"- Selection contract artifact: `{selection_contract_json.relative_to(output_dir)}`"
+            )
+            try:
+                contract_payload = json.loads(
+                    selection_contract_json.read_text(encoding="utf-8")
+                )
+                source = contract_payload.get("selection_source")
+                if source:
+                    lines.append(f"- Core source: `{source}`")
+                raw_case_names = contract_payload.get("case_tile_names", [])
+                if isinstance(raw_case_names, str):
+                    case_names = [raw_case_names]
+                elif isinstance(raw_case_names, (list, tuple, set)):
+                    case_names = [str(v) for v in raw_case_names]
                 else:
-                    try:
-                        year = str(int(float(year_value)))
-                    except Exception:
-                        year = _fmt_value(year_value)
-                lines.append(f"| {rank} | `{tile_id}` | {city} | {year} |")
-        except Exception as exc:
-            lines.append(f"- Could not parse selection CSV: `{exc}`")
+                    case_names = []
+                if (
+                    bool(contract_payload.get("case_exclude_from_core", False))
+                    and "Hamburg" in case_names
+                ):
+                    lines.append(
+                        "- Hamburg handling: **Case-only** (excluded from core selection; attached as additional case tile)."
+                    )
+            except Exception:
+                pass
+        lines.append("")
+        lines.append("### Core Selection (Primary)")
+        lines.append("")
+        lines.extend(_render_selection_table(core_df))
+        lines.append("")
+        lines.append("### Case Tiles (Additional)")
+        lines.append("")
+        if len(case_df) == 0:
+            lines.append("No case tiles resolved.")
+        else:
+            lines.extend(_render_selection_table(case_df))
+        lines.append("")
     else:
-        lines.append("- Selection file: not available")
-    lines.append("")
+        selected_tiles_file: Optional[Path] = None
+        selected_from = "not available"
+
+        if tuning_meta_json.exists():
+            try:
+                tuning_meta = json.loads(tuning_meta_json.read_text(encoding="utf-8"))
+                best_metrics = tuning_meta.get("best_metrics", {})
+                alpha = best_metrics.get("alpha")
+                beta = best_metrics.get("beta")
+                gamma = best_metrics.get("gamma")
+                if alpha is not None and beta is not None and gamma is not None:
+                    exact_name = f"selection_a{alpha}_b{beta}_g{gamma}.csv"
+                    exact_path = tuning_weights_dir / exact_name
+                    if exact_path.exists():
+                        selected_tiles_file = exact_path
+                    else:
+                        candidate_pattern = (
+                            f"selection_a{float(alpha):.6f}*_b{float(beta):.6f}*_g{float(gamma):.6f}*.csv"
+                        )
+                        candidates = sorted(tuning_weights_dir.glob(candidate_pattern))
+                        if candidates:
+                            selected_tiles_file = candidates[0]
+            except Exception:
+                selected_tiles_file = None
+
+        if selected_tiles_file is None:
+            validation_selection_files = sorted(
+                (output_dir / "validation").glob("selection_a*_b*_g*_d*_s*.csv")
+            )
+            if validation_selection_files:
+                selected_tiles_file = validation_selection_files[0]
+                selected_from = "validation fallback"
+
+        if selected_tiles_file is not None and selected_tiles_file.exists():
+            try:
+                df_selected = pd.read_csv(selected_tiles_file)
+                if selected_from == "not available":
+                    selected_from = "tuning_weights best_metrics"
+                lines.append(
+                    f"- Selection file: `{selected_tiles_file.relative_to(output_dir)}`"
+                )
+                lines.append(f"- Selection source: `{selected_from}`")
+                lines.append(f"- Selected tiles: **{len(df_selected)}**")
+                unique_cities = _unique_city_count(df_selected)
+                if unique_cities is not None:
+                    lines.append(f"- Unique cities: **{unique_cities}**")
+                lines.append("")
+                lines.extend(_render_selection_table(df_selected))
+            except Exception as exc:
+                lines.append(f"- Could not parse selection CSV: `{exc}`")
+        else:
+            lines.append("- Selection file: not available")
+        lines.append("")
 
     if missing_required:
         lines.append("## Notes")
         lines.append("")
         lines.append("Report is partial because required thesis artifacts are missing.")
+        lines.append("")
+
+    method_audit_path: Optional[Path] = None
+    key_claims_path: Optional[Path] = None
+    try:
+        method_audit_path, key_claims_path = _write_thesis_method_artifacts(
+            output_dir=output_dir,
+            run_metadata=run_metadata,
+        )
+    except Exception as exc:
+        lines.append("## Method Audit")
+        lines.append("")
+        lines.append(f"- Could not write method-audit artifacts: `{exc}`")
+        lines.append("")
+    else:
+        lines.append("## Method Audit")
+        lines.append("")
+        lines.append(f"- Method audit: `{method_audit_path.relative_to(output_dir)}`")
+        lines.append(f"- Key claims: `{key_claims_path.relative_to(output_dir)}`")
         lines.append("")
 
     report_file = output_dir / "THESIS_PIPELINE_REPORT.md"

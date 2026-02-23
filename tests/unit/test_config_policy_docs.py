@@ -75,3 +75,15 @@ def test_parameter_policy_ledger_exists_and_declares_active_config():
     assert ACTIVE_CONFIG in text, (
         "Parameter policy ledger must reference active config policy"
     )
+
+
+def test_config_policy_doc_declares_warning_policy_contract():
+    policy_path = ROOT / "docs" / "CONFIG_POLICY.md"
+    assert policy_path.exists(), "Missing docs/CONFIG_POLICY.md"
+    text = policy_path.read_text(encoding="utf-8", errors="ignore")
+    assert "Warning Policy (Thesis Gates)" in text, (
+        "Config policy must declare thesis warning policy contract"
+    )
+    assert "Broad warning suppression" in text, (
+        "Config policy must forbid broad warning suppression"
+    )

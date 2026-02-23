@@ -383,5 +383,384 @@ def test_verify_local_smoke_against_latest_thesis_run(tmp_path: Path) -> None:
 
     if result_verify.returncode == 3:
         pytest.skip("Local raw image data/sidecars incomplete for smoke verification")
+    if result_verify.returncode == 4:
+        pytest.skip("Local smoke candidate violated current exclusion policy")
 
     assert result_verify.returncode == 0, result_verify.stderr
+
+
+def _create_patch_run_fixture(tmp_path: Path) -> tuple[Path, Path]:
+    repo_root = tmp_path
+    run_dir = repo_root / "outputs" / "runs" / "test_patch_run_001"
+    annotation_dir = run_dir / "annotation_plan"
+    annotation_dir.mkdir(parents=True, exist_ok=True)
+
+    images_dir = repo_root / "data" / "images"
+    images_dir.mkdir(parents=True, exist_ok=True)
+    for short_name in ("KDR_301", "KDR_302"):
+        (images_dir / f"{short_name}.png").write_bytes(b"PNG")
+        (images_dir / f"{short_name}.png.aux.xml").write_text(
+            "<PAMDataset><GeoTransform>1000,1,0,2000,0,-1</GeoTransform></PAMDataset>",
+            encoding="utf-8",
+        )
+
+    quicklook_dir = annotation_dir / "quicklooks"
+    quicklook_dir.mkdir(parents=True, exist_ok=True)
+    for patch_name in ("KDR_301_p1", "KDR_302_p1", "KDR_302_p2"):
+        (quicklook_dir / f"{patch_name}.png").write_bytes(b"PNG")
+        (quicklook_dir / f"{patch_name}.png.aux.xml").write_text(
+            "<PAMDataset/>", encoding="utf-8"
+        )
+
+    patch_rows = [
+        {
+            "patch_id": "KDR_301_p1",
+            "tile_shortname": "KDR_301",
+            "image_path": "data/images/KDR_301.png",
+            "image_filename": "KDR_301.png",
+            "x0": "0",
+            "y0": "0",
+            "x1": "1024",
+            "y1": "1024",
+            "split_fold": "1",
+            "selection_rank": "0",
+            "selection_group": "core",
+            "patch_index": "1",
+            "patch_size_px": "1024",
+            "quicklook_path": "quicklooks/KDR_301_p1.png",
+            "quicklook_aux_path": "quicklooks/KDR_301_p1.png.aux.xml",
+            "qc_status": "qc_passed",
+            "qc_reason": "",
+        },
+        {
+            "patch_id": "KDR_302_p1",
+            "tile_shortname": "KDR_302",
+            "image_path": "data/images/KDR_302.png",
+            "image_filename": "KDR_302.png",
+            "x0": "64",
+            "y0": "64",
+            "x1": "1088",
+            "y1": "1088",
+            "split_fold": "2",
+            "selection_rank": "1",
+            "selection_group": "core",
+            "patch_index": "1",
+            "patch_size_px": "1024",
+            "quicklook_path": "quicklooks/KDR_302_p1.png",
+            "quicklook_aux_path": "quicklooks/KDR_302_p1.png.aux.xml",
+            "qc_status": "qc_passed",
+            "qc_reason": "",
+        },
+        {
+            "patch_id": "KDR_302_p2",
+            "tile_shortname": "KDR_302",
+            "image_path": "data/images/KDR_302.png",
+            "image_filename": "KDR_302.png",
+            "x0": "256",
+            "y0": "256",
+            "x1": "1280",
+            "y1": "1280",
+            "split_fold": "2",
+            "selection_rank": "1",
+            "selection_group": "core",
+            "patch_index": "2",
+            "patch_size_px": "1024",
+            "quicklook_path": "quicklooks/KDR_302_p2.png",
+            "quicklook_aux_path": "quicklooks/KDR_302_p2.png.aux.xml",
+            "qc_status": "qc_rejected",
+            "qc_reason": "legend_dominant_edge",
+        },
+    ]
+    _write_csv(
+        annotation_dir / "patch_manifest.csv",
+        patch_rows,
+        fieldnames=[
+            "patch_id",
+            "tile_shortname",
+            "image_path",
+            "image_filename",
+            "x0",
+            "y0",
+            "x1",
+            "y1",
+            "split_fold",
+            "selection_rank",
+            "selection_group",
+            "patch_index",
+            "patch_size_px",
+            "quicklook_path",
+            "quicklook_aux_path",
+            "qc_status",
+            "qc_reason",
+        ],
+    )
+
+    (annotation_dir / "patch_split_manifest.json").write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "n_splits": 5,
+                "patch_to_fold": {
+                    "KDR_301_p1": 1,
+                    "KDR_302_p1": 2,
+                },
+            },
+            ensure_ascii=True,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    snapshot_path = run_dir / "final_config_snapshot.yaml"
+    snapshot_path.write_text("selection:\n  n_samples: 2\n", encoding="utf-8")
+    snapshot_sha = _sha256(snapshot_path)
+    run_metadata = {
+        "extra": {
+            "resolved_snapshot_path": str(snapshot_path),
+            "resolved_snapshot_sha256": snapshot_sha,
+            "tile_excluded_shortnames": [],
+            "tile_exclusion_policy_sha256": "",
+        }
+    }
+    (run_dir / "run_metadata.json").write_text(
+        json.dumps(run_metadata, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+    policy_path = repo_root / "config" / "tile_exclusion_policy.yaml"
+    policy_path.parent.mkdir(parents=True, exist_ok=True)
+    policy_path.write_text("version: 1\nrules: []\n", encoding="utf-8")
+
+    return repo_root, run_dir
+
+
+def test_prepare_patches_and_verify_patches_roundtrip(tmp_path: Path) -> None:
+    repo_root, run_dir = _create_patch_run_fixture(tmp_path)
+    handoff_dir = repo_root / "handoff" / "patch_roundtrip"
+
+    result_prepare = _run_script(
+        [
+            "prepare-patches",
+            "--run-dir",
+            str(run_dir),
+            "--out",
+            str(handoff_dir),
+            "--repo-root",
+            str(repo_root),
+        ]
+    )
+    assert result_prepare.returncode == 0, result_prepare.stderr
+
+    selected_patches = handoff_dir / "selected_patches.csv"
+    patch_manifest = handoff_dir / "patch_handoff_manifest.json"
+    patch_masks = handoff_dir / "patch_mask_requirements.csv"
+    split_manifest = handoff_dir / "patch_split_manifest.json"
+    quicklook_p1 = handoff_dir / "quicklooks" / "KDR_301_p1.png"
+    quicklook_p1_aux = handoff_dir / "quicklooks" / "KDR_301_p1.png.aux.xml"
+    assert selected_patches.exists()
+    assert patch_manifest.exists()
+    assert patch_masks.exists()
+    assert split_manifest.exists()
+    assert quicklook_p1.exists()
+    assert quicklook_p1_aux.exists()
+
+    with selected_patches.open("r", encoding="utf-8", newline="") as handle:
+        selected_rows = list(csv.DictReader(handle))
+    assert len(selected_rows) == 2
+    assert {row["patch_id"] for row in selected_rows} == {"KDR_301_p1", "KDR_302_p1"}
+
+    manifest_payload = json.loads(patch_manifest.read_text(encoding="utf-8"))
+    assert manifest_payload["schema_version"] == "handoff_patch_format_v1"
+    assert manifest_payload["patch_selection_count"] == 2
+    assert manifest_payload["patch_selection_csv_sha256"] == _sha256(selected_patches)
+
+    result_verify = _run_script(
+        [
+            "verify-patches",
+            "--handoff-dir",
+            str(handoff_dir),
+            "--repo-root",
+            str(repo_root),
+        ]
+    )
+    assert result_verify.returncode == 0, result_verify.stderr
+
+
+def test_prepare_patches_synthesizes_quicklook_sidecars_for_legacy_manifest(
+    tmp_path: Path,
+) -> None:
+    repo_root, run_dir = _create_patch_run_fixture(tmp_path)
+    annotation_dir = run_dir / "annotation_plan"
+    handoff_dir = repo_root / "handoff" / "patch_roundtrip_legacy"
+
+    # Simulate legacy annotation plan artifacts: quicklook aux sidecars missing and
+    # manifest does not carry quicklook_aux_path yet.
+    for aux_path in (annotation_dir / "quicklooks").glob("*.aux.xml"):
+        aux_path.unlink()
+
+    with (annotation_dir / "patch_manifest.csv").open(
+        "r", encoding="utf-8", newline=""
+    ) as handle:
+        rows = list(csv.DictReader(handle))
+
+    legacy_rows = []
+    for row in rows:
+        row = dict(row)
+        row.pop("quicklook_aux_path", None)
+        legacy_rows.append(row)
+
+    _write_csv(
+        annotation_dir / "patch_manifest.csv",
+        legacy_rows,
+        fieldnames=[
+            "patch_id",
+            "tile_shortname",
+            "image_path",
+            "image_filename",
+            "x0",
+            "y0",
+            "x1",
+            "y1",
+            "split_fold",
+            "selection_rank",
+            "selection_group",
+            "patch_index",
+            "patch_size_px",
+            "quicklook_path",
+            "qc_status",
+            "qc_reason",
+        ],
+    )
+
+    result_prepare = _run_script(
+        [
+            "prepare-patches",
+            "--run-dir",
+            str(run_dir),
+            "--out",
+            str(handoff_dir),
+            "--repo-root",
+            str(repo_root),
+        ]
+    )
+    assert result_prepare.returncode == 0, result_prepare.stderr
+
+    assert (handoff_dir / "quicklooks" / "KDR_301_p1.png.aux.xml").exists()
+    assert (handoff_dir / "quicklooks" / "KDR_302_p1.png.aux.xml").exists()
+
+    result_verify = _run_script(
+        [
+            "verify-patches",
+            "--handoff-dir",
+            str(handoff_dir),
+            "--repo-root",
+            str(repo_root),
+        ]
+    )
+    assert result_verify.returncode == 0, result_verify.stderr
+
+
+def test_verify_patches_detects_exclusion_policy_violation(tmp_path: Path) -> None:
+    repo_root = tmp_path
+    handoff_dir = repo_root / "handoff" / "patch_policy_violation"
+    handoff_dir.mkdir(parents=True, exist_ok=True)
+
+    policy_path = repo_root / "config" / "tile_exclusion_policy.yaml"
+    policy_path.parent.mkdir(parents=True, exist_ok=True)
+    policy_path.write_text(
+        """
+version: 1
+rules:
+  - id: exclude_kdr_155b_duplicate_variant
+    action: exclude_from_candidate_pool
+    match:
+      shortName:
+        - KDR_155b
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+
+    _write_csv(
+        handoff_dir / "selected_patches.csv",
+        [
+            {
+                "patch_id": "KDR_155b_p1",
+                "tile_shortname": "KDR_155b",
+                "image_path": "data/images/KDR_155b.png",
+                "image_filename": "KDR_155b.png",
+                "x0": "0",
+                "y0": "0",
+                "x1": "1024",
+                "y1": "1024",
+                "split_fold": "1",
+                "quicklook_path": "quicklooks/KDR_155b_p1.png",
+                "quicklook_aux_path": "quicklooks/KDR_155b_p1.png.aux.xml",
+            }
+        ],
+        fieldnames=[
+            "patch_id",
+            "tile_shortname",
+            "image_path",
+            "image_filename",
+            "x0",
+            "y0",
+            "x1",
+            "y1",
+            "split_fold",
+            "quicklook_path",
+            "quicklook_aux_path",
+        ],
+    )
+    _write_csv(
+        handoff_dir / "patch_mask_requirements.csv",
+        [{"patch_id": "KDR_155b_p1", "required_mask_filename": "KDR_155b_p1_mask.tif"}],
+        fieldnames=["patch_id", "required_mask_filename"],
+    )
+    (handoff_dir / "patch_split_manifest.json").write_text(
+        json.dumps(
+            {"version": 1, "n_splits": 5, "patch_to_fold": {"KDR_155b_p1": 1}},
+            ensure_ascii=True,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    selected_sha = _sha256(handoff_dir / "selected_patches.csv")
+    mask_sha = _sha256(handoff_dir / "patch_mask_requirements.csv")
+    split_sha = _sha256(handoff_dir / "patch_split_manifest.json")
+    manifest = {
+        "schema_version": "handoff_patch_format_v1",
+        "selection_id": "patch_sel_violation",
+        "run_id": "run_violation",
+        "run_dir": "outputs/runs/run_violation",
+        "resolved_snapshot_path": "outputs/runs/run_violation/final_config.yaml",
+        "resolved_snapshot_sha256": "c" * 64,
+        "patch_selection_csv_path": "selected_patches.csv",
+        "patch_selection_csv_sha256": selected_sha,
+        "patch_selection_count": 1,
+        "patch_mask_requirements_path": "patch_mask_requirements.csv",
+        "patch_mask_requirements_sha256": mask_sha,
+        "patch_split_manifest_path": "patch_split_manifest.json",
+        "patch_split_manifest_sha256": split_sha,
+        "tile_exclusion_policy_path": "config/tile_exclusion_policy.yaml",
+        "tile_exclusion_policy_sha256": _sha256(policy_path),
+        "excluded_tiles": ["KDR_155b"],
+        "split_authority": "masterarbeit_strassenerkennung_cv",
+    }
+    (handoff_dir / "patch_handoff_manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+    result = _run_script(
+        [
+            "verify-patches",
+            "--handoff-dir",
+            str(handoff_dir),
+            "--repo-root",
+            str(repo_root),
+        ]
+    )
+    assert result.returncode == 4
+    assert "excluded tile present" in result.stderr
