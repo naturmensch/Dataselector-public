@@ -89,6 +89,7 @@ def load_or_create_data(
     dim: int = 512,
     seed: int = 123,
     require_metadata: bool = False,
+    metadata_path: str | Path | None = None,
     feature_cache_dir: Path | None = None,
 ):
     """
@@ -119,7 +120,7 @@ def load_or_create_data(
     features_path = out_dir / "features.npy"
     cache_dir = feature_cache_dir if feature_cache_dir is not None else out_dir
     metadata_path = assert_canonical_metadata(
-        None,
+        metadata_path,
         context="optuna-optimize",
     )
 
@@ -436,6 +437,7 @@ def run_optuna(
         dim=dim,
         seed=seed,
         require_metadata=True,
+        metadata_path=metadata_path,
         feature_cache_dir=feature_cache_dir,
     )
 

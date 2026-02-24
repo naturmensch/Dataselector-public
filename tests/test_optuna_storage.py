@@ -12,6 +12,36 @@ pytestmark = pytest.mark.smoke
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def _write_immutable_feature_cache(
+    out_dir: Path, metadata_csv: Path, features: np.ndarray
+) -> None:
+    from dataselector.data.io import build_feature_identity
+    from dataselector.pipeline.cache import (
+        atomic_write_features_with_meta,
+        compute_meta_hash,
+        create_meta_info,
+    )
+
+    feature_identity = build_feature_identity(
+        feature_cfg={},
+        batch_size=16,
+        config_sha256=None,
+    )
+    params = {"batch_size": 16, "feature_identity": feature_identity}
+    meta_hash = compute_meta_hash(str(metadata_csv), params=params)
+    meta_info = create_meta_info(
+        str(metadata_csv),
+        params=params,
+        feature_identity=feature_identity,
+    )
+    atomic_write_features_with_meta(
+        cache_root=out_dir,
+        feats=np.asarray(features, dtype=np.float32),
+        meta_hash=meta_hash,
+        meta_info=meta_info,
+    )
+
+
 @pytest.fixture(autouse=True)
 def skip_if_no_optuna():
     pytest.importorskip("optuna")
@@ -38,7 +68,11 @@ def test_optuna_storage_creation(tmp_path):
             "image_filename": [f"dummy_{i}.png" for i in range(4)],
         }
     ).to_csv(metadata_csv, index=False)
-    np.save(out_dir / "features.npy", np.random.RandomState(11).randn(4, 4))
+    _write_immutable_feature_cache(
+        out_dir=out_dir,
+        metadata_csv=metadata_csv,
+        features=np.random.RandomState(11).randn(4, 4),
+    )
 
     cmd = [
         sys.executable,

@@ -185,8 +185,8 @@ def test_full_pipeline_simulation(tmp_dirs, repo_root, inject_src_stub, monkeypa
     io_mod.load_or_extract_features(
         out_dir=str(outputs), csv_meta=str(csv_meta), batch_size=4, cache=True
     )
-    # check for either legacy outputs/features.npy or new hashed cache files
-    found = list(outputs.glob("features-*.npy"))
+    # immutable cache lives under outputs/<hash>/features.npy
+    found = list(outputs.glob("*/features.npy"))
     assert len(found) >= 1
     # validate shape of first cache
     _arr = np.load(found[0])
@@ -224,6 +224,7 @@ def test_full_pipeline_simulation(tmp_dirs, repo_root, inject_src_stub, monkeypa
         dim=512,
         seed=123,
         require_metadata=False,
+        metadata_path=None,
         feature_cache_dir=None,
     ):
         rng = np.random.RandomState(seed)

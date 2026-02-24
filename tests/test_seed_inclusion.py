@@ -66,8 +66,10 @@ def test_seed_included_by_name(monkeypatch):
             gamma_temporal=None,
             min_distance_km=None,
             metric=None,
+            spatial_constraint_metric=None,
             random_state=None,
             preselected_indices=None,
+            **kwargs,
         ):
             self.n_samples = n_samples
             self.metadata = metadata
@@ -128,8 +130,10 @@ def test_seed_included_by_substring_case_insensitive(monkeypatch):
             gamma_temporal=None,
             min_distance_km=None,
             metric=None,
+            spatial_constraint_metric=None,
             random_state=None,
             preselected_indices=None,
+            **kwargs,
         ):
             self.n_samples = n_samples
             self.metadata = metadata

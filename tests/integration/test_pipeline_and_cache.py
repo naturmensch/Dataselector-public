@@ -8,42 +8,43 @@ from dataselector.pipeline import experiments as experiments_mod
 
 @pytest.mark.integration
 def test_cache_migration_and_load(tmp_path, monkeypatch):
-    """Legacy features.npy is migrated to hash cache and loaded back."""
+    """Legacy features.npy is ignored; immutable hash cache is built from extraction."""
     out = tmp_path / "outputs"
     out.mkdir()
 
-    feats = np.arange(12).reshape(3, 4)
-    np.save(out / "features.npy", feats)
+    legacy_feats = np.arange(12).reshape(3, 4)
+    np.save(out / "features.npy", legacy_feats)
 
     csv = tmp_path / "data.csv"
     csv.write_text("id\n1\n2\n3\n", encoding="utf-8")
 
     meta = pd.DataFrame({"image_path": ["a.png", "b.png", "c.png"]})
+    extracted = np.full((3, 4), 7.0, dtype=np.float32)
     monkeypatch.setattr(io_mod, "load_metadata", lambda _csv: meta)
     monkeypatch.setattr(
         io_mod,
         "_extract_features_with_provenance",
-        lambda _metadata, **_: (_ for _ in ()).throw(
-            AssertionError("extract_features should not run during migration path")
-        ),
+        lambda _metadata, **_: (extracted, {}),
     )
 
     loaded = io_mod.load_or_extract_features(
-        out_dir=out, csv_meta=str(csv), batch_size=4, cache=True
+        out_dir=out,
+        csv_meta=str(csv),
+        batch_size=4,
+        cache=True,
+        cache_scope="run_local",
     )
-    assert np.array_equal(loaded, feats)
+    assert np.array_equal(loaded, extracted)
 
-    migrated_files = list(out.glob("features-*.npy"))
-    backup_files = list((out / "backups").glob("features_legacy_backup_*.npy"))
-
-    assert migrated_files
-    assert not (out / "features.npy").exists()
-    assert backup_files
+    immutable_cache_files = list(out.glob("*/features.npy"))
+    assert immutable_cache_files
+    # Legacy file remains untouched; cache contract no longer migrates it.
+    assert (out / "features.npy").exists()
 
 
 @pytest.mark.integration
 def test_feature_cache_validation_reextracts(tmp_path, monkeypatch):
-    """Stale legacy cache is ignored and replaced with a valid hash cache."""
+    """Stale legacy cache is ignored and a valid immutable hash cache is written."""
     out = tmp_path / "outputs"
     out.mkdir()
     np.save(out / "features.npy", np.zeros((2, 16), dtype=np.float32))
@@ -69,11 +70,15 @@ def test_feature_cache_validation_reextracts(tmp_path, monkeypatch):
     )
 
     feats = io_mod.load_or_extract_features(
-        out_dir=out, csv_meta=str(csv), batch_size=4, cache=True
+        out_dir=out,
+        csv_meta=str(csv),
+        batch_size=4,
+        cache=True,
+        cache_scope="run_local",
     )
     assert feats.shape == (4, 16)
 
-    assert list(out.glob("features-*.npy"))
+    assert list(out.glob("*/features.npy"))
 
 
 @pytest.mark.integration
@@ -111,9 +116,13 @@ def test_pipeline_smoke_small(tmp_path, monkeypatch):
     )
 
     io_mod.load_or_extract_features(
-        out_dir=outputs, csv_meta=str(csv_meta), batch_size=4, cache=True
+        out_dir=outputs,
+        csv_meta=str(csv_meta),
+        batch_size=4,
+        cache=True,
+        cache_scope="run_local",
     )
-    assert list(outputs.glob("features-*.npy"))
+    assert list(outputs.glob("*/features.npy"))
 
     monkeypatch.setattr(experiments_mod, "load_metadata", lambda _csv: metadata.copy())
     monkeypatch.setattr(
