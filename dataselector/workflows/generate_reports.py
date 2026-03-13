@@ -75,6 +75,152 @@ def _parse_requested_validation_mode(method_contract_path: Path) -> Optional[str
     return None
 
 
+def _normalize_name_list(values: object) -> list[str]:
+    if isinstance(values, str):
+        text = values.strip()
+        return [text] if text else []
+    if isinstance(values, (list, tuple, set)):
+        out: list[str] = []
+        for raw in values:
+            text = str(raw).strip()
+            if text:
+                out.append(text)
+        return out
+    return []
+
+
+def _selection_provenance_block(selection: object) -> dict:
+    if not isinstance(selection, dict):
+        return {}
+    for key in ("_provenance", "parameter_provenance"):
+        payload = selection.get(key)
+        if isinstance(payload, dict):
+            return payload
+    return {}
+
+
+def _parse_selection_weight_triplet(path_value: object) -> Optional[dict[str, float]]:
+    if not isinstance(path_value, str) or not path_value.strip():
+        return None
+    match = re.search(
+        r"selection_a(?P<a>[-+0-9.eE]+?)_b(?P<b>[-+0-9.eE]+?)_g(?P<g>[-+0-9.eE]+?)(?:\.csv)?$",
+        Path(path_value).name,
+    )
+    if not match:
+        return None
+    try:
+        return {
+            "alpha_visual": float(match.group("a")),
+            "beta_spatial": float(match.group("b")),
+            "gamma_temporal": float(match.group("g")),
+        }
+    except Exception:
+        return None
+
+
+def _format_selection_weights(weights: Optional[dict[str, float]]) -> str:
+    if not weights:
+        return "not_available"
+    return (
+        f"alpha={weights['alpha_visual']:.6f}, "
+        f"beta={weights['beta_spatial']:.6f}, "
+        f"gamma={weights['gamma_temporal']:.6f}"
+    )
+
+
+def _extract_snapshot_selection_context(snapshot_payload: dict) -> dict[str, object]:
+    if not isinstance(snapshot_payload, dict):
+        return {}
+    params = snapshot_payload.get("parameters")
+    if not isinstance(params, dict):
+        return {}
+    selection = params.get("selection")
+    if not isinstance(selection, dict):
+        return {}
+
+    weights: dict[str, float] = {}
+    for key in ("alpha_visual", "beta_spatial", "gamma_temporal"):
+        raw_value = selection.get(key)
+        if raw_value is None:
+            weights = {}
+            break
+        try:
+            weights[key] = float(raw_value)
+        except Exception:
+            weights = {}
+            break
+
+    return {
+        "weights": weights if len(weights) == 3 else None,
+        "case_tile_names": _normalize_name_list(selection.get("case_tile_names")),
+    }
+
+
+def _extract_materialized_selection_context(
+    selection_contract: dict,
+    *,
+    run_extra: dict | None = None,
+) -> dict[str, object]:
+    extra = run_extra if isinstance(run_extra, dict) else {}
+    selection_source = selection_contract.get("selection_source") or extra.get("selection_source")
+    selection_source_file = selection_contract.get("selection_source_file") or extra.get(
+        "selection_source_file"
+    )
+    case_tile_names = _normalize_name_list(
+        selection_contract.get("case_tile_names") or extra.get("case_tile_names")
+    )
+    return {
+        "selection_source": selection_source,
+        "selection_source_file": selection_source_file,
+        "weights": _parse_selection_weight_triplet(selection_source_file),
+        "case_tile_names": case_tile_names,
+    }
+
+
+def _selection_weights_aligned(
+    snapshot_weights: Optional[dict[str, float]],
+    materialized_weights: Optional[dict[str, float]],
+) -> bool:
+    if not snapshot_weights or not materialized_weights:
+        return False
+    for key in ("alpha_visual", "beta_spatial", "gamma_temporal"):
+        if abs(float(snapshot_weights[key]) - float(materialized_weights[key])) > 1e-6:
+            return False
+    return True
+
+
+def _build_selection_reconciliation(
+    *,
+    snapshot_payload: dict,
+    selection_contract: dict,
+    run_extra: dict | None = None,
+) -> dict[str, object]:
+    snapshot_context = _extract_snapshot_selection_context(snapshot_payload)
+    materialized_context = _extract_materialized_selection_context(
+        selection_contract,
+        run_extra=run_extra,
+    )
+    snapshot_weights = snapshot_context.get("weights")
+    materialized_weights = materialized_context.get("weights")
+
+    if not snapshot_context or not snapshot_weights:
+        status = "snapshot_missing"
+    elif _selection_weights_aligned(snapshot_weights, materialized_weights):
+        status = "aligned"
+    else:
+        status = "documented_difference"
+
+    return {
+        "snapshot_weights": snapshot_weights,
+        "materialized_weights": materialized_weights,
+        "materialized_selection_source": materialized_context.get("selection_source"),
+        "materialized_selection_source_file": materialized_context.get(
+            "selection_source_file"
+        ),
+        "status": status,
+    }
+
+
 def _build_claim_rows(
     *,
     output_dir: Path,
@@ -312,7 +458,7 @@ def _write_thesis_method_artifacts(
     else:
         lines.append("- Selection contract artifact missing or unreadable.")
     lines.append("")
-    lines.append("## Snapshot Reconciliation")
+    lines.append("## Case Reconciliation")
     lines.append("")
     snapshot_case_names: list[str] = []
     pipeline_snapshot = run_extra.get("pipeline_metadata_snapshot")
@@ -355,6 +501,60 @@ def _write_thesis_method_artifacts(
     else:
         lines.append(
             "- Reconciliation note: no pipeline snapshot metadata found; interpret final run contract as authoritative."
+        )
+    lines.append("")
+    lines.append("## Selection Reconciliation")
+    lines.append("")
+    snapshot_payload: dict[str, object] = {}
+    snapshot_path = _resolve_report_path(
+        output_dir,
+        run_extra.get("snapshot_path") or run_extra.get("resolved_snapshot_path"),
+    )
+    if snapshot_path is not None and snapshot_path.exists():
+        snapshot_payload = _safe_read_yaml_dict(snapshot_path)
+        try:
+            rel_snapshot = snapshot_path.relative_to(output_dir)
+            lines.append(f"- `selection_snapshot_path`: `{rel_snapshot}`")
+        except Exception:
+            lines.append(f"- `selection_snapshot_path`: `{snapshot_path}`")
+    else:
+        lines.append("- `selection_snapshot_path`: `not_available`")
+
+    selection_reconciliation = _build_selection_reconciliation(
+        snapshot_payload=snapshot_payload,
+        selection_contract=selection_contract,
+        run_extra=run_extra,
+    )
+    lines.append(
+        "- `materialized_selection_source`: "
+        f"`{selection_reconciliation['materialized_selection_source']}`"
+    )
+    lines.append(
+        "- `materialized_selection_source_file`: "
+        f"`{selection_reconciliation['materialized_selection_source_file']}`"
+    )
+    lines.append(
+        "- `pipeline_snapshot_selection_weights`: "
+        f"`{_format_selection_weights(selection_reconciliation['snapshot_weights'])}`"
+    )
+    lines.append(
+        "- `materialized_selection_weights`: "
+        f"`{_format_selection_weights(selection_reconciliation['materialized_weights'])}`"
+    )
+    lines.append(
+        f"- `reconciliation_status`: `{selection_reconciliation['status']}`"
+    )
+    if selection_reconciliation["status"] == "aligned":
+        lines.append(
+            "- Reconciliation note: snapshot selection weights and the materialized selection source are aligned."
+        )
+    elif selection_reconciliation["status"] == "documented_difference":
+        lines.append(
+            "- Reconciliation note: the frozen thesis dataset is defined by the materialized selection artifacts; the snapshot remains the authoritative parameter-resolution context."
+        )
+    else:
+        lines.append(
+            "- Reconciliation note: no usable snapshot selection weights were found; interpret the materialized selection artifacts as authoritative for dataset claims."
         )
     lines.append("")
     lines.append("## Validation Contract")
@@ -1117,7 +1317,11 @@ def _generate_single_run_thesis_report(
         except Exception as exc:
             lines.append(f"- Could not parse sampler summary CSV: `{exc}`")
 
-    snapshot_path = _resolve_report_path(output_dir, run_extra.get("snapshot_path"))
+    snapshot_payload: dict[str, object] = {}
+    snapshot_path = _resolve_report_path(
+        output_dir,
+        run_extra.get("snapshot_path") or run_extra.get("resolved_snapshot_path"),
+    )
     if snapshot_path is not None and snapshot_path.exists():
         snapshot_payload = _safe_read_yaml_dict(snapshot_path)
         if snapshot_payload:
@@ -1129,11 +1333,7 @@ def _generate_single_run_thesis_report(
 
             params = snapshot_payload.get("parameters", {})
             selection = params.get("selection", {}) if isinstance(params, dict) else {}
-            provenance = (
-                selection.get("parameter_provenance", {})
-                if isinstance(selection, dict)
-                else {}
-            )
+            provenance = _selection_provenance_block(selection)
             optuna_provenance = (
                 provenance.get("optuna_sampler", {})
                 if isinstance(provenance, dict)
@@ -1373,6 +1573,63 @@ def _generate_single_run_thesis_report(
         else:
             lines.append("- Selection file: not available")
         lines.append("")
+
+    lines.append("## Selection Provenance")
+    lines.append("")
+    selection_contract_payload = _safe_read_json_dict(selection_contract_json)
+    selection_reconciliation = _build_selection_reconciliation(
+        snapshot_payload=snapshot_payload,
+        selection_contract=selection_contract_payload,
+        run_extra=run_extra,
+    )
+    if snapshot_path is not None and snapshot_path.exists():
+        try:
+            rel_snapshot = snapshot_path.relative_to(output_dir)
+            lines.append(f"- Parameter snapshot: `{rel_snapshot}`")
+        except Exception:
+            lines.append(f"- Parameter snapshot: `{snapshot_path}`")
+    else:
+        lines.append("- Parameter snapshot: `not_available`")
+    lines.append(
+        "- Dataset authority: `selection_core.csv`, `selection_final_with_cases.csv`, "
+        "and `selection_contract.json` define the frozen thesis dataset."
+    )
+    lines.append(
+        "- Parameter authority: validated snapshot and parameter-resolution artifacts "
+        "define the resolved parameter context."
+    )
+    lines.append(
+        "- Materialized selection source: "
+        f"`{selection_reconciliation['materialized_selection_source']}`"
+    )
+    lines.append(
+        "- Materialized selection source file: "
+        f"`{selection_reconciliation['materialized_selection_source_file']}`"
+    )
+    lines.append(
+        "- Snapshot selection weights: "
+        f"`{_format_selection_weights(selection_reconciliation['snapshot_weights'])}`"
+    )
+    lines.append(
+        "- Materialized selection weights: "
+        f"`{_format_selection_weights(selection_reconciliation['materialized_weights'])}`"
+    )
+    lines.append(
+        f"- Selection reconciliation status: `{selection_reconciliation['status']}`"
+    )
+    if selection_reconciliation["status"] == "aligned":
+        lines.append(
+            "- Interpretation: snapshot selection weights and the materialized selection source are aligned for this run."
+        )
+    elif selection_reconciliation["status"] == "documented_difference":
+        lines.append(
+            "- Interpretation: the current thesis freeze is a frozen dataset sourced from the materialized selection CSV; the snapshot remains the authoritative parameter-resolution context."
+        )
+    else:
+        lines.append(
+            "- Interpretation: snapshot selection weights are unavailable here; dataset claims therefore bind to the materialized selection artifacts."
+        )
+    lines.append("")
 
     if missing_required:
         lines.append("## Notes")

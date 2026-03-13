@@ -216,6 +216,8 @@ def test_report_writes_method_audit_and_key_claims(tmp_path: Path):
     (run_dir / "selection_contract.json").write_text(
         json.dumps(
             {
+                "selection_source": "tuning_weights_best_metrics",
+                "selection_source_file": "tuning_weights/selection_a0.2_b0.3_g0.5.csv",
                 "case_exclude_from_core": True,
                 "case_attach_mode": "append_unique",
                 "case_tile_names": ["Hamburg"],
@@ -225,6 +227,24 @@ def test_report_writes_method_audit_and_key_claims(tmp_path: Path):
                 "case_count": 1,
                 "final_count": 3,
             }
+        ),
+        encoding="utf-8",
+    )
+    snapshot_path = run_dir / "final_config_resolution.yaml"
+    snapshot_path.write_text(
+        "\n".join(
+            [
+                "parameters:",
+                "  selection:",
+                "    alpha_visual: 0.6",
+                "    beta_spatial: 0.2",
+                "    gamma_temporal: 0.2",
+                "    case_tile_names: []",
+                "    _provenance:",
+                "      optuna_sampler:",
+                "        method: auto_compare",
+                "        source_file: parameter_resolution/sampler_resolution/selected_sampler.json",
+            ]
         ),
         encoding="utf-8",
     )
@@ -260,6 +280,7 @@ def test_report_writes_method_audit_and_key_claims(tmp_path: Path):
                     "tile_exclusions_count": 2,
                     "tile_exclusion_policy_sha256": "abc123",
                     "case_tile_names": ["Hamburg"],
+                    "snapshot_path": "final_config_resolution.yaml",
                     "pipeline_metadata_snapshot": {
                         "extra": {"case_tile_names": []}
                     },
@@ -279,6 +300,13 @@ def test_report_writes_method_audit_and_key_claims(tmp_path: Path):
     assert "## Method Audit" in report
     assert "THESIS_METHOD_AUDIT.md" in report
     assert "THESIS_KEY_CLAIMS.csv" in report
+    assert "## Selection Provenance" in report
+    assert "- Parameter snapshot: `final_config_resolution.yaml`" in report
+    assert "- Materialized selection source: `tuning_weights_best_metrics`" in report
+    assert "- Materialized selection source file: `tuning_weights/selection_a0.2_b0.3_g0.5.csv`" in report
+    assert "- Snapshot selection weights: `alpha=0.600000, beta=0.200000, gamma=0.200000`" in report
+    assert "- Materialized selection weights: `alpha=0.200000, beta=0.300000, gamma=0.500000`" in report
+    assert "- Selection reconciliation status: `documented_difference`" in report
 
     claims_df = pd.read_csv(key_claims)
     assert {"claim", "evidence_file", "status"}.issubset(claims_df.columns)
@@ -302,7 +330,13 @@ def test_report_writes_method_audit_and_key_claims(tmp_path: Path):
     assert len(hamburg_claim) == 1
     assert hamburg_claim.iloc[0]["status"] == "supported"
 
-    assert "## Snapshot Reconciliation" in method_audit_text
+    assert "## Case Reconciliation" in method_audit_text
     assert "- `pipeline_snapshot_case_tile_names`: `[]`" in method_audit_text
     assert "- `final_case_tile_names`: `['Hamburg']`" in method_audit_text
     assert "- `reconciliation_status`: `documented_difference`" in method_audit_text
+    assert "## Selection Reconciliation" in method_audit_text
+    assert "- `selection_snapshot_path`: `final_config_resolution.yaml`" in method_audit_text
+    assert "- `materialized_selection_source`: `tuning_weights_best_metrics`" in method_audit_text
+    assert "- `materialized_selection_source_file`: `tuning_weights/selection_a0.2_b0.3_g0.5.csv`" in method_audit_text
+    assert "- `pipeline_snapshot_selection_weights`: `alpha=0.600000, beta=0.200000, gamma=0.200000`" in method_audit_text
+    assert "- `materialized_selection_weights`: `alpha=0.200000, beta=0.300000, gamma=0.500000`" in method_audit_text

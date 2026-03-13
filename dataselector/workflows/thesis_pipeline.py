@@ -487,6 +487,8 @@ def _materialize_core_case_artifacts(
         str(canonical_metadata_path(Path.cwd())),
         resolve_images=False,
     )
+    # Freeze dataset claims to the recorded selection CSV rather than re-selecting
+    # from snapshot parameters during report/export stages.
     primary_sel_path, selection_source = _find_primary_selection_csv(output_dir)
 
     core_raw: pd.DataFrame

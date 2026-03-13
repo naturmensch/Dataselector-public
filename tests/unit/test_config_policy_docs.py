@@ -21,6 +21,14 @@ AUTHORITATIVE_DOCS = [
 
 HISTORICAL_CONFIG = "config/pipeline_config.best_trial_70.yaml"
 ACTIVE_CONFIG = "config/pipeline_config.yaml"
+THESIS_FREEZE_DOCS = [
+    ROOT / "docs" / "METHODOLOGY.md",
+    ROOT / "docs" / "THESIS_METHOD_CONTRACT.md",
+    ROOT / "docs" / "03_USER_GUIDES" / "THESIS_PIPELINE_HOWTO.md",
+    ROOT / "docs" / "CONFIG_POLICY.md",
+    ROOT / "docs" / "PARAMETER_POLICY_LEDGER.md",
+    ROOT / "docs" / "thesis_chapter_training_data_selection.tex",
+]
 
 
 def _line_is_historical(line: str) -> bool:
@@ -86,4 +94,57 @@ def test_config_policy_doc_declares_warning_policy_contract():
     )
     assert "Broad warning suppression" in text, (
         "Config policy must forbid broad warning suppression"
+    )
+
+
+def test_thesis_freeze_docs_declare_dataset_vs_parameter_authority():
+    for path in THESIS_FREEZE_DOCS:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        assert "Dataset authority:" in text, (
+            f"{path.relative_to(ROOT)} must declare dataset authority"
+        )
+        assert "Parameter authority:" in text, (
+            f"{path.relative_to(ROOT)} must declare parameter authority"
+        )
+        assert "selection_core.csv" in text, (
+            f"{path.relative_to(ROOT)} must reference selection_core.csv"
+        )
+        assert "selection_final_with_cases.csv" in text, (
+            f"{path.relative_to(ROOT)} must reference selection_final_with_cases.csv"
+        )
+        assert "selection_contract.json" in text, (
+            f"{path.relative_to(ROOT)} must reference selection_contract.json"
+        )
+
+
+def test_index_prioritizes_canonical_thesis_path():
+    index_path = ROOT / "docs" / "INDEX.md"
+    text = index_path.read_text(encoding="utf-8", errors="ignore")
+    assert "thesis-orchestrate" in text, (
+        "Documentation hub must reference thesis-orchestrate as canonical thesis path"
+    )
+    assert "advanced / legacy" in text, (
+        "Documentation hub must label XXL guidance as advanced / legacy"
+    )
+    assert "dataselector xxl --best-sampler cmaes" not in text, (
+        "Documentation hub must not present dataselector xxl as the default thesis workflow"
+    )
+
+
+def test_active_thesis_docs_do_not_repeat_obsolete_selection_story():
+    offenders: list[str] = []
+    banned_patterns = [
+        "34 Kacheln",
+        "34 selektierten",
+        "alpha=0.40, beta=0.30, gamma=0.30",
+        "scripts/run_full_experiment.sh",
+    ]
+    for path in THESIS_FREEZE_DOCS + [ROOT / "docs" / "INDEX.md"]:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        for pattern in banned_patterns:
+            if pattern in text:
+                offenders.append(f"{path.relative_to(ROOT)} -> {pattern}")
+    assert not offenders, (
+        "Active thesis docs still contain obsolete selection narrative:\n"
+        + "\n".join(offenders)
     )

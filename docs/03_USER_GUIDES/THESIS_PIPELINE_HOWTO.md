@@ -249,6 +249,24 @@ Erwartete Run-Artefakte:
 3. `selection_final_with_cases.csv`
 4. `selection_contract.json`
 
+Interpretation des aktuellen Thesis-Freezes:
+
+Dataset authority: `selection_core.csv`, `selection_final_with_cases.csv`, und
+`selection_contract.json` definieren den eingefrorenen Thesis-Datensatz.
+
+Parameter authority: validierter Snapshot und Parameter-Resolution-Artefakte
+definieren den aufgelösten Parameterkontext.
+
+1. `selection_contract.json` muss `selection_source` und
+   `selection_source_file` enthalten, damit die materialisierte Auswahlquelle
+   explizit nachvollziehbar bleibt.
+2. Wenn Snapshot-Parameter und materialisierte Auswahl-Artefakte divergieren,
+   binden Datensatz-Claims an die materialisierten Auswahl-Artefakte;
+   Parameter-Claims binden an Snapshot-/Resolver-Artefakte.
+3. Verwende in Thesis-Texten keine Formulierung, dass Snapshot-Gewichte allein
+   die finale Auswahl erzeugt haetten, solange keine materialisierte
+   Alignment-Evidenz vorliegt.
+
 ### 4.0.1.6 Validation/UQ Contract
 
 Für inferenzielle Unsicherheitsaussagen:
@@ -623,8 +641,15 @@ bash scripts/handoff_check.sh verify-patches \
 2. Konsistenz von Patch-Bounds/Fold-Zuordnung (`patch_to_fold`)
 3. Bildverfügbarkeit unter `data/images` (Quell-Tiles)
 4. PNG-Sidecars (`*.png.aux.xml`) für Quell-Tiles
-5. Patch-Quicklooks inkl. Quicklook-Sidecars im Handoff (`quicklooks/*.png`, `quicklooks/*.png.aux.xml`)
+5. Patch-Quicklooks als GeoTIFF im Handoff (`quicklooks/*.tif`) inkl. eingebetteter Georeferenz (CRS + Transform)
 6. Exclusion-Policy-Verstöße auf Tile-Ebene
+
+Warum der Patch-Handoff auf GeoTIFF-v2 standardisiert ist:
+
+1. Georeferenz liegt im Quicklook selbst (kein fragiles Sidecar-Only-Modell).
+2. VRT-basierte Annotation in QGIS ist stabiler und reduziert manuelle Patch-Auswahl.
+3. Der Vertrag ist maschinell erzwingbar (`handoff_patch_format_v2`, `geotiff_deflate_rgb`).
+4. Der Speicheraufpreis bleibt im niedrigen einstelligen Bereich und ist für den Workflow vertretbar.
 
 Der tile-basierte Legacy-Flow bleibt verfügbar:
 

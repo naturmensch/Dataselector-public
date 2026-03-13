@@ -2,7 +2,7 @@
 Diversity Sampling mittels Facility Location Function.
 
 Dieses Modul implementiert die Core-Set Selection zur Auswahl
-der diversesten 34 Kacheln aus dem Datensatz.
+einer diversen, konfigurationsgesteuerten Stichprobe aus dem Datensatz.
 
 Unterstützt drei Modi:
 1. Legacy: Facility Location + Post-Processing spatial filter

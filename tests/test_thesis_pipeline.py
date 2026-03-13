@@ -633,6 +633,105 @@ def test_run_thesis_pipeline_compute_params_uses_autoscale_artifact(tmp_path, mo
     )
 
 
+def test_run_thesis_pipeline_keeps_materialized_selection_when_snapshot_weights_differ(
+    tmp_path, monkeypatch
+):
+    """Snapshot parameter context must not trigger re-selection of the frozen dataset."""
+    from dataselector.workflows import thesis_pipeline as mod
+
+    ws = tmp_path
+    (ws / "data").mkdir(parents=True, exist_ok=True)
+    (ws / "config").mkdir(parents=True, exist_ok=True)
+    output_dir = ws / "outputs"
+    (output_dir / "parameter_resolution").mkdir(parents=True, exist_ok=True)
+    (output_dir / "tuning_weights").mkdir(parents=True, exist_ok=True)
+
+    pd.DataFrame(
+        {
+            "shortName": ["KDR_001", "KDR_002"],
+            "longName": ["tile_one", "tile_two"],
+            "city": ["CityA", "CityB"],
+            "ul_x": [500000.0, 501000.0],
+            "ul_y": [5900000.0, 5901000.0],
+            "lr_x": [500100.0, 501100.0],
+            "lr_y": [5899900.0, 5900900.0],
+            "year": [1910, 1911],
+        }
+    ).to_csv(ws / "data" / "new_all_tiles.csv", index=False)
+    (ws / "config" / "pipeline_config.yaml").write_text(
+        _minimal_resolved_config(n_samples=2, min_distance_km=28.5),
+        encoding="utf-8",
+    )
+    (output_dir / "parameter_resolution" / "optuna_autoscale_best_latest.json").write_text(
+        json.dumps(
+            {
+                "value": 1.0,
+                "params": {"a": 0.1, "b": 0.2, "c": 0.7, "min_distance_km": 33},
+                "user_attrs": {
+                    "alpha": 0.1,
+                    "beta": 0.2,
+                    "gamma": 0.7,
+                    "n_samples": 2,
+                    "min_distance_km": 33,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (output_dir / "tuning_weights" / "meta.json").write_text(
+        json.dumps({"best_metrics": {"alpha": 0.4, "beta": 0.3, "gamma": 0.3}}),
+        encoding="utf-8",
+    )
+    pd.DataFrame(
+        {
+            "selection_rank": [0, 1],
+            "shortName": ["KDR_002", "KDR_001"],
+            "city": ["CityB", "CityA"],
+            "year": [1911, 1910],
+            "origin_tag": ["materialized_source", "materialized_source"],
+        }
+    ).to_csv(output_dir / "tuning_weights" / "selection_a0.4_b0.3_g0.3.csv", index=False)
+
+    monkeypatch.chdir(ws)
+    monkeypatch.setattr(
+        "dataselector.workflows.generate_reports.generate_thesis_final_report",
+        lambda **_kwargs: None,
+    )
+
+    success = mod.run_thesis_pipeline(
+        n_lhs=5,
+        n_trials=2,
+        compute_params=True,
+        skip_exploration=True,
+        skip_optimization=True,
+        skip_validation=True,
+        dry_run=False,
+        output_dir=output_dir,
+        execution_profile="thesis_repro",
+        seed=11,
+        snapshot_config=True,
+    )
+
+    assert success is True
+    contract = json.loads((output_dir / "selection_contract.json").read_text("utf-8"))
+    core_df = pd.read_csv(output_dir / "selection_core.csv")
+    snapshot_path = Path(json.loads((output_dir / "run_metadata.json").read_text("utf-8"))["extra"]["resolved_snapshot_path"])
+
+    import yaml
+
+    resolved = yaml.safe_load(snapshot_path.read_text(encoding="utf-8"))
+    params = resolved["parameters"]["selection"]
+
+    assert params["alpha_visual"] == pytest.approx(0.1)
+    assert params["beta_spatial"] == pytest.approx(0.2)
+    assert params["gamma_temporal"] == pytest.approx(0.7)
+    assert contract["selection_source"] == "tuning_weights_best_metrics"
+    assert contract["selection_source_file"] == "tuning_weights/selection_a0.4_b0.3_g0.3.csv"
+    assert list(core_df["shortName"]) == ["KDR_002", "KDR_001"]
+    assert "origin_tag" in core_df.columns
+    assert set(core_df["origin_tag"]) == {"materialized_source"}
+
+
 def test_resolve_optuna_sampler_uses_requested_trials_without_clamp(tmp_path, monkeypatch):
     """Auto sampler determination should forward requested n_trials budget unchanged."""
     from dataselector.workflows import thesis_pipeline as mod
