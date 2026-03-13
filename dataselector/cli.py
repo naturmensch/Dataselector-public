@@ -32,6 +32,8 @@ import dataselector.workflows.generate_reports
 import dataselector.workflows.optuna_autoscale
 import dataselector.workflows.optuna_import
 import dataselector.workflows.optuna_optimize
+import dataselector.workflows.repo_evolution_audit_v3
+import dataselector.workflows.repo_evolution_audit_v4
 import dataselector.workflows.sampler_suite
 import dataselector.workflows.scientific_tools
 import dataselector.workflows.script_convergence_tools
