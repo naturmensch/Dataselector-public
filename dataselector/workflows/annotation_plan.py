@@ -7,12 +7,15 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-import xml.etree.ElementTree as ET
 
 import numpy as np
 import pandas as pd
+import rasterio
 import yaml
 from PIL import Image
+from rasterio.transform import Affine
+from rasterio.windows import Window
+from rasterio.windows import transform as window_transform
 from sklearn.model_selection import GroupKFold
 
 from dataselector.cli_decorators import cli_command
@@ -249,86 +252,103 @@ def _evaluate_patch_qc(patch_img: Image.Image, *, qc_mode: str) -> PatchQCDecisi
     return PatchQCDecision(True, None, metrics)
 
 
-def _find_aux_sidecar(image_path: Path) -> Path | None:
-    candidates = [
-        Path(str(image_path) + ".aux.xml"),
-        image_path.with_suffix(image_path.suffix + ".aux.xml"),
-        image_path.with_suffix(".aux.xml"),
-    ]
-    seen: set[str] = set()
-    for candidate in candidates:
-        key = str(candidate)
-        if key in seen:
-            continue
-        seen.add(key)
-        if candidate.exists():
-            return candidate
-    return None
-
-
-def _parse_geotransform(raw: str) -> tuple[float, float, float, float, float, float] | None:
-    parts = [part.strip() for part in str(raw).split(",") if part.strip()]
-    if len(parts) < 6:
-        return None
+def _load_source_georeference(
+    *, source_image_path: Path
+) -> tuple[Any, Affine, int, int]:
     try:
-        vals = tuple(float(v) for v in parts[:6])
-    except Exception:
-        return None
-    return vals  # type: ignore[return-value]
+        with rasterio.open(source_image_path) as src:
+            source_crs = src.crs
+            source_transform = src.transform
+            width = int(src.width)
+            height = int(src.height)
+    except Exception as exc:
+        raise ValueError(
+            f"Failed to read georeference for source image: {source_image_path}"
+        ) from exc
+
+    if source_crs is None:
+        raise ValueError(
+            "Missing CRS georeference for source image "
+            f"(requires embedded georef or sidecar): {source_image_path}"
+        )
+    if source_transform is None or source_transform.is_identity:
+        raise ValueError(
+            "Missing/non-georeferenced affine transform for source image "
+            f"(requires embedded georef or sidecar): {source_image_path}"
+        )
+
+    coeffs = tuple(source_transform)[:6]
+    if not all(np.isfinite(value) for value in coeffs):
+        raise ValueError(
+            "Invalid affine transform coefficients for source image: "
+            f"{source_image_path}"
+        )
+
+    return source_crs, source_transform, width, height
 
 
-def _format_geotransform(gt: tuple[float, float, float, float, float, float]) -> str:
-    return ", ".join(f"{value: .16e}" for value in gt)
+def _geotiff_block_size(*, width: int, height: int) -> int:
+    edge = min(int(width), int(height), 256)
+    block = edge - (edge % 16)
+    if block < 16:
+        return 0
+    return block
 
 
-def _shift_geotransform(
+def _write_patch_quicklook_geotiff(
     *,
-    geotransform: tuple[float, float, float, float, float, float],
+    patch_img: Image.Image,
+    source_crs: Any,
+    source_transform: Affine,
     window: PatchWindow,
-) -> tuple[float, float, float, float, float, float]:
-    gt0, gt1, gt2, gt3, gt4, gt5 = geotransform
-    return (
-        gt0 + (float(window.x0) * gt1) + (float(window.y0) * gt2),
-        gt1,
-        gt2,
-        gt3 + (float(window.x0) * gt4) + (float(window.y0) * gt5),
-        gt4,
-        gt5,
+    output_path: Path,
+) -> None:
+    rgb_patch = patch_img.convert("RGB")
+    arr_hwc = np.asarray(rgb_patch, dtype=np.uint8)
+    if arr_hwc.ndim != 3 or arr_hwc.shape[2] != 3:
+        raise ValueError(f"Expected RGB patch image for quicklook: {output_path}")
+
+    height, width = int(arr_hwc.shape[0]), int(arr_hwc.shape[1])
+    if width <= 0 or height <= 0:
+        raise ValueError(f"Invalid patch shape for quicklook: {output_path}")
+
+    patch_window = Window(
+        col_off=float(window.x0),
+        row_off=float(window.y0),
+        width=float(window.x1 - window.x0),
+        height=float(window.y1 - window.y0),
     )
+    patch_transform = window_transform(patch_window, source_transform)
 
+    profile: dict[str, Any] = {
+        "driver": "GTiff",
+        "width": width,
+        "height": height,
+        "count": 3,
+        "dtype": "uint8",
+        "crs": source_crs,
+        "transform": patch_transform,
+        "compress": "DEFLATE",
+        "predictor": 2,
+        "interleave": "pixel",
+    }
 
-def _write_patch_aux_sidecar(
-    *,
-    source_image_path: Path,
-    patch_aux_path: Path,
-    window: PatchWindow,
-) -> bool:
-    patch_aux_path.parent.mkdir(parents=True, exist_ok=True)
-    source_aux = _find_aux_sidecar(source_image_path)
+    block_size = _geotiff_block_size(width=width, height=height)
+    if block_size > 0:
+        profile.update(
+            {
+                "tiled": True,
+                "blockxsize": block_size,
+                "blockysize": block_size,
+            }
+        )
+    else:
+        profile["tiled"] = False
 
-    if source_aux is None:
-        patch_aux_path.write_text("<PAMDataset/>\n", encoding="utf-8")
-        return False
-
-    try:
-        tree = ET.parse(source_aux)
-        root = tree.getroot()
-        geot = root.find("GeoTransform")
-        if geot is None:
-            geot = root.find(".//GeoTransform")
-        if geot is not None and geot.text:
-            parsed = _parse_geotransform(geot.text)
-            if parsed is not None:
-                shifted = _shift_geotransform(geotransform=parsed, window=window)
-                geot.text = f"  {_format_geotransform(shifted)}"
-                tree.write(patch_aux_path, encoding="utf-8")
-                return True
-        tree.write(patch_aux_path, encoding="utf-8")
-    except Exception:
-        patch_aux_path.write_text("<PAMDataset/>\n", encoding="utf-8")
-        return False
-
-    return False
+    arr_chw = np.transpose(arr_hwc, (2, 0, 1))
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with rasterio.open(output_path, "w", **profile) as dst:
+        dst.write(arr_chw)
 
 
 def _write_patch_manifest_json(
@@ -561,10 +581,19 @@ def run_thesis_build_annotation_plan(
                 f"Image file for {short_name} not found: {image_path}"
             )
 
+        source_crs, source_transform, source_width, source_height = _load_source_georeference(
+            source_image_path=image_path
+        )
+
         with Image.open(image_path) as im:
             image = im.convert("RGB")
 
         width, height = image.size
+        if width != source_width or height != source_height:
+            raise ValueError(
+                "Source dimensions mismatch between PIL and raster reader for "
+                f"{image_path}: PIL={width}x{height}, raster={source_width}x{source_height}"
+            )
         for patch_idx, primary_anchor in enumerate(primary_anchors, start=1):
             patch_id = f"{short_name}_p{patch_idx}"
             candidate_anchors = [primary_anchor] + fallback_anchor_list
@@ -616,15 +645,14 @@ def run_thesis_build_annotation_plan(
             if not final_qc.passed and reject_reasons:
                 qc_reason = ";".join(reject_reasons)
 
-            quicklook_rel = Path("quicklooks") / f"{patch_id}.png"
+            quicklook_rel = Path("quicklooks") / f"{patch_id}.tif"
             quicklook_abs = out_dir / quicklook_rel
-            final_img.save(quicklook_abs)
-            quicklook_aux_rel = Path(str(quicklook_rel) + ".aux.xml")
-            quicklook_aux_abs = out_dir / quicklook_aux_rel
-            quicklook_has_georef = _write_patch_aux_sidecar(
-                source_image_path=image_path,
-                patch_aux_path=quicklook_aux_abs,
+            _write_patch_quicklook_geotiff(
+                patch_img=final_img,
+                source_crs=source_crs,
+                source_transform=source_transform,
                 window=final_window,
+                output_path=quicklook_abs,
             )
 
             record = {
@@ -653,8 +681,6 @@ def run_thesis_build_annotation_plan(
                 "qc_status": qc_status,
                 "qc_reason": qc_reason,
                 "quicklook_path": str(quicklook_rel),
-                "quicklook_aux_path": str(quicklook_aux_rel),
-                "quicklook_has_georef": bool(quicklook_has_georef),
                 "split_fold": pd.NA,
                 "qc_std_gray": float(final_qc.metrics.get("std_gray", float("nan"))),
                 "qc_dynamic_range": float(
@@ -709,8 +735,6 @@ def run_thesis_build_annotation_plan(
             "selected_anchor_x",
             "selected_anchor_y",
             "quicklook_path",
-            "quicklook_aux_path",
-            "quicklook_has_georef",
             "split_fold",
         ]
     ].to_csv(qc_report_path, index=False)
@@ -757,9 +781,7 @@ def run_thesis_build_annotation_plan(
             "patches_total": int(len(manifest_df)),
             "patches_qc_passed": int((manifest_df["qc_status"] == "qc_passed").sum()),
             "patches_qc_rejected": int((manifest_df["qc_status"] != "qc_passed").sum()),
-            "quicklook_aux_with_georef": int(
-                manifest_df["quicklook_has_georef"].fillna(False).astype(bool).sum()
-            ),
+            "quicklook_geotiff_count": int(len(manifest_df)),
         },
         "split_manifest_sha256": split_manifest_sha,
     }

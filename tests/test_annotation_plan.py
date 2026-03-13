@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from PIL import Image
+import rasterio
 
 from dataselector.runtime.parameter_snapshot import compute_file_sha256
 from dataselector.workflows import annotation_plan as mod
@@ -17,6 +18,7 @@ def _write_dummy_aux_xml(path: Path, *, origin_x: float, origin_y: float) -> Non
     path.write_text(
         (
             "<PAMDataset>\n"
+            "  <SRS>EPSG:3857</SRS>\n"
             f"  <GeoTransform>{origin_x:.6f}, 1.000000, 0.000000, {origin_y:.6f}, 0.000000, -1.000000</GeoTransform>\n"
             "</PAMDataset>\n"
         ),
@@ -144,15 +146,16 @@ def test_annotation_plan_generates_expected_manifest(tmp_path: Path):
     assert len(manifest_df) == 58
     assert manifest_df["tile_shortname"].nunique() == 29
     assert (manifest_df.groupby("tile_shortname").size() == 2).all()
-    assert "quicklook_aux_path" in manifest_df.columns
-    assert "quicklook_has_georef" in manifest_df.columns
-    assert manifest_df["quicklook_has_georef"].astype(bool).all()
+    assert "quicklook_aux_path" not in manifest_df.columns
+    assert "quicklook_has_georef" not in manifest_df.columns
 
     for row in manifest_df.itertuples(index=False):
         quicklook_rel = Path(str(row.quicklook_path))
-        quicklook_aux_rel = Path(str(row.quicklook_aux_path))
+        assert quicklook_rel.suffix.lower() == ".tif"
         assert (out_dir / quicklook_rel).exists()
-        assert (out_dir / quicklook_aux_rel).exists()
+        with rasterio.open(out_dir / quicklook_rel) as quicklook_ds:
+            assert quicklook_ds.crs is not None
+            assert not quicklook_ds.transform.is_identity
 
     contract = json.loads((out_dir / "annotation_dataset_contract.json").read_text("utf-8"))
     assert contract["source_hashes"]["selection_core"] == compute_file_sha256(

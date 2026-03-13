@@ -4,7 +4,10 @@ import json
 import subprocess
 from pathlib import Path
 
+import numpy as np
 import pytest
+import rasterio
+from rasterio.transform import from_origin
 
 
 SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "handoff_check.sh"
@@ -48,6 +51,26 @@ def _run_script(args: list[str]) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
     )
+
+
+def _write_dummy_quicklook_geotiff(path: Path, *, origin_x: float = 1000.0, origin_y: float = 2000.0) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    arr = np.zeros((3, 32, 32), dtype=np.uint8)
+    transform = from_origin(origin_x, origin_y, 1.0, 1.0)
+    with rasterio.open(
+        path,
+        "w",
+        driver="GTiff",
+        width=32,
+        height=32,
+        count=3,
+        dtype="uint8",
+        crs="EPSG:3857",
+        transform=transform,
+        compress="DEFLATE",
+        predictor=2,
+    ) as dst:
+        dst.write(arr)
 
 
 def _create_basic_repo_fixture(tmp_path: Path) -> tuple[Path, Path, Path]:
@@ -407,10 +430,7 @@ def _create_patch_run_fixture(tmp_path: Path) -> tuple[Path, Path]:
     quicklook_dir = annotation_dir / "quicklooks"
     quicklook_dir.mkdir(parents=True, exist_ok=True)
     for patch_name in ("KDR_301_p1", "KDR_302_p1", "KDR_302_p2"):
-        (quicklook_dir / f"{patch_name}.png").write_bytes(b"PNG")
-        (quicklook_dir / f"{patch_name}.png.aux.xml").write_text(
-            "<PAMDataset/>", encoding="utf-8"
-        )
+        _write_dummy_quicklook_geotiff(quicklook_dir / f"{patch_name}.tif")
 
     patch_rows = [
         {
@@ -427,8 +447,7 @@ def _create_patch_run_fixture(tmp_path: Path) -> tuple[Path, Path]:
             "selection_group": "core",
             "patch_index": "1",
             "patch_size_px": "1024",
-            "quicklook_path": "quicklooks/KDR_301_p1.png",
-            "quicklook_aux_path": "quicklooks/KDR_301_p1.png.aux.xml",
+            "quicklook_path": "quicklooks/KDR_301_p1.tif",
             "qc_status": "qc_passed",
             "qc_reason": "",
         },
@@ -446,8 +465,7 @@ def _create_patch_run_fixture(tmp_path: Path) -> tuple[Path, Path]:
             "selection_group": "core",
             "patch_index": "1",
             "patch_size_px": "1024",
-            "quicklook_path": "quicklooks/KDR_302_p1.png",
-            "quicklook_aux_path": "quicklooks/KDR_302_p1.png.aux.xml",
+            "quicklook_path": "quicklooks/KDR_302_p1.tif",
             "qc_status": "qc_passed",
             "qc_reason": "",
         },
@@ -465,8 +483,7 @@ def _create_patch_run_fixture(tmp_path: Path) -> tuple[Path, Path]:
             "selection_group": "core",
             "patch_index": "2",
             "patch_size_px": "1024",
-            "quicklook_path": "quicklooks/KDR_302_p2.png",
-            "quicklook_aux_path": "quicklooks/KDR_302_p2.png.aux.xml",
+            "quicklook_path": "quicklooks/KDR_302_p2.tif",
             "qc_status": "qc_rejected",
             "qc_reason": "legend_dominant_edge",
         },
@@ -489,7 +506,6 @@ def _create_patch_run_fixture(tmp_path: Path) -> tuple[Path, Path]:
             "patch_index",
             "patch_size_px",
             "quicklook_path",
-            "quicklook_aux_path",
             "qc_status",
             "qc_reason",
         ],
@@ -555,14 +571,12 @@ def test_prepare_patches_and_verify_patches_roundtrip(tmp_path: Path) -> None:
     patch_manifest = handoff_dir / "patch_handoff_manifest.json"
     patch_masks = handoff_dir / "patch_mask_requirements.csv"
     split_manifest = handoff_dir / "patch_split_manifest.json"
-    quicklook_p1 = handoff_dir / "quicklooks" / "KDR_301_p1.png"
-    quicklook_p1_aux = handoff_dir / "quicklooks" / "KDR_301_p1.png.aux.xml"
+    quicklook_p1 = handoff_dir / "quicklooks" / "KDR_301_p1.tif"
     assert selected_patches.exists()
     assert patch_manifest.exists()
     assert patch_masks.exists()
     assert split_manifest.exists()
     assert quicklook_p1.exists()
-    assert quicklook_p1_aux.exists()
 
     with selected_patches.open("r", encoding="utf-8", newline="") as handle:
         selected_rows = list(csv.DictReader(handle))
@@ -570,7 +584,8 @@ def test_prepare_patches_and_verify_patches_roundtrip(tmp_path: Path) -> None:
     assert {row["patch_id"] for row in selected_rows} == {"KDR_301_p1", "KDR_302_p1"}
 
     manifest_payload = json.loads(patch_manifest.read_text(encoding="utf-8"))
-    assert manifest_payload["schema_version"] == "handoff_patch_format_v1"
+    assert manifest_payload["schema_version"] == "handoff_patch_format_v2"
+    assert manifest_payload["patch_quicklook_format"] == "geotiff_deflate_rgb"
     assert manifest_payload["patch_selection_count"] == 2
     assert manifest_payload["patch_selection_csv_sha256"] == _sha256(selected_patches)
 
@@ -586,28 +601,24 @@ def test_prepare_patches_and_verify_patches_roundtrip(tmp_path: Path) -> None:
     assert result_verify.returncode == 0, result_verify.stderr
 
 
-def test_prepare_patches_synthesizes_quicklook_sidecars_for_legacy_manifest(
-    tmp_path: Path,
-) -> None:
+def test_prepare_patches_rejects_legacy_png_quicklooks(tmp_path: Path) -> None:
     repo_root, run_dir = _create_patch_run_fixture(tmp_path)
     annotation_dir = run_dir / "annotation_plan"
-    handoff_dir = repo_root / "handoff" / "patch_roundtrip_legacy"
-
-    # Simulate legacy annotation plan artifacts: quicklook aux sidecars missing and
-    # manifest does not carry quicklook_aux_path yet.
-    for aux_path in (annotation_dir / "quicklooks").glob("*.aux.xml"):
-        aux_path.unlink()
+    handoff_dir = repo_root / "handoff" / "patch_roundtrip_legacy_png"
 
     with (annotation_dir / "patch_manifest.csv").open(
         "r", encoding="utf-8", newline=""
     ) as handle:
         rows = list(csv.DictReader(handle))
 
-    legacy_rows = []
+    legacy_rows: list[dict[str, str]] = []
     for row in rows:
-        row = dict(row)
-        row.pop("quicklook_aux_path", None)
-        legacy_rows.append(row)
+        legacy_row = dict(row)
+        legacy_row["quicklook_path"] = str(legacy_row["quicklook_path"]).replace(".tif", ".png")
+        legacy_rows.append(legacy_row)
+        legacy_png = annotation_dir / legacy_row["quicklook_path"]
+        legacy_png.parent.mkdir(parents=True, exist_ok=True)
+        legacy_png.write_bytes(b"PNG")
 
     _write_csv(
         annotation_dir / "patch_manifest.csv",
@@ -643,21 +654,8 @@ def test_prepare_patches_synthesizes_quicklook_sidecars_for_legacy_manifest(
             str(repo_root),
         ]
     )
-    assert result_prepare.returncode == 0, result_prepare.stderr
-
-    assert (handoff_dir / "quicklooks" / "KDR_301_p1.png.aux.xml").exists()
-    assert (handoff_dir / "quicklooks" / "KDR_302_p1.png.aux.xml").exists()
-
-    result_verify = _run_script(
-        [
-            "verify-patches",
-            "--handoff-dir",
-            str(handoff_dir),
-            "--repo-root",
-            str(repo_root),
-        ]
-    )
-    assert result_verify.returncode == 0, result_verify.stderr
+    assert result_prepare.returncode == 2
+    assert "quicklook_path must end with .tif" in result_prepare.stderr
 
 
 def test_verify_patches_detects_exclusion_policy_violation(tmp_path: Path) -> None:
@@ -694,8 +692,7 @@ rules:
                 "x1": "1024",
                 "y1": "1024",
                 "split_fold": "1",
-                "quicklook_path": "quicklooks/KDR_155b_p1.png",
-                "quicklook_aux_path": "quicklooks/KDR_155b_p1.png.aux.xml",
+                "quicklook_path": "quicklooks/KDR_155b_p1.tif",
             }
         ],
         fieldnames=[
@@ -709,7 +706,6 @@ rules:
             "y1",
             "split_fold",
             "quicklook_path",
-            "quicklook_aux_path",
         ],
     )
     _write_csv(
@@ -730,7 +726,7 @@ rules:
     mask_sha = _sha256(handoff_dir / "patch_mask_requirements.csv")
     split_sha = _sha256(handoff_dir / "patch_split_manifest.json")
     manifest = {
-        "schema_version": "handoff_patch_format_v1",
+        "schema_version": "handoff_patch_format_v2",
         "selection_id": "patch_sel_violation",
         "run_id": "run_violation",
         "run_dir": "outputs/runs/run_violation",
@@ -743,6 +739,7 @@ rules:
         "patch_mask_requirements_sha256": mask_sha,
         "patch_split_manifest_path": "patch_split_manifest.json",
         "patch_split_manifest_sha256": split_sha,
+        "patch_quicklook_format": "geotiff_deflate_rgb",
         "tile_exclusion_policy_path": "config/tile_exclusion_policy.yaml",
         "tile_exclusion_policy_sha256": _sha256(policy_path),
         "excluded_tiles": ["KDR_155b"],
@@ -764,3 +761,223 @@ rules:
     )
     assert result.returncode == 4
     assert "excluded tile present" in result.stderr
+
+
+def test_verify_patches_rejects_png_quicklook(tmp_path: Path) -> None:
+    repo_root = tmp_path
+    handoff_dir = repo_root / "handoff" / "patch_png_quicklook"
+    handoff_dir.mkdir(parents=True, exist_ok=True)
+
+    images_dir = repo_root / "data" / "images"
+    images_dir.mkdir(parents=True, exist_ok=True)
+    (images_dir / "KDR_401.png").write_bytes(b"PNG")
+    (images_dir / "KDR_401.png.aux.xml").write_text(
+        "<PAMDataset><GeoTransform>1000,1,0,2000,0,-1</GeoTransform></PAMDataset>",
+        encoding="utf-8",
+    )
+
+    quicklook_dir = handoff_dir / "quicklooks"
+    quicklook_dir.mkdir(parents=True, exist_ok=True)
+    (quicklook_dir / "KDR_401_p1.png").write_bytes(b"PNG")
+
+    _write_csv(
+        handoff_dir / "selected_patches.csv",
+        [
+            {
+                "patch_id": "KDR_401_p1",
+                "tile_shortname": "KDR_401",
+                "image_path": "data/images/KDR_401.png",
+                "image_filename": "KDR_401.png",
+                "x0": "0",
+                "y0": "0",
+                "x1": "1024",
+                "y1": "1024",
+                "split_fold": "1",
+                "quicklook_path": "quicklooks/KDR_401_p1.png",
+            }
+        ],
+        fieldnames=[
+            "patch_id",
+            "tile_shortname",
+            "image_path",
+            "image_filename",
+            "x0",
+            "y0",
+            "x1",
+            "y1",
+            "split_fold",
+            "quicklook_path",
+        ],
+    )
+    _write_csv(
+        handoff_dir / "patch_mask_requirements.csv",
+        [{"patch_id": "KDR_401_p1", "required_mask_filename": "KDR_401_p1_mask.tif"}],
+        fieldnames=["patch_id", "required_mask_filename"],
+    )
+    (handoff_dir / "patch_split_manifest.json").write_text(
+        json.dumps(
+            {"version": 1, "n_splits": 5, "patch_to_fold": {"KDR_401_p1": 1}},
+            ensure_ascii=True,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    policy_path = repo_root / "config" / "tile_exclusion_policy.yaml"
+    policy_path.parent.mkdir(parents=True, exist_ok=True)
+    policy_path.write_text("version: 1\nrules: []\n", encoding="utf-8")
+
+    selected_sha = _sha256(handoff_dir / "selected_patches.csv")
+    mask_sha = _sha256(handoff_dir / "patch_mask_requirements.csv")
+    split_sha = _sha256(handoff_dir / "patch_split_manifest.json")
+    manifest = {
+        "schema_version": "handoff_patch_format_v2",
+        "selection_id": "patch_sel_png_quicklook",
+        "run_id": "run_png_quicklook",
+        "run_dir": "outputs/runs/run_png_quicklook",
+        "resolved_snapshot_path": "outputs/runs/run_png_quicklook/final_config.yaml",
+        "resolved_snapshot_sha256": "a" * 64,
+        "patch_selection_csv_path": "selected_patches.csv",
+        "patch_selection_csv_sha256": selected_sha,
+        "patch_selection_count": 1,
+        "patch_mask_requirements_path": "patch_mask_requirements.csv",
+        "patch_mask_requirements_sha256": mask_sha,
+        "patch_split_manifest_path": "patch_split_manifest.json",
+        "patch_split_manifest_sha256": split_sha,
+        "patch_quicklook_format": "geotiff_deflate_rgb",
+        "tile_exclusion_policy_path": "config/tile_exclusion_policy.yaml",
+        "tile_exclusion_policy_sha256": _sha256(policy_path),
+        "excluded_tiles": [],
+        "split_authority": "masterarbeit_strassenerkennung_cv",
+    }
+    (handoff_dir / "patch_handoff_manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+    result = _run_script(
+        [
+            "verify-patches",
+            "--handoff-dir",
+            str(handoff_dir),
+            "--repo-root",
+            str(repo_root),
+        ]
+    )
+    assert result.returncode == 3
+    assert "quicklook format invalid" in result.stderr
+
+
+def test_verify_patches_rejects_tif_without_georef(tmp_path: Path) -> None:
+    repo_root = tmp_path
+    handoff_dir = repo_root / "handoff" / "patch_tif_missing_georef"
+    handoff_dir.mkdir(parents=True, exist_ok=True)
+
+    images_dir = repo_root / "data" / "images"
+    images_dir.mkdir(parents=True, exist_ok=True)
+    (images_dir / "KDR_402.png").write_bytes(b"PNG")
+    (images_dir / "KDR_402.png.aux.xml").write_text(
+        "<PAMDataset><GeoTransform>1000,1,0,2000,0,-1</GeoTransform></PAMDataset>",
+        encoding="utf-8",
+    )
+
+    quicklook_dir = handoff_dir / "quicklooks"
+    quicklook_dir.mkdir(parents=True, exist_ok=True)
+    arr = np.zeros((3, 32, 32), dtype=np.uint8)
+    with rasterio.open(
+        quicklook_dir / "KDR_402_p1.tif",
+        "w",
+        driver="GTiff",
+        width=32,
+        height=32,
+        count=3,
+        dtype="uint8",
+    ) as dst:
+        dst.write(arr)
+
+    _write_csv(
+        handoff_dir / "selected_patches.csv",
+        [
+            {
+                "patch_id": "KDR_402_p1",
+                "tile_shortname": "KDR_402",
+                "image_path": "data/images/KDR_402.png",
+                "image_filename": "KDR_402.png",
+                "x0": "0",
+                "y0": "0",
+                "x1": "1024",
+                "y1": "1024",
+                "split_fold": "1",
+                "quicklook_path": "quicklooks/KDR_402_p1.tif",
+            }
+        ],
+        fieldnames=[
+            "patch_id",
+            "tile_shortname",
+            "image_path",
+            "image_filename",
+            "x0",
+            "y0",
+            "x1",
+            "y1",
+            "split_fold",
+            "quicklook_path",
+        ],
+    )
+    _write_csv(
+        handoff_dir / "patch_mask_requirements.csv",
+        [{"patch_id": "KDR_402_p1", "required_mask_filename": "KDR_402_p1_mask.tif"}],
+        fieldnames=["patch_id", "required_mask_filename"],
+    )
+    (handoff_dir / "patch_split_manifest.json").write_text(
+        json.dumps(
+            {"version": 1, "n_splits": 5, "patch_to_fold": {"KDR_402_p1": 1}},
+            ensure_ascii=True,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    policy_path = repo_root / "config" / "tile_exclusion_policy.yaml"
+    policy_path.parent.mkdir(parents=True, exist_ok=True)
+    policy_path.write_text("version: 1\nrules: []\n", encoding="utf-8")
+
+    selected_sha = _sha256(handoff_dir / "selected_patches.csv")
+    mask_sha = _sha256(handoff_dir / "patch_mask_requirements.csv")
+    split_sha = _sha256(handoff_dir / "patch_split_manifest.json")
+    manifest = {
+        "schema_version": "handoff_patch_format_v2",
+        "selection_id": "patch_sel_tif_missing_georef",
+        "run_id": "run_tif_missing_georef",
+        "run_dir": "outputs/runs/run_tif_missing_georef",
+        "resolved_snapshot_path": "outputs/runs/run_tif_missing_georef/final_config.yaml",
+        "resolved_snapshot_sha256": "b" * 64,
+        "patch_selection_csv_path": "selected_patches.csv",
+        "patch_selection_csv_sha256": selected_sha,
+        "patch_selection_count": 1,
+        "patch_mask_requirements_path": "patch_mask_requirements.csv",
+        "patch_mask_requirements_sha256": mask_sha,
+        "patch_split_manifest_path": "patch_split_manifest.json",
+        "patch_split_manifest_sha256": split_sha,
+        "patch_quicklook_format": "geotiff_deflate_rgb",
+        "tile_exclusion_policy_path": "config/tile_exclusion_policy.yaml",
+        "tile_exclusion_policy_sha256": _sha256(policy_path),
+        "excluded_tiles": [],
+        "split_authority": "masterarbeit_strassenerkennung_cv",
+    }
+    (handoff_dir / "patch_handoff_manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+    result = _run_script(
+        [
+            "verify-patches",
+            "--handoff-dir",
+            str(handoff_dir),
+            "--repo-root",
+            str(repo_root),
+        ]
+    )
+    assert result.returncode == 3
+    assert "quicklook georeference invalid" in result.stderr

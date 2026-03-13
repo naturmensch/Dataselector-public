@@ -915,17 +915,15 @@ for idx, row in enumerate(source_rows):
     if not quicklook_path:
         errors.append(f"row {idx}: missing quicklook_path for patch_id={patch_id}")
         continue
-    quicklook_aux_path = str(row.get("quicklook_aux_path", "")).strip()
-    if not quicklook_aux_path:
-        quicklook_aux_path = f"{quicklook_path}.aux.xml"
 
     quicklook_rel = Path(quicklook_path)
-    quicklook_aux_rel = Path(quicklook_aux_path)
     if quicklook_rel.is_absolute() or ".." in quicklook_rel.parts:
         errors.append(f"row {idx}: invalid quicklook_path for patch_id={patch_id}")
         continue
-    if quicklook_aux_rel.is_absolute() or ".." in quicklook_aux_rel.parts:
-        errors.append(f"row {idx}: invalid quicklook_aux_path for patch_id={patch_id}")
+    if quicklook_rel.suffix.lower() != ".tif":
+        errors.append(
+            f"row {idx}: quicklook_path must end with .tif for patch_id={patch_id}"
+        )
         continue
 
     try:
@@ -987,7 +985,6 @@ for idx, row in enumerate(source_rows):
             "patch_index": patch_index,
             "patch_size_px": str(row.get("patch_size_px", "")).strip(),
             "quicklook_path": str(quicklook_rel),
-            "quicklook_aux_path": str(quicklook_aux_rel),
             "qc_status": str(row.get("qc_status", "")).strip(),
             "qc_reason": str(row.get("qc_reason", "")).strip(),
             "_order": idx,
@@ -1011,16 +1008,9 @@ quicklook_copy_errors: list[str] = []
 for row in selected_rows:
     patch_id = str(row["patch_id"])
     quicklook_rel = str(row["quicklook_path"]).strip()
-    quicklook_aux_rel = str(row["quicklook_aux_path"]).strip()
 
     quicklook_src = _resolve_manifest_artifact(
         artifact_path=quicklook_rel,
-        source_manifest_path=source_patch_manifest_csv,
-        run_dir=run_dir,
-        repo_root=repo_root,
-    ).resolve()
-    quicklook_aux_src = _resolve_manifest_artifact(
-        artifact_path=quicklook_aux_rel,
         source_manifest_path=source_patch_manifest_csv,
         run_dir=run_dir,
         repo_root=repo_root,
@@ -1031,43 +1021,10 @@ for row in selected_rows:
             f"missing quicklook image for patch_id={patch_id}: {quicklook_src}"
         )
         continue
-    if not quicklook_aux_src.exists():
-        source_image = _resolve_source_image_for_row(
-            row=row,
-            repo_root=repo_root,
-            run_dir=run_dir,
-            images_dir=images_dir,
-        )
-        if source_image is None:
-            quicklook_copy_errors.append(
-                f"missing quicklook sidecar and could not resolve source image for patch_id={patch_id}"
-            )
-            continue
-        source_aux = _find_aux_sidecar_for_image(source_image)
-        if source_aux is None:
-            quicklook_copy_errors.append(
-                f"missing quicklook sidecar and source image sidecar for patch_id={patch_id}: {source_image}"
-            )
-            continue
-        synthesized_aux_target = (out_dir / quicklook_aux_rel).resolve()
-        if not _write_shifted_patch_aux(
-            source_aux=source_aux,
-            out_path=synthesized_aux_target,
-            x0=int(row["x0"]),
-            y0=int(row["y0"]),
-        ):
-            quicklook_copy_errors.append(
-                f"missing quicklook sidecar and failed to synthesize from source sidecar for patch_id={patch_id}: {source_aux}"
-            )
-            continue
 
     quicklook_dst = (out_dir / quicklook_rel).resolve()
-    quicklook_aux_dst = (out_dir / quicklook_aux_rel).resolve()
     quicklook_dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(quicklook_src, quicklook_dst)
-    if quicklook_aux_src.exists():
-        quicklook_aux_dst.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(quicklook_aux_src, quicklook_aux_dst)
 
 if quicklook_copy_errors:
     for err in quicklook_copy_errors:
@@ -1089,7 +1046,6 @@ selected_patches_fields = [
     "patch_index",
     "patch_size_px",
     "quicklook_path",
-    "quicklook_aux_path",
     "qc_status",
     "qc_reason",
 ]
@@ -1184,7 +1140,7 @@ run_id = run_dir.name
 selection_id = f"{run_id}_{selected_patches_sha[:12]}"
 
 manifest = {
-    "schema_version": "handoff_patch_format_v1",
+    "schema_version": "handoff_patch_format_v2",
     "selection_id": selection_id,
     "run_id": run_id,
     "run_dir": _rel_or_abs(run_dir, repo_root),
@@ -1198,6 +1154,7 @@ manifest = {
     "patch_split_manifest_path": "patch_split_manifest.json",
     "patch_split_manifest_sha256": split_manifest_out_sha,
     "patch_quicklook_root": "quicklooks",
+    "patch_quicklook_format": "geotiff_deflate_rgb",
     "patch_quicklook_count": len(selected_rows),
     "tile_exclusion_policy_path": _rel_or_abs(tile_policy_path, repo_root)
     if tile_policy_path.exists()
@@ -1291,6 +1248,12 @@ import os
 import sys
 from pathlib import Path
 
+try:
+    import rasterio  # type: ignore
+except Exception as exc:
+    print(f"[SCHEMA] rasterio is required for GeoTIFF patch verification: {exc}", file=sys.stderr)
+    sys.exit(2)
+
 
 EXIT_SCHEMA = 2
 EXIT_DATA = 3
@@ -1307,7 +1270,6 @@ REQUIRED_SELECTED_COLUMNS = [
     "y1",
     "split_fold",
     "quicklook_path",
-    "quicklook_aux_path",
 ]
 REQUIRED_MASK_COLUMNS = ["patch_id", "required_mask_filename"]
 REQUIRED_MANIFEST_FIELDS = [
@@ -1324,6 +1286,7 @@ REQUIRED_MANIFEST_FIELDS = [
     "patch_mask_requirements_sha256",
     "patch_split_manifest_path",
     "patch_split_manifest_sha256",
+    "patch_quicklook_format",
     "tile_exclusion_policy_path",
     "tile_exclusion_policy_sha256",
     "excluded_tiles",
@@ -1445,6 +1408,16 @@ except Exception as exc:
 for field in REQUIRED_MANIFEST_FIELDS:
     if field not in manifest:
         schema_errors.append(f"patch_handoff_manifest.json missing field: {field}")
+
+if manifest.get("schema_version") != "handoff_patch_format_v2":
+    schema_errors.append(
+        "patch_handoff_manifest.json schema_version must be 'handoff_patch_format_v2'"
+    )
+
+if manifest.get("patch_quicklook_format") != "geotiff_deflate_rgb":
+    schema_errors.append(
+        "patch_handoff_manifest.json patch_quicklook_format must be 'geotiff_deflate_rgb'"
+    )
 
 if manifest.get("split_authority") != "masterarbeit_strassenerkennung_cv":
     schema_errors.append(
@@ -1594,7 +1567,8 @@ if violations:
 missing_images: list[str] = []
 missing_sidecars: list[str] = []
 missing_quicklooks: list[str] = []
-missing_quicklook_sidecars: list[str] = []
+invalid_quicklook_format: list[str] = []
+invalid_quicklook_georef: list[str] = []
 
 for row in selected_rows:
     patch_id = str(row.get("patch_id", "")).strip()
@@ -1631,9 +1605,6 @@ for row in selected_rows:
             missing_sidecars.append(sidecar.name)
 
     quicklook_path_raw = str(row.get("quicklook_path", "")).strip()
-    quicklook_aux_path_raw = str(row.get("quicklook_aux_path", "")).strip()
-    if not quicklook_aux_path_raw and quicklook_path_raw:
-        quicklook_aux_path_raw = f"{quicklook_path_raw}.aux.xml"
 
     if not quicklook_path_raw:
         missing_quicklooks.append(f"{patch_id}:<empty>")
@@ -1645,17 +1616,27 @@ for row in selected_rows:
             resolved_quicklook = (handoff_dir / quicklook_path).resolve()
         if not resolved_quicklook.exists():
             missing_quicklooks.append(f"{patch_id}:{resolved_quicklook}")
+            continue
 
-    if not quicklook_aux_path_raw:
-        missing_quicklook_sidecars.append(f"{patch_id}:<empty>")
-    else:
-        quicklook_aux_path = Path(quicklook_aux_path_raw)
-        if quicklook_aux_path.is_absolute():
-            resolved_quicklook_aux = quicklook_aux_path
-        else:
-            resolved_quicklook_aux = (handoff_dir / quicklook_aux_path).resolve()
-        if not resolved_quicklook_aux.exists():
-            missing_quicklook_sidecars.append(f"{patch_id}:{resolved_quicklook_aux}")
+        if resolved_quicklook.suffix.lower() not in {".tif", ".tiff"}:
+            invalid_quicklook_format.append(
+                f"{patch_id}:{resolved_quicklook} (expected .tif/.tiff)"
+            )
+            continue
+
+        try:
+            with rasterio.open(resolved_quicklook) as quicklook_ds:
+                has_crs = quicklook_ds.crs is not None
+                transform = quicklook_ds.transform
+                has_transform = transform is not None and not transform.is_identity
+                if not has_crs or not has_transform:
+                    invalid_quicklook_georef.append(
+                        f"{patch_id}:{resolved_quicklook} (missing embedded CRS/transform)"
+                    )
+        except Exception as exc:
+            invalid_quicklook_georef.append(
+                f"{patch_id}:{resolved_quicklook} (failed to read GeoTIFF: {exc})"
+            )
 
 if missing_images:
     for patch_id in missing_images:
@@ -1672,9 +1653,14 @@ if missing_quicklooks:
         print(f"[DATA] quicklook missing for patch_id={item}", file=sys.stderr)
     sys.exit(EXIT_DATA)
 
-if missing_quicklook_sidecars:
-    for item in missing_quicklook_sidecars:
-        print(f"[DATA] quicklook sidecar missing for patch_id={item}", file=sys.stderr)
+if invalid_quicklook_format:
+    for item in invalid_quicklook_format:
+        print(f"[DATA] quicklook format invalid for patch_id={item}", file=sys.stderr)
+    sys.exit(EXIT_DATA)
+
+if invalid_quicklook_georef:
+    for item in invalid_quicklook_georef:
+        print(f"[DATA] quicklook georeference invalid for patch_id={item}", file=sys.stderr)
     sys.exit(EXIT_DATA)
 
 print(
