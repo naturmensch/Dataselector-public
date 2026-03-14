@@ -1,273 +1,155 @@
-# KDR100 Data Selection
+# Dataselector
 
-**Algorithmic data selection for the "Karte des Deutschen Reiches" (KDR100) using Optuna-based hyperparameter optimization and deep-learning features.**
+**Algorithmic data selection for the Karte des Deutschen Reiches (KDR100).**
 
-Scientifically rigorous method to objectively select training examples from 676 heterogeneous map tiles.
+Dataselector freezes a reproducible, reviewable selection contract for
+annotating historical map tiles. The repository is centered on the thesis-grade
+workflow: selection, provenance, validation, freeze artifacts, and optional
+post-freeze handoff packaging for the downstream training repository.
 
----
+## What this repository owns
 
-## 🚀 Quick Start
+Dataselector owns the **selection contract**:
 
-**For the full production pipeline (Sampler Suite + XXL Run + Bootstrap):**
+- candidate pool handling and policy-driven tile exclusions
+- parameter-resolved, validated thesis selection
+- freeze artifacts (`selection_core.csv`, `selection_final_with_cases.csv`,
+  `selection_contract.json`)
+- reporting, provenance, CRS audit
+- optional post-freeze tile/patch handoff packaging
 
-Canonical invocation rule: use `micromamba run -n dataselector <command>`
-for all local runs and checks.
+The downstream training repository owns the **evaluation contract**:
 
-If examples below omit the prefix, run them inside an activated `dataselector`
-environment or prepend the canonical micromamba invocation.
+- authoritative train/val/test strategy for model training
+- the actual segmentation models
+- cross-validation and final model comparisons
 
-**Option A: CLI orchestration (RECOMMENDED):**
+## Methodological boundary (Thesis Freeze)
 
-```bash
-# STEP 1: (optional) Thesis Sampler Suite — benchmark samplers (writes outputs/selected_sampler.json)
-micromamba run -n dataselector python -m dataselector thesis-sampler-suite --autoscale
+1. Selection is architecture-neutral / model-agnostic and optimizes a
+   diversity/coverage proxy.
+2. The current thesis freeze is a `frozen dataset`; downstream model
+   comparisons happen after the freeze.
+3. No direct model-metric optimization (SegFormer/MapSAM/UNet++).
+4. `alpha_visual` is an optimized parameter, not a hard dominance constraint.
+5. A visual-biased or model-aware selection strategy is a separate ablation
+   path and requires a new freeze.
 
-# STEP 2: Canonical thesis orchestration (production path — uses pinned sampler and policy defaults)
-micromamba run -n dataselector python -m dataselector thesis-orchestrate
+## Canonical workflow
 
-> Tip: when invoking the `dataselector` env, avoid inserting an extra `--` between `micromamba run -n dataselector` and the command. Use `micromamba run -n dataselector python -m dataselector <command>` (example above). Some shells/micromamba versions treat `--` differently and it can break argument parsing.
-
-# Optional: run thesis-pipeline directly from a validated snapshot
-micromamba run -n dataselector python -m dataselector thesis-pipeline --use-params outputs/runs/<run_id>/final_config.yaml
-```
-
-**Option B: Manual steps (if you want to inspect intermediate results):**
-
-```bash
-# STEP 1: Thesis Sampler Suite (auto: 10 seeds, 1000 trials, Hamburg + KDR100)
-micromamba run -n dataselector python -m dataselector thesis-sampler-suite
-
-# STEP 2: XXL Pipeline with integrated Bootstrap (Phases 0-5)
-# Phase 0: Convergence analysis (auto-detects best sampler from Suite)
-# Phase 1-4: Optimization (Hamburg + Reproducibility + Statistics + Summary)
-# Phase 5: Bootstrap UQ (500 resamples)
-micromamba run -n dataselector python -m dataselector xxl
-# Or override sampler explicitly:
-micromamba run -n dataselector python -m dataselector xxl --best-sampler cmaes  # qmc, tpe, or cmaes
-```
-
-### ✨ Current status (2026-01-23)
-
-- ✅ **Sampler argument fix:** `--best-sampler` now propagates correctly through orchestration
-- ✅ **Environment:** NumPy pinned to 2.3.x (Numba-compatible); PyTorch CPU available
-- ✅ **XXL Pipeline:** Phases 0–5 fully orchestrated
-- ✅ **Dry-run:** Phase 1–2 validated successfully with QMC sampler
-
-**Estimated durations:**
-- Sampler Suite: 8–12 hours (10 seeds × 3 samplers × 1000 trials)
-- XXL Pipeline + Bootstrap: 3.5–6 hours
-- **Total:** ~12–18 hours
-
-**Two-command, thesis‑ready workflow:**
-- Sampler Suite (10 seeds, 1000 trials per sampler) → `outputs/selected_sampler.json`
-- Thesis orchestration (`thesis-orchestrate` / `thesis-pipeline`) with production defaults (n_trials = 370, sampler = tpe) → `outputs/runs/...`
-
----
-
-## 📋 Overview
-
-### Core features
-
-- ✅ **Multi-seed sampler comparison:** QMC vs TPE vs CMA-ES (10 seeds, 1000 trials per sampler)
-- ✅ **XXL Pipeline:** 5-phase optimization (Convergence → Hamburg → Reproducibility → Statistics → Summary + Bootstrap)
-- ✅ **Convergence analysis:** automatic computation of suggested trial counts (Phase 0)
-- ✅ **Reproducibility:** seed-based validation on Hamburg and KDR100 datasets
-- ✅ **Uncertainty Quantification:** Bootstrap resampling with confidence intervals
-- ✅ **Scientific outputs:** automatic reports, plots, and stability metrics (Jaccard index)
-
-### Tech stack
-
-| Component | Tools |
-|---|---|
-| Language | Python 3.11 |
-| GPU / DL | PyTorch, torchvision (DINOv2 / ResNet50) |
-| Optimization | Optuna (QMC/TPE/CMA-ES), apricot-select |
-| Data | pandas, numpy, geopandas |
-| Dimensionality reduction / clustering | UMAP, scikit-learn |
-| Geospatial | geopandas, pyproj, shapely |
-| Environment / testing | micromamba (canonical) + exec_in_env (compatibility), pytest |
-
----
-
-## 📦 Installation
-
-### 1. Clone repository
+Canonical runtime:
 
 ```bash
-git clone https://github.com/username/Dataselector.git
-cd Dataselector
+micromamba run -n dataselector python -m dataselector <command>
 ```
 
-### 2. Create environment (recommended: micromamba)
+Canonical production path:
 
 ```bash
-# Canonical runtime path
-micromamba create -n dataselector -f environment.yml -y
-micromamba run -n dataselector python -V
-
-# Optional compatibility wrapper (delegates to micromamba/conda)
-./scripts/exec_in_env.sh --env dataselector --create --yes -- python -V
+micromamba run -n dataselector python -m dataselector thesis-orchestrate \
+  --config config/pipeline_config.yaml \
+  --output-dir outputs/runs/<run_id>
 ```
 
-### 3. Install dependencies
+Direct validated-snapshot path:
 
 ```bash
-# CPU-only setup
-micromamba run -n dataselector pip install -r requirements-cpu.txt
-
-# Or with CUDA/GPU support
-micromamba run -n dataselector pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-micromamba run -n dataselector pip install -r requirements.txt
+micromamba run -n dataselector python -m dataselector thesis-pipeline \
+  --use-params outputs/runs/<run_id>/final_config.yaml
 ```
 
-### 4. Run tests
+Important operational defaults:
+
+- active config: `config/pipeline_config.yaml`
+- canonical run root: `outputs/runs/`
+- thesis default: `selection_authority = snapshot_primary`
+- optional Phase 5 packaging is **off by default**
+
+Optional integrated Phase 5 packaging:
 
 ```bash
-micromamba run -n dataselector pytest -v  # full test suite
-micromamba run -n dataselector pytest --lf  # only last failures
+micromamba run -n dataselector python -m dataselector thesis-orchestrate \
+  --config config/pipeline_config.yaml \
+  --output-dir outputs/runs/<run_id> \
+  --build-handoffs \
+  --patches-per-tile 2 \
+  --patch-include-case false
 ```
 
-**Known compatibility note:** NumPy / numba: numba requires NumPy <= 2.3.x. `environment.yml` pins NumPy accordingly.
+Phase 5 is **post-freeze operational packaging**, not reselection.
 
----
-
-## 🎯 Workflows
-
-### A. Production XXL Run (RECOMMENDED)
-
-Full scientific workflow with automatic sampler selection.
-
-#### Step 1: Thesis Sampler Suite (optional when run separately)
+## Quick start
 
 ```bash
-# 10 seeds, 1000 trials per sampler, datasets: hamburg + kdr100
-python -m dataselector thesis-sampler-suite \
-  --seeds 42 43 44 45 46 47 48 49 50 51 \
-  --n-trials 1000 \
-  --datasets hamburg kdr100 \
-  --samplers qmc tpe cmaes
+make env-create
+micromamba run -n dataselector python -m pip install -e .
+micromamba run -n dataselector python -m pip install -r requirements-cpu.txt
 ```
 
-**Output:** `outputs/selected_sampler.json` + plots + CSV reports
-
-**Estimated duration:** 8–12 hours (1000 trials)
-
-#### Step 2: XXL Pipeline with auto parameters (recommended)
+Fast governance gates:
 
 ```bash
-python -m dataselector xxl
+micromamba run -n dataselector python -m dataselector check-runtime-readiness
+micromamba run -n dataselector python -m dataselector check-script-wrappers --strict
+micromamba run -n dataselector pytest -q tests/unit/test_config_policy_docs.py
+micromamba run -n dataselector pytest -q tests/unit/test_authoritative_docs_consistency.py
 ```
 
-**Phases (0–5) summary:**
-
-- Phase 0: Pre-flight convergence validation → computes `n_trials` from cached convergence baseline
-- Phase 1: Hamburg run (e.g., 440 trials) to find best hyperparameters
-- Phase 2: Reproducibility (2 seeds) validation
-- Phase 3: Statistics aggregation
-- Phase 4: Thesis-ready summary/report generation
-- Phase 5: Bootstrap UQ (e.g., 500 resamples)
-
-**Automatic parameter computation:** Phase 0 determines `n_trials = 5 × convergence_baseline` and auto-detects the best sampler via `outputs/selected_sampler.json` unless overridden by `--best-sampler`.
-
----
-
-### B. XXL Run with Monitor (recommended)
+Long canonical pipeline gate:
 
 ```bash
-# Run full XXL orchestration
-python -m dataselector xxl
-
-# Smoke mode (reduced settings):
-python -m dataselector xxl --smoke
-
-# Generate monitor report from latest run artifacts
-python -m dataselector generate-monitor
+micromamba run -n dataselector pytest -q tests/test_thesis_pipeline.py
 ```
 
-Monitor features:
-- Pre- and Post- Hooks
-- Timestamped logs
-- Trials.csv reconstruction if interrupted
-- Monitor report when run completes
+## Repository status and quality posture
 
----
+The repository is intended to present a release-grade thesis workflow:
 
-### C. Adaptive / Quick tests
+- scientific freeze via `selection_*` and `selection_contract.json`
+- explicit CRS provenance in the `thesis_repro` path
+- thin wrappers, scientific core logic inside the package
+- policy/doc governance enforced by pytest
+- optional tile and patch handoff packaging
 
-```bash
-# Quick smoke test with adaptive pipeline
-python -m dataselector adaptive-pipeline \
-  --n-lhs 5 \
-  --n-trials 10 \
-  --n-boot 5 \
-  --skip-optuna
-```
+Intentionally **not versioned**:
 
-**Use cases:** smoke tests, development, parameter tuning
+- generated runs under `outputs/`
+- handoff bundles under `handoff/`
+- local QGIS exports
+- private image corpora
 
----
+## Project layout
 
-### D. Useful CLI workflows
-
-- `python -m dataselector compare-samplers` — fast multi-seed sampler comparison
-- `python -m dataselector thesis-pipeline` — complete 4-phase thesis optimization
-- `python -m dataselector autoscale` — staged Optuna autoscaling
-- `python -m dataselector optuna-optimize` — low-level Optuna experiment runner
-- `python -m dataselector bootstrap-pareto --pareto-csv <path>` — bootstrap UQ on Pareto selections
-- `python -m dataselector generate-experiment --run-dir <path>` — per-run report generation
-- `python -m dataselector check-env` — environment and legacy-reference validation
-
----
-
-## 📂 Project layout
-
-```
+```text
 Dataselector/
-├── dataselector/                         # Canonical Python package
-│   ├── cli.py                           # Unified CLI entry point
-│   ├── data/                            # data loading / metadata build
-│   ├── features/                        # feature extraction
-│   ├── selection/                       # clustering + selection logic
-│   ├── pipeline/                        # run/version management helpers
-│   └── workflows/                       # canonical workflows
-├── dataselector/workflows/              # Canonical workflow implementations
-│   ├── thesis_sampler_suite.py         # Sampler suite orchestrator (thesis-grade)
-│   ├── xxl.py                          # XXL orchestrator (Phase 0-5)
-│   ├── adaptive_pipeline.py            # Adaptive pipeline (LHS-based)
-│   ├── compare_samplers.py             # Multi-seed sampler comparer
-│   ├── optuna_optimize.py              # Low-level Optuna experiment runner
-│   └── [other workflow modules...]
-├── tests/                                # pytest suite
-├── notebooks/
-│   └── 01_data_exploration.ipynb
-├── config/
-│   └── pipeline_config.yaml
-├── data/
-│   ├── new_all_tiles.csv               # 676 KDR100 tiles metadata
-│   └── images/
-├── outputs/
-│   ├── runs/
-│   └── selected_sampler.json
-└── environment.yml
+├── dataselector/                 # canonical Python package
+│   ├── data/                     # metadata, CRS, tile policy
+│   ├── pipeline/                 # cache, experiment, run helpers
+│   ├── runtime/                  # run metadata / error reporting
+│   ├── selection/                # selection logic
+│   └── workflows/                # thesis-orchestrate / thesis-pipeline / handoff
+├── config/                       # active runtime and policy config
+├── docs/                         # active methodology and operations docs
+├── scripts/                      # thin wrappers / operational helpers
+├── tests/                        # governance, unit, integration, and pipeline tests
+└── outputs/                      # generated run artifacts (not versioned)
 ```
 
----
+## Key documents
 
-## ⚙️ Configuration
+- [Thesis Pipeline How-To](docs/03_USER_GUIDES/THESIS_PIPELINE_HOWTO.md)
+- [Config Policy](docs/CONFIG_POLICY.md)
+- [Parameter Policy Ledger](docs/PARAMETER_POLICY_LEDGER.md)
+- [Methodology](docs/METHODOLOGY.md)
+- [Thesis Method Contract](docs/THESIS_METHOD_CONTRACT.md)
+- [Min-Distance Evidence Addendum](docs/MIN_DISTANCE_EVIDENCE_ADDENDUM.md)
+- [N-Samples Evidence Addendum](docs/N_SAMPLES_EVIDENCE_ADDENDUM.md)
+- [Test Suite Curation](docs/TEST_SUITE_CURATION.md)
+- [Repository Surface Curation](docs/REPO_SURFACE_CURATION.md)
 
-Main config: `config/pipeline_config.yaml`
+## Advanced / historical workflows
 
-```yaml
-selection:
-  n_samples: 24                # current thesis policy baseline
-  min_distance_km: 28.5        # operational policy (geometric reference documented separately)
-
-optimization:
-  # Policy default for thesis/adaptive workflows: n_trials = 370 (see docs/PARAMETER_POLICY_LEDGER.md)
-  n_trials: 370
-  n_candidates: 676            # all KDR100 tiles (100%)
-```
-
----
-
-If you'd like, I can also update the repository README to replace the German file or add a note linking to this English version.
+`thesis-sampler-suite`, `xxl`, and related research workflows remain in the
+repository for supplementary or historical analysis. They are **not** the
+canonical thesis release path anymore and should not dominate the README-level
+entry story.

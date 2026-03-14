@@ -1,5 +1,11 @@
 # Running Integration and Real-Image Test Profiles
 
+For the **current active test map** and release-tier interpretation, see:
+
+- [`docs/TEST_SUITE_CURATION.md`](../docs/TEST_SUITE_CURATION.md)
+
+This file focuses on integration-heavy and real-image execution profiles.
+
 This document defines the authoritative test profiles after Phase 4 dependency
 partitioning. It keeps CI deterministic while preserving strict local real-image
 validation.
@@ -45,6 +51,18 @@ export DATASELECTOR_IMAGE_DIR=/abs/path/to/private/images
 
 3. CI must not require private image assets.
 4. Productive metadata source is `data/new_all_tiles.csv`; tests must not rely on implicit `outputs/metadata.csv` fallback.
+
+## Expected release skips
+
+In a normal showcase/release run, the only expected skips should come from
+explicit profile gates such as:
+
+- `RUN_FULL_INTEGRATION=1` for full E2E
+- `DATASELECTOR_IMAGE_DIR` for private real-image tests
+
+Unconditional placeholder skips like `skipif(True)` or module-level
+`pytestmark = skip(...)` are not part of the active integration story and
+should be removed or demoted instead of preserved.
 
 ## Synthetic vs Canonical Policy
 
@@ -98,6 +116,17 @@ micromamba run -n dataselector python -m pytest -q tests/e2e/test_build_tiles_re
 ```
 
 Expected: skipped with explicit `DATASELECTOR_IMAGE_DIR` requirement.
+
+## Long Manual Release Checks
+
+The following checks are intentionally treated as manual release checks rather
+than default integration commands:
+
+```bash
+micromamba run -n dataselector pytest -q tests/test_thesis_pipeline.py
+make format-check
+make test
+```
 
 ## Notes
 

@@ -1,5 +1,12 @@
 # Phase4H Automation Runner
 
+> Historical closeout automation.
+> This folder is preserved for traceability and replay of the Phase4H
+> closeout, but it is **not** the canonical thesis-v2 runtime path.
+> For current release-grade execution, use
+> `python -m dataselector thesis-orchestrate` or
+> `python -m dataselector thesis-pipeline`.
+
 This folder contains resumable wave scripts for the Phase4H scientific closeout.
 
 ## Entry Point

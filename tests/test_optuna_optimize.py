@@ -26,6 +26,7 @@ def test_optuna_optimize_importable():
     assert hasattr(optuna_optimize, "main")
 
 
+@pytest.mark.filterwarnings("ignore:QMCSampler is experimental.*")
 def test_get_optuna_sampler():
     """Test sampler factory for all supported types."""
     pytest = sys.modules.get("pytest")

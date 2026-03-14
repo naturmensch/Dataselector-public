@@ -20,6 +20,7 @@ def get_optuna_sampler(optuna_optimize_mod):
     return optuna_optimize_mod.get_optuna_sampler
 
 
+@pytest.mark.filterwarnings("ignore:QMCSampler is experimental.*")
 def test_get_optuna_sampler_qmc(get_optuna_sampler):
     sampler = get_optuna_sampler("qmc", seed=123)
     # Check that sampler exposes the expected class name (QMCSampler) or falls back to TPE

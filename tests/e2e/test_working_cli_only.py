@@ -101,24 +101,29 @@ def test_optuna_optimize_help(run_dataselector_cli):
     assert "optuna" in output or "optimization" in output
 
 
-# Skip tests for wrapper-based commands until Phase 3R migration
-@pytest.mark.skip(
-    reason="autoscale is a subprocess wrapper (Phase 3R migration pending)"
-)
-def test_autoscale_skipped(run_dataselector_cli):
-    """Test autoscale - SKIPPED until Phase 3R native Python migration."""
-    pass
+@pytest.mark.integration
+def test_autoscale_help(run_dataselector_cli):
+    """Test autoscale --help works for the active CLI surface."""
+    result = run_dataselector_cli(["autoscale", "--help"])
+    assert result.returncode == 0
+    out = result.stdout.decode().lower()
+    assert "--n-trials" in out
+    assert "--stages" in out
 
 
-@pytest.mark.skip(reason="xxl is a subprocess wrapper (Phase 3R migration pending)")
-def test_xxl_skipped(run_dataselector_cli):
-    """Test xxl - SKIPPED until Phase 3R native Python migration."""
-    pass
+@pytest.mark.integration
+def test_xxl_help(run_dataselector_cli):
+    """Test xxl --help still works as a secondary-active CLI path."""
+    result = run_dataselector_cli(["xxl", "--help"])
+    assert result.returncode == 0
+    out = result.stdout.decode().lower()
+    assert "--phase" in out
 
 
-@pytest.mark.skip(
-    reason="thesis-pipeline is a subprocess wrapper (Phase 3R migration pending)"
-)
-def test_thesis_pipeline_skipped(run_dataselector_cli):
-    """Test thesis-pipeline - SKIPPED until Phase 3R native Python migration."""
-    pass
+@pytest.mark.integration
+def test_thesis_pipeline_help(run_dataselector_cli):
+    """Test thesis-pipeline --help works for the canonical CLI path."""
+    result = run_dataselector_cli(["thesis-pipeline", "--help"])
+    assert result.returncode == 0
+    out = result.stdout.decode()
+    assert "--use-params" in out

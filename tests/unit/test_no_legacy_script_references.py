@@ -42,9 +42,7 @@ TRANSITIONAL_WRAPPER_ALLOWLIST_VERSION = "2026-02-10"
 TRANSITIONAL_WRAPPER_ALLOWLIST: set[str] = set()
 INTERNAL_DOMAIN_IMPORT_PATTERNS = [
     re.compile(r"^\s*from\s+dataselector\.(pipeline|selection|features|workflows)\b"),
-    re.compile(
-        r"^\s*import\s+dataselector\.(pipeline|selection|features|workflows)\b"
-    ),
+    re.compile(r"^\s*import\s+dataselector\.(pipeline|selection|features|workflows)\b"),
 ]
 
 

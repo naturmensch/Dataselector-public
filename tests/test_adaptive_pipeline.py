@@ -24,10 +24,14 @@ def test_adaptive_pipeline_default_n_trials_is_370():
     """Default `n_trials` for adaptive flows should be 370."""
     import inspect
 
-    from dataselector.workflows.adaptive_pipeline import run_adaptive_pipeline, main as adaptive_main
-    from dataselector.workflows.adaptive_auto import run_adaptive_auto, main as adaptive_auto_main
+    from dataselector.workflows.adaptive_auto import main as adaptive_auto_main
+    from dataselector.workflows.adaptive_auto import run_adaptive_auto
+    from dataselector.workflows.adaptive_pipeline import main as adaptive_main
+    from dataselector.workflows.adaptive_pipeline import run_adaptive_pipeline
 
-    assert inspect.signature(run_adaptive_pipeline).parameters["n_trials"].default == 370
+    assert (
+        inspect.signature(run_adaptive_pipeline).parameters["n_trials"].default == 370
+    )
     assert inspect.signature(adaptive_main).parameters["n_trials"].default == 370
     assert inspect.signature(run_adaptive_auto).parameters["n_trials"].default == 370
     assert inspect.signature(adaptive_auto_main).parameters["n_trials"].default == 370
@@ -116,63 +120,6 @@ def test_resolve_optuna_n_samples_fails_without_source(tmp_path: Path):
             context="test.adaptive",
             experiment_run_dir=tmp_path / "missing_exp",
         )
-
-
-@pytest.mark.skipif(
-    not (ROOT / "data" / "new_all_tiles.csv").exists(),
-    reason="Requires data/new_all_tiles.csv",
-)
-@pytest.mark.skip(reason="Requires sklearn and full dataselector dependencies")
-def test_adaptive_pipeline_dry_run(tmp_path, monkeypatch):
-    """Test adaptive pipeline in dry-run mode (skip actual execution)."""
-    from dataselector.workflows.adaptive_pipeline import run_adaptive_pipeline
-
-    # Mock subprocess calls to prevent actual execution
-    called_commands = []
-
-    def mock_call(cmd, shell=True):
-        called_commands.append(cmd)
-        return 0
-
-    import subprocess
-
-    monkeypatch.setattr(subprocess, "call", mock_call)
-
-    # Create minimal test environment
-    outputs_dir = tmp_path / "outputs" / "experiments"
-    outputs_dir.mkdir(parents=True)
-    monkeypatch.setenv("EXPERIMENT_RUN_DIR", str(outputs_dir))
-
-    # Create fake pareto files to satisfy existence checks
-    tuning_dir = outputs_dir / "tuning_weights" / "pareto"
-    tuning_dir.mkdir(parents=True)
-    (tuning_dir / "pareto_solutions.csv").write_text("metric,value\n1,2\n")
-
-    fine_dir = outputs_dir / "fine_sweep"
-    fine_dir.mkdir(parents=True)
-    (fine_dir / "pareto_solutions.csv").write_text("metric,value\n1,2\n")
-
-    # Run with all phases skipped (to test orchestration only)
-    try:
-        run_dir = run_adaptive_pipeline(
-            experiment_name="test_adaptive",
-            n_lhs=8,
-            n_trials=5,
-            n_boot=10,
-            n_candidates=100,
-            sampler="sobol",
-            seed=42,
-            skip_exploration=True,
-            skip_fine=True,
-            skip_optuna=True,
-            skip_bootstrap_injection=True,
-            dry_run=True,
-        )
-        assert run_dir.exists()
-        assert "test_adaptive" in str(run_dir)
-    except SystemExit:
-        # Expected if bootstrap command fails in mocked environment
-        pass
 
 
 def test_cli_integration(monkeypatch):

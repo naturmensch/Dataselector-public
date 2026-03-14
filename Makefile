@@ -1,36 +1,35 @@
 # Canonical package-first Makefile (CLI hard-cut)
 .PHONY: clean clean-force format format-check test env-create env-update ensure-env check-env test-integration test-e2e test-e2e-auto test-e2e-ci archive-outputs restore-outputs gate-quick gate-batch-a gate-batch-b gate-comprehensive branch-supersets
 
-PYTHON ?= python
 ENV_NAME ?= dataselector
+EXEC_PYTHON ?= micromamba run -n $(ENV_NAME) python
+EXEC_TOOL ?= micromamba run -n $(ENV_NAME)
+EXEC_ENV ?= env XDG_CACHE_HOME=/tmp/mamba-cache
+FORMAT_PATHS ?= dataselector tests scripts
 
 clean:
 	@echo "Dry-run: show candidates to be cleaned"
-	@$(PYTHON) -m dataselector clean-workspace --delete-outputs --delete-cache
+	@$(EXEC_ENV) $(EXEC_PYTHON) -m dataselector clean-workspace --delete-outputs --delete-cache
 
 clean-force:
 	@echo "Deleting outputs/cache/venvs (protected paths are kept)"
-	@$(PYTHON) -m dataselector clean-workspace --delete-outputs --delete-cache --delete-venvs --yes
+	@$(EXEC_ENV) $(EXEC_PYTHON) -m dataselector clean-workspace --delete-outputs --delete-cache --delete-venvs --yes
 
 format:
 	@echo "Formatting code with isort, black and ruff"
-	@$(PYTHON) -m pip install --upgrade pip
-	@$(PYTHON) -m pip install isort black ruff
-	@isort .
-	@black .
-	@ruff check --fix .
+	@$(EXEC_ENV) $(EXEC_PYTHON) -m isort $(FORMAT_PATHS)
+	@$(EXEC_ENV) $(EXEC_PYTHON) -m black $(FORMAT_PATHS)
+	@$(EXEC_ENV) $(EXEC_TOOL) ruff check --fix $(FORMAT_PATHS)
 
 format-check:
 	@echo "Check formatting (isort/black/ruff)"
-	@$(PYTHON) -m pip install --upgrade pip
-	@$(PYTHON) -m pip install isort black ruff
-	@isort --check-only .
-	@black --check .
-	@ruff check .
+	@$(EXEC_ENV) $(EXEC_PYTHON) -m isort --check-only $(FORMAT_PATHS)
+	@$(EXEC_ENV) $(EXEC_PYTHON) -m black --check $(FORMAT_PATHS)
+	@$(EXEC_ENV) $(EXEC_TOOL) ruff check $(FORMAT_PATHS)
 
 test:
 	@echo "Running tests with canonical interpreter"
-	@$(PYTHON) -m pytest -q
+	@$(EXEC_ENV) $(EXEC_PYTHON) -m pytest -q
 
 env-create:
 	@echo "Creating/updating conda env '$(ENV_NAME)' from environment.yml"
@@ -60,11 +59,11 @@ ensure-env: env-create
 
 check-env:
 	@echo "Checking environment and command hygiene"
-	@$(PYTHON) -m dataselector check-env dataselector tests Makefile .github/workflows
+	@$(EXEC_ENV) $(EXEC_PYTHON) -m dataselector check-env dataselector tests Makefile .github/workflows
 
 test-integration:
 	@echo "Running curated integration tests"
-	@$(PYTHON) -m pytest -q tests/test_integration_diversity_selector.py tests/test_full_pipeline_integration.py tests/test_full_pipeline_comprehensive.py
+	@$(EXEC_ENV) $(EXEC_PYTHON) -m pytest -q tests/test_integration_diversity_selector.py tests/test_full_pipeline_integration.py tests/test_full_pipeline_comprehensive.py
 
 test-e2e-auto:
 	@$(MAKE) ensure-env
@@ -82,15 +81,15 @@ test-e2e-ci:
 
 test-e2e:
 	@echo "Running e2e smoke tests in current interpreter"
-	@$(PYTHON) -m pytest -q -m e2e
+	@$(EXEC_ENV) $(EXEC_PYTHON) -m pytest -q -m e2e
 
 archive-outputs:
 	@echo "Archive outputs to data/archive/"
-	@$(PYTHON) -m dataselector archive-outputs --outputs outputs --dest data/archive
+	@$(EXEC_ENV) $(EXEC_PYTHON) -m dataselector archive-outputs --outputs outputs --dest data/archive
 
 restore-outputs:
 	@echo "Restore latest archive from data/archive/"
-	@$(PYTHON) -m dataselector list-archives --dir data/archive
+	@$(EXEC_ENV) $(EXEC_PYTHON) -m dataselector list-archives --dir data/archive
 
 gate-quick:
 	@./scripts/validate_merge_gate.sh "Quick Gate" "make test"

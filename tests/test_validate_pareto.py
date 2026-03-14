@@ -77,6 +77,7 @@ def _patch_validation_data(monkeypatch):
 
 
 @pytest.mark.slow
+@pytest.mark.filterwarnings("ignore:k >= N for N \\* N square matrix.*")
 def test_validate_small(tmp_path, monkeypatch):
     pareto, outdir = _make_pareto_csv(tmp_path)
     monkeypatch.chdir(tmp_path)
@@ -135,6 +136,7 @@ def test_validate_requires_resolved_selection_target(tmp_path, monkeypatch):
 
 
 @pytest.mark.slow
+@pytest.mark.filterwarnings("ignore:k >= N for N \\* N square matrix.*")
 def test_validate_bootstrap_mode_writes_expected_outputs(tmp_path, monkeypatch):
     pareto, outdir = _make_pareto_csv(tmp_path)
     monkeypatch.chdir(tmp_path)

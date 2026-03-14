@@ -15,6 +15,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 @pytest.mark.fast
+@pytest.mark.filterwarnings("ignore:Dataset has no geotransform, gcps, or rpcs.*")
 def test_full_pipeline_simulation(tmp_dirs, repo_root, inject_src_stub, monkeypatch):
     """Comprehensive fast simulation of the full pipeline.
 
