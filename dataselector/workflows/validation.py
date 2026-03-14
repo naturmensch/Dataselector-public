@@ -300,7 +300,9 @@ def validate_pareto_candidates(
         random_state=int(seeds[0]) if len(seeds) > 0 else 42,
         umap_random_state=int(umap_random_state),
         umap_n_jobs=int(umap_n_jobs),
-        umap_n_neighbors=int(umap_n_neighbors) if umap_n_neighbors is not None else None,
+        umap_n_neighbors=(
+            int(umap_n_neighbors) if umap_n_neighbors is not None else None
+        ),
     )
 
     try:
@@ -449,7 +451,9 @@ def validate_pareto_candidates(
             }
         )
 
-        suffix = f"s{int(replicate_seed)}" if mode == "seed_replay" else f"b{replicate_id}"
+        suffix = (
+            f"s{int(replicate_seed)}" if mode == "seed_replay" else f"b{replicate_id}"
+        )
         _save_selection_snapshot(
             selected_orig_idx=selected_orig_idx,
             alpha=alpha,
@@ -534,14 +538,18 @@ def validate_pareto_candidates(
     seed_replay_df = df[df["replicate_mode"] == "seed_replay"].copy()
     bootstrap_df = df[df["replicate_mode"] == "bootstrap_candidates"].copy()
     if not seed_replay_df.empty:
-        seed_replay_df.to_csv(output_dir / "validation_results_seed_replay.csv", index=False)
+        seed_replay_df.to_csv(
+            output_dir / "validation_results_seed_replay.csv", index=False
+        )
     if not bootstrap_df.empty:
         bootstrap_df.to_csv(
             output_dir / "validation_results_bootstrap.csv", index=False
         )
 
     # Backward-compatible canonical path: points to the requested primary mode.
-    primary_df = bootstrap_df if replicate_mode == "bootstrap_candidates" else seed_replay_df
+    primary_df = (
+        bootstrap_df if replicate_mode == "bootstrap_candidates" else seed_replay_df
+    )
     if primary_df.empty:
         primary_df = df
     results_path = output_dir / "validation_results.csv"

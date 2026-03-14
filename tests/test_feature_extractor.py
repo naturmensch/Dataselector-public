@@ -20,7 +20,9 @@ def test_resnet50_get_dim(monkeypatch):
             x = torch.flatten(x, 1)
             return self.fc(x)
 
-    monkeypatch.setattr(feature_module.models, "resnet50", lambda weights=None: DummyResNet())
+    monkeypatch.setattr(
+        feature_module.models, "resnet50", lambda weights=None: DummyResNet()
+    )
     ext = FeatureExtractor(model_name="resnet50")
     assert ext.get_feature_dimension() == 2048
 

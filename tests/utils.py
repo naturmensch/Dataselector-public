@@ -2,6 +2,7 @@ import importlib.util
 import sys
 import textwrap
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -66,9 +67,7 @@ class FakeMetadataProcessor:
 def create_dummy_script(path: Path, marker: str = "DUMMY_RUN_DONE"):
     """Creates a standalone dummy python script for testing monitors."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        textwrap.dedent(
-            f"""
+    path.write_text(textwrap.dedent(f"""
             #!/usr/bin/env python3
             import os, sys, time
             
@@ -85,7 +84,59 @@ def create_dummy_script(path: Path, marker: str = "DUMMY_RUN_DONE"):
             sys.stdout.flush()
             time.sleep(0.1)
             sys.exit(0)
-            """
-        )
-    )
+            """))
     path.chmod(0o755)
+
+
+def seed_immutable_feature_cache(
+    *,
+    out_dir: Path,
+    metadata_csv: Path,
+    features: np.ndarray,
+    batch_size: int = 16,
+    feature_cfg: dict[str, Any] | None = None,
+) -> None:
+    """Seed an immutable feature cache entry matching the current cache contract."""
+    from dataselector.data.io import (
+        _effective_metadata_basis,
+        _load_feature_metadata_view,
+        build_feature_identity,
+    )
+    from dataselector.pipeline.cache import (
+        atomic_write_features_with_meta,
+        compute_meta_hash,
+        create_meta_info,
+    )
+
+    metadata_preview = _load_feature_metadata_view(
+        str(metadata_csv),
+        resolve_images=False,
+        tile_exclusion_policy=None,
+        apply_tile_exclusion=False,
+        strict_explicit_crs=False,
+        allow_heuristic_crs_fallback=True,
+    )
+    metadata_basis = _effective_metadata_basis(metadata_preview)
+    feature_identity = build_feature_identity(
+        feature_cfg=feature_cfg or {},
+        batch_size=batch_size,
+        config_sha256=None,
+    )
+    params = {
+        "batch_size": batch_size,
+        "feature_identity": feature_identity,
+        "metadata_basis": metadata_basis,
+    }
+    meta_hash = compute_meta_hash(str(metadata_csv), params=params)
+    meta_info = create_meta_info(
+        str(metadata_csv),
+        params=params,
+        feature_identity=feature_identity,
+        metadata_basis=metadata_basis,
+    )
+    atomic_write_features_with_meta(
+        cache_root=out_dir,
+        feats=np.asarray(features, dtype=np.float32),
+        meta_hash=meta_hash,
+        meta_info=meta_info,
+    )

@@ -5,7 +5,9 @@ from __future__ import annotations
 from typing import Any
 
 
-def assert_same_split_manifest_sha256(run_metadata_payloads: list[dict[str, Any]]) -> str:
+def assert_same_split_manifest_sha256(
+    run_metadata_payloads: list[dict[str, Any]],
+) -> str:
     """Require identical split manifest hash across model runs.
 
     Returns the common manifest hash if valid.

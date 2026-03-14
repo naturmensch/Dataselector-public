@@ -48,11 +48,16 @@ def test_workflow_uses_fixed_mode_from_config(tmp_path: Path, monkeypatch) -> No
             json.dumps({"value": 1.0, "params": {}, "user_attrs": {"n_samples": 34}}),
             encoding="utf-8",
         )
-        (Path(kwargs["out_dir"]) / "optuna_autoscale_selected_n_samples.txt").write_text(
+        (
+            Path(kwargs["out_dir"]) / "optuna_autoscale_selected_n_samples.txt"
+        ).write_text(
             "34",
             encoding="utf-8",
         )
-        return Path(kwargs["out_dir"]) / "dummy.csv", Path(kwargs["out_dir"]) / "dummy.json"
+        return (
+            Path(kwargs["out_dir"]) / "dummy.csv",
+            Path(kwargs["out_dir"]) / "dummy.json",
+        )
 
     monkeypatch.setattr(mod, "load_or_create_data", fake_load_or_create_data)
     monkeypatch.setattr(mod, "run_autoscale", fake_run_autoscale)

@@ -6,7 +6,6 @@ All required values must be present in the YAML; missing values raise errors.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 

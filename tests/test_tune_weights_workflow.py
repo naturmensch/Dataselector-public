@@ -80,7 +80,17 @@ def test_run_exploration_separates_lhs_points_from_selection_target(
     cfg_dir = repo_root / "config"
     cfg_dir.mkdir(parents=True, exist_ok=True)
     (cfg_dir / "pipeline_config.yaml").write_text(
-        "selection:\n  n_samples: 21\n",
+        "\n".join(
+            [
+                "selection:",
+                "  n_samples: 21",
+                "clustering:",
+                "  n_clusters: 8",
+                "feature_extraction:",
+                "  batch_size: 8",
+            ]
+        )
+        + "\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(mod, "ROOT", repo_root)
@@ -100,6 +110,7 @@ def test_run_exploration_separates_lhs_points_from_selection_target(
     kwargs = captured["run_weight_sweep_kwargs"]
     assert len(kwargs["weight_combinations"]) == 7
     assert kwargs["n_samples"] == 21
+    assert kwargs["objective_authority"] == "unified_normalized"
 
 
 def test_run_exploration_honors_explicit_selection_target(tmp_path: Path, monkeypatch):
@@ -113,7 +124,17 @@ def test_run_exploration_honors_explicit_selection_target(tmp_path: Path, monkey
     cfg_dir = repo_root / "config"
     cfg_dir.mkdir(parents=True, exist_ok=True)
     (cfg_dir / "pipeline_config.yaml").write_text(
-        "selection:\n  n_samples: null\n",
+        "\n".join(
+            [
+                "selection:",
+                "  n_samples: null",
+                "clustering:",
+                "  n_clusters: 8",
+                "feature_extraction:",
+                "  batch_size: 8",
+            ]
+        )
+        + "\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(mod, "ROOT", repo_root)
@@ -134,6 +155,7 @@ def test_run_exploration_honors_explicit_selection_target(tmp_path: Path, monkey
     kwargs = captured["run_weight_sweep_kwargs"]
     assert len(kwargs["weight_combinations"]) == 5
     assert kwargs["n_samples"] == 12
+    assert kwargs["objective_authority"] == "unified_normalized"
 
 
 def test_run_exploration_fails_without_selection_target_source(
@@ -149,7 +171,17 @@ def test_run_exploration_fails_without_selection_target_source(
     cfg_dir = repo_root / "config"
     cfg_dir.mkdir(parents=True, exist_ok=True)
     (cfg_dir / "pipeline_config.yaml").write_text(
-        "selection:\n  n_samples: null\n",
+        "\n".join(
+            [
+                "selection:",
+                "  n_samples: null",
+                "clustering:",
+                "  n_clusters: 8",
+                "feature_extraction:",
+                "  batch_size: 8",
+            ]
+        )
+        + "\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(mod, "ROOT", repo_root)
@@ -167,3 +199,49 @@ def test_run_exploration_fails_without_selection_target_source(
             min_distance_km=28.5,
             output_dir=tmp_path / "out",
         )
+
+
+def test_run_exploration_honors_explicit_objective_authority(
+    tmp_path: Path, monkeypatch
+):
+    """Explicit objective authority must reach ExperimentRunner unchanged."""
+    from dataselector.workflows import tune_weights as mod
+
+    captured: dict = {}
+    _install_exploration_mocks(monkeypatch, captured=captured)
+
+    repo_root = tmp_path / "repo"
+    cfg_dir = repo_root / "config"
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    (cfg_dir / "pipeline_config.yaml").write_text(
+        "\n".join(
+            [
+                "selection:",
+                "  n_samples: 9",
+                "  objective_authority: unified_normalized",
+                "clustering:",
+                "  n_clusters: 8",
+                "feature_extraction:",
+                "  batch_size: 8",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(mod, "ROOT", repo_root)
+
+    metadata_csv = _write_metadata_csv(tmp_path / "metadata.csv", n_rows=60)
+    out_dir = tmp_path / "out"
+
+    mod.run_exploration(
+        n_samples=3,
+        sampler="lhs",
+        objective_authority="legacy_lexicographic",
+        seed=5,
+        metadata_path=metadata_csv,
+        min_distance_km=28.5,
+        output_dir=out_dir,
+    )
+
+    kwargs = captured["run_weight_sweep_kwargs"]
+    assert kwargs["objective_authority"] == "legacy_lexicographic"

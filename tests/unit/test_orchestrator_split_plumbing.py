@@ -27,7 +27,9 @@ def _write_minimal_inputs(root: Path) -> None:
     )
 
 
-def test_orchestrator_writes_split_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_orchestrator_writes_split_metadata(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from dataselector.workflows import thesis_orchestrate as mod
 
     _write_minimal_inputs(tmp_path)
@@ -47,6 +49,20 @@ def test_orchestrator_writes_split_metadata(tmp_path: Path, monkeypatch: pytest.
     monkeypatch.setattr(mod, "load_snapshot", lambda _p: {"parameters": {}})
     monkeypatch.setattr(mod, "load_parameter_contract", lambda _p: {"parameters": {}})
     monkeypatch.setattr(mod, "validate_snapshot_against_contract", lambda **_: [])
+    monkeypatch.setattr(mod, "_write_year_scope_audit", lambda **_: {})
+    monkeypatch.setattr(
+        mod,
+        "_write_crs_provenance_audit",
+        lambda **_: {
+            "crs_provenance_audit_path": "outputs/runs/x/data_quality/crs_provenance_audit.csv",
+            "crs_provenance_status": "explicit_uniform",
+            "crs_strict_ready": True,
+            "crs_explicit_tile_count": 1,
+            "crs_missing_explicit_count": 0,
+            "crs_heuristic_fallback_count": 0,
+            "crs_consistency_issue_count": 0,
+        },
+    )
     monkeypatch.setattr(
         mod,
         "_build_leakage_safe_splits",
@@ -96,10 +112,26 @@ def test_orchestrator_default_does_not_build_splits(
     monkeypatch.setattr(mod, "load_snapshot", lambda _p: {"parameters": {}})
     monkeypatch.setattr(mod, "load_parameter_contract", lambda _p: {"parameters": {}})
     monkeypatch.setattr(mod, "validate_snapshot_against_contract", lambda **_: [])
+    monkeypatch.setattr(mod, "_write_year_scope_audit", lambda **_: {})
+    monkeypatch.setattr(
+        mod,
+        "_write_crs_provenance_audit",
+        lambda **_: {
+            "crs_provenance_audit_path": "outputs/runs/x/data_quality/crs_provenance_audit.csv",
+            "crs_provenance_status": "explicit_uniform",
+            "crs_strict_ready": True,
+            "crs_explicit_tile_count": 1,
+            "crs_missing_explicit_count": 0,
+            "crs_heuristic_fallback_count": 0,
+            "crs_consistency_issue_count": 0,
+        },
+    )
     monkeypatch.setattr(
         mod,
         "_build_leakage_safe_splits",
-        lambda **_: (_ for _ in ()).throw(AssertionError("split build should stay off by default")),
+        lambda **_: (_ for _ in ()).throw(
+            AssertionError("split build should stay off by default")
+        ),
     )
 
     out_dir = tmp_path / "outputs" / "runs" / "orch_no_split_default"

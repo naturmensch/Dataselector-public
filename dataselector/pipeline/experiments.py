@@ -3,7 +3,9 @@ from datetime import timezone
 from pathlib import Path
 from typing import List, Tuple
 
+import numpy as np
 import pandas as pd
+from scipy.spatial.distance import pdist
 from sklearn.cluster import KMeans
 
 from dataselector.analysis.metrics import compute_metrics
@@ -17,7 +19,13 @@ from dataselector.data.metadata_source import (
     CANONICAL_METADATA_RELATIVE_PATH,
     canonical_metadata_path,
 )
+from dataselector.data.spatial_schema import normalize_spatial_schema
+from dataselector.data.spatial_schema import spatial_spread as compute_spatial_spread
 from dataselector.selection.diversity_selector import DiversitySelector
+from dataselector.workflows.objective_scoring import (
+    compute_baselines,
+    normalized_objective,
+)
 
 
 def load_metadata(csv_path: str) -> pd.DataFrame:
@@ -108,6 +116,10 @@ class ExperimentRunner:
         patience: int = 5,
         max_runs: int = None,
         score_fn=None,
+        objective_authority: str = "unified_normalized",
+        objective_weight_diversity: float = 0.5,
+        objective_weight_spread: float = 0.5,
+        objective_infeasible_penalty: float = 0.1,
         pre_selected: list = None,
         pre_selected_names: list = None,
     ) -> pd.DataFrame:
@@ -173,11 +185,44 @@ class ExperimentRunner:
         total_runs = len(combos)
         run_i = 0
 
-        # Default score function: lexicographic (clusters_covered, temporal_std, spatial_mean_km)
-        if score_fn is None:
+        objective_mode = str(objective_authority).strip().lower()
+        if objective_mode not in {"unified_normalized", "legacy_lexicographic"}:
+            raise ValueError(
+                "objective_authority must be unified_normalized|legacy_lexicographic "
+                f"(got {objective_authority!r})"
+            )
 
-            def score_fn(m):
-                return (m["clusters_covered"], m["temporal_std"], m["spatial_mean_km"])
+        baseline_diversity, baseline_spread = compute_baselines(
+            features=features,
+            metadata=meta,
+            metric="euclidean",
+        )
+        spatial_meta = normalize_spatial_schema(meta, require_bounds=True, copy=True)
+
+        def _selection_diversity(selected_indices: np.ndarray) -> float:
+            if len(selected_indices) <= 1:
+                return 0.0
+            return float(np.mean(pdist(features[selected_indices], metric="euclidean")))
+
+        def _selection_spread(selected_indices: np.ndarray) -> float:
+            if len(selected_indices) == 0:
+                return 0.0
+            return float(compute_spatial_spread(spatial_meta, selected_indices))
+
+        if score_fn is None:
+            if objective_mode == "unified_normalized":
+
+                def score_fn(m):
+                    return float(m.get("objective_score", float("-inf")))
+
+            else:
+
+                def score_fn(m):
+                    return (
+                        m["clusters_covered"],
+                        m["temporal_std"],
+                        m["spatial_mean_km"],
+                    )
 
         best_score = None
         best_metrics = None
@@ -211,6 +256,39 @@ class ExperimentRunner:
 
             metrics = compute_metrics(selected_idx, meta, cluster_labels, features)
             metrics.update({"alpha": alpha, "beta": beta, "gamma": gamma})
+
+            sel_idx_arr = (
+                np.asarray(selected_idx, dtype=int)
+                if getattr(selected_idx, "__len__", None) is not None
+                and len(selected_idx) > 0
+                else np.array([], dtype=int)
+            )
+            diversity = _selection_diversity(sel_idx_arr)
+            spread = _selection_spread(sel_idx_arr)
+            objective_score = normalized_objective(
+                diversity=float(diversity),
+                spread=float(spread),
+                baseline_diversity=float(baseline_diversity),
+                baseline_spread=float(baseline_spread),
+                n_selected=int(len(sel_idx_arr)),
+                target_n=int(n_samples),
+                weight_diversity=float(objective_weight_diversity),
+                weight_spread=float(objective_weight_spread),
+                infeasible_penalty=float(objective_infeasible_penalty),
+            )
+            metrics.update(
+                {
+                    "objective_authority": objective_mode,
+                    "objective_score": float(objective_score.score),
+                    "objective_score_raw": float(objective_score.raw_score),
+                    "diversity_norm": float(objective_score.diversity_norm),
+                    "spatial_spread_norm": float(objective_score.spread_norm),
+                    "objective_infeasible": bool(objective_score.infeasible),
+                    "objective_feasibility_ratio": float(
+                        objective_score.feasibility_ratio
+                    ),
+                }
+            )
             results.append(metrics)
 
             out_csv = self.output_dir / f"selection_a{alpha}_b{beta}_g{gamma}.csv"
@@ -226,9 +304,18 @@ class ExperimentRunner:
                 best_score = current_score
                 best_metrics = metrics
                 no_improve = 0
-                print(
-                    f"  [New best] score={best_score} (clusters={metrics['clusters_covered']}, temporal_std={metrics['temporal_std']:.2f})"
-                )
+                if objective_mode == "unified_normalized":
+                    print(
+                        "  [New best] objective_score={:.6f} (raw={:.6f}, feasible={})".format(
+                            float(metrics["objective_score"]),
+                            float(metrics["objective_score_raw"]),
+                            not bool(metrics["objective_infeasible"]),
+                        )
+                    )
+                else:
+                    print(
+                        f"  [New best] score={best_score} (clusters={metrics['clusters_covered']}, temporal_std={metrics['temporal_std']:.2f})"
+                    )
             else:
                 no_improve += 1
                 print(
@@ -339,6 +426,10 @@ class ExperimentRunner:
                 "torch_version": torch_version,
                 "pip_packages": pip_packages,
                 "n_combinations": len(combos),
+                "objective_authority": objective_mode,
+                "objective_weight_diversity": float(objective_weight_diversity),
+                "objective_weight_spread": float(objective_weight_spread),
+                "objective_infeasible_penalty": float(objective_infeasible_penalty),
                 "best_metrics": best_metrics,
                 "pre_selected": pre_selected,
                 "pre_selected_names": pre_selected_names,
@@ -356,8 +447,19 @@ class ExperimentRunner:
         )
 
         if best_metrics is not None:
-            print(
-                f"Best metrics: alpha={best_metrics['alpha']}, beta={best_metrics['beta']}, gamma={best_metrics['gamma']}, clusters={best_metrics['clusters_covered']}, temporal_std={best_metrics['temporal_std']:.2f}"
-            )
+            if objective_mode == "unified_normalized":
+                print(
+                    "Best metrics: alpha={}, beta={}, gamma={}, objective_score={:.6f}, feasible={}".format(
+                        best_metrics["alpha"],
+                        best_metrics["beta"],
+                        best_metrics["gamma"],
+                        float(best_metrics["objective_score"]),
+                        not bool(best_metrics["objective_infeasible"]),
+                    )
+                )
+            else:
+                print(
+                    f"Best metrics: alpha={best_metrics['alpha']}, beta={best_metrics['beta']}, gamma={best_metrics['gamma']}, clusters={best_metrics['clusters_covered']}, temporal_std={best_metrics['temporal_std']:.2f}"
+                )
 
         return df

@@ -9,10 +9,16 @@ Dieses Modul liest die CSV-Datei ein und extrahiert kritische Metadaten:
 
 import re
 from pathlib import Path
-from typing import Dict, List, Literal, Tuple
+from typing import Any, Dict, List, Literal, Tuple
 
 import pandas as pd
 
+from dataselector.data.crs_provenance import (
+    audit_crs_provenance,
+    extract_crs_from_aux_xml,
+    normalize_crs_identifier,
+    resolve_explicit_crs_for_image,
+)
 from dataselector.data.spatial_schema import (
     coordinates_look_projected,
     normalize_spatial_schema,
@@ -35,8 +41,14 @@ class MetadataProcessor:
         # Optional GeoPandas GeoDataFrame (set when geopandas is available)
         self.gdf = None
         self.source_crs: str | None = None
+        self.source_crs_declared: str | None = None
         self.metric_crs: str | None = None
+        self.crs_source: str | None = None
+        self.crs_provenance: str | None = None
+        self.crs_explicit: bool = False
         self.transform_applied: bool = False
+        self.crs_audit_summary: dict[str, Any] = {}
+        self.crs_audit_df: pd.DataFrame | None = None
 
     def load_csv(self) -> pd.DataFrame:
         """
@@ -128,17 +140,6 @@ class MetadataProcessor:
                 except Exception:
                     gdf = gpd.GeoDataFrame(self.df.copy())
                     gdf["geometry"] = geometries
-                # Heuristic CRS assignment
-                if "epsg3857" in str(self.csv_path).lower() or self.crs_unit == "meter":
-                    try:
-                        gdf.set_crs(epsg=3857, inplace=True, allow_override=True)
-                    except TypeError:
-                        gdf.crs = "EPSG:3857"
-                else:
-                    try:
-                        gdf.set_crs(epsg=4326, inplace=True, allow_override=True)
-                    except TypeError:
-                        gdf.crs = "EPSG:4326"
                 self.gdf = gdf
         except Exception:
             # geopandas not installed or failed to initialize — continue with pandas-only logic
@@ -208,8 +209,8 @@ class MetadataProcessor:
 
         return df
 
-    def _infer_source_epsg(self) -> int | None:
-        """Infer source EPSG from metadata context when no explicit CRS object exists."""
+    def _infer_source_epsg_from_context(self) -> int | None:
+        """Infer source EPSG from metadata context when no explicit CRS exists."""
         if "epsg3857" in str(self.csv_path).lower():
             return 3857
         if self.crs_unit == "meter":
@@ -217,6 +218,222 @@ class MetadataProcessor:
         if self.crs_unit == "degree":
             return 4326
         return None
+
+    def _infer_source_epsg(self) -> int | None:
+        """Infer source EPSG from explicit CRS first, then metadata context."""
+        if self.source_crs is not None:
+            try:
+                from pyproj import CRS
+
+                epsg = CRS.from_user_input(self.source_crs).to_epsg()
+                if epsg is not None:
+                    return int(epsg)
+            except Exception:
+                normalized = normalize_crs_identifier(self.source_crs)
+                if normalized and normalized.upper().startswith("EPSG:"):
+                    try:
+                        return int(normalized.split(":", 1)[1])
+                    except Exception:
+                        return self._infer_source_epsg_from_context()
+        return self._infer_source_epsg_from_context()
+
+    @staticmethod
+    def _boolish(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None or pd.isna(value):
+            return False
+        if isinstance(value, (int, float)):
+            return bool(value)
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    def _apply_source_crs_to_gdf(self) -> None:
+        if getattr(self, "gdf", None) is None or not self.source_crs:
+            return
+        try:
+            current = getattr(self.gdf, "crs", None)
+            if current is None:
+                try:
+                    self.gdf.set_crs(self.source_crs, inplace=True, allow_override=True)
+                except TypeError:
+                    self.gdf.crs = self.source_crs
+        except Exception:
+            return
+
+    def resolve_crs_provenance(
+        self,
+        *,
+        allow_heuristic_fallback: bool = True,
+        strict_explicit: bool = False,
+    ) -> dict[str, Any]:
+        """Resolve per-tile CRS provenance from declared metadata or image sidecars."""
+        if self.df is None:
+            raise ValueError("CSV muss zuerst geladen werden (load_csv)")
+
+        def _clean_text(value: Any) -> str | None:
+            if value is None or pd.isna(value):
+                return None
+            text = str(value).strip()
+            return text or None
+
+        work = self.df.copy()
+        if "source_crs" not in work.columns:
+            work["source_crs"] = None
+        if "crs_source" not in work.columns:
+            work["crs_source"] = None
+        if "crs_provenance" not in work.columns:
+            work["crs_provenance"] = None
+        if "crs_explicit" not in work.columns:
+            work["crs_explicit"] = False
+        if "image_path" not in work.columns:
+            work["image_path"] = None
+        if "aux_xml_path" not in work.columns:
+            work["aux_xml_path"] = None
+
+        declared_values = work["source_crs"].apply(normalize_crs_identifier)
+        work["source_crs_declared"] = declared_values
+
+        context_epsg = self._infer_source_epsg_from_context()
+        heuristic_source = f"EPSG:{context_epsg}" if context_epsg is not None else None
+
+        for idx in work.index:
+            declared_source = declared_values.loc[idx]
+            resolved_source = declared_source
+            crs_source = _clean_text(work.at[idx, "crs_source"])
+            crs_provenance = _clean_text(work.at[idx, "crs_provenance"])
+            explicit = self._boolish(work.at[idx, "crs_explicit"]) and bool(
+                declared_source
+            )
+
+            if declared_source and not explicit:
+                explicit = True
+            if declared_source and not crs_source:
+                crs_source = "csv_metadata"
+            if declared_source and not crs_provenance:
+                crs_provenance = "explicit_csv_metadata"
+
+            if not explicit:
+                image_path = _clean_text(work.at[idx, "image_path"])
+                aux_xml_path = _clean_text(work.at[idx, "aux_xml_path"])
+                if image_path:
+                    resolved = resolve_explicit_crs_for_image(image_path)
+                elif aux_xml_path:
+                    aux_source = normalize_crs_identifier(
+                        extract_crs_from_aux_xml(aux_xml_path)
+                    )
+                    resolved = {
+                        "source_crs": aux_source,
+                        "crs_source": "sidecar_xml" if aux_source else None,
+                        "crs_provenance": (
+                            "explicit_sidecar_xml" if aux_source else None
+                        ),
+                        "aux_xml_path": aux_xml_path,
+                        "explicit": bool(aux_source),
+                    }
+                else:
+                    resolved = {
+                        "source_crs": None,
+                        "crs_source": None,
+                        "crs_provenance": None,
+                        "aux_xml_path": None,
+                        "explicit": False,
+                    }
+                if resolved.get("source_crs"):
+                    resolved_source = normalize_crs_identifier(
+                        resolved.get("source_crs")
+                    )
+                    crs_source = _clean_text(resolved.get("crs_source"))
+                    crs_provenance = _clean_text(resolved.get("crs_provenance"))
+                    work.at[idx, "aux_xml_path"] = resolved.get("aux_xml_path")
+                    explicit = bool(resolved.get("explicit"))
+
+            if not resolved_source and allow_heuristic_fallback and heuristic_source:
+                resolved_source = heuristic_source
+                crs_source = crs_source or "heuristic_context"
+                crs_provenance = crs_provenance or "heuristic_context"
+                explicit = False
+
+            work.at[idx, "source_crs"] = resolved_source
+            work.at[idx, "crs_source"] = crs_source
+            work.at[idx, "crs_provenance"] = crs_provenance
+            work.at[idx, "crs_explicit"] = bool(explicit)
+
+        audit_df, summary = audit_crs_provenance(work)
+        self.df = work
+        self.crs_audit_df = audit_df
+        self.crs_audit_summary = summary
+        resolved_unique = sorted(
+            {
+                value
+                for value in work["source_crs"].apply(normalize_crs_identifier).tolist()
+                if value is not None
+            }
+        )
+        declared_unique = sorted(
+            {value for value in declared_values.tolist() if value is not None}
+        )
+        self.source_crs = resolved_unique[0] if len(resolved_unique) == 1 else None
+        self.source_crs_declared = (
+            declared_unique[0] if len(declared_unique) == 1 else None
+        )
+        self.crs_source = (
+            work["crs_source"]
+            .dropna()
+            .astype(str)
+            .str.strip()
+            .replace("", pd.NA)
+            .dropna()
+            .unique()
+            .tolist()[0]
+            if len(
+                work["crs_source"]
+                .dropna()
+                .astype(str)
+                .str.strip()
+                .replace("", pd.NA)
+                .dropna()
+                .unique()
+                .tolist()
+            )
+            == 1
+            else "mixed"
+        )
+        self.crs_provenance = (
+            work["crs_provenance"]
+            .dropna()
+            .astype(str)
+            .str.strip()
+            .replace("", pd.NA)
+            .dropna()
+            .unique()
+            .tolist()[0]
+            if len(
+                work["crs_provenance"]
+                .dropna()
+                .astype(str)
+                .str.strip()
+                .replace("", pd.NA)
+                .dropna()
+                .unique()
+                .tolist()
+            )
+            == 1
+            else "mixed"
+        )
+        self.crs_explicit = bool(summary.get("crs_strict_ready", False))
+        self._apply_source_crs_to_gdf()
+
+        if strict_explicit and not bool(summary.get("crs_strict_ready", False)):
+            raise RuntimeError(
+                "Strict explicit CRS mode requires sidecar/raster-backed CRS provenance "
+                "for every relevant tile without heuristic fallback or consistency mismatches. "
+                f"status={summary.get('crs_provenance_status')}, "
+                f"explicit={summary.get('crs_explicit_tile_count')}, "
+                f"missing={summary.get('crs_missing_explicit_count')}, "
+                f"heuristic={summary.get('crs_heuristic_fallback_count')}, "
+                f"mismatches={summary.get('crs_consistency_issue_count')}"
+            )
+        return summary
 
     def ensure_metric_crs(self, target_epsg: int = 25832, strict: bool = False):
         """
@@ -232,8 +449,16 @@ class MetadataProcessor:
             try:
                 gdf = self.gdf
                 # If CRS missing, set heuristically
-                if gdf.crs is None:
-                    if self.crs_unit == "meter":
+                gdf_crs = getattr(gdf, "crs", None)
+                if gdf_crs is None:
+                    if self.source_crs:
+                        try:
+                            gdf.set_crs(
+                                self.source_crs, inplace=True, allow_override=True
+                            )
+                        except Exception:
+                            gdf.crs = self.source_crs
+                    elif self.crs_unit == "meter":
                         try:
                             gdf.set_crs(epsg=3857, inplace=True, allow_override=True)
                         except Exception:
@@ -248,7 +473,17 @@ class MetadataProcessor:
                 gdf_metric["_proj_x"] = gdf_metric.geometry.x
                 gdf_metric["_proj_y"] = gdf_metric.geometry.y
                 self.gdf_metric = gdf_metric
-                self.source_crs = str(gdf.crs) if gdf.crs is not None else None
+                current_source = getattr(gdf, "crs", None)
+                if current_source is not None:
+                    try:
+                        current_source = current_source.to_string()
+                    except Exception:
+                        current_source = str(current_source)
+                self.source_crs = normalize_crs_identifier(current_source) or (
+                    str(current_source)
+                    if current_source is not None
+                    else self.source_crs
+                )
                 self.metric_crs = f"EPSG:{target_epsg}"
                 self.transform_applied = (
                     self.source_crs is not None

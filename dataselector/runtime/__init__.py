@@ -1,5 +1,9 @@
 """Runtime helpers for deterministic execution and run metadata."""
 
+from dataselector.runtime.error_reporting import (
+    log_expected_exception,
+    report_exception,
+)
 from dataselector.runtime.parameter_contract import (
     load_parameter_contract,
     validate_snapshot_against_contract,
@@ -12,4 +16,6 @@ __all__ = [
     "write_run_metadata",
     "load_parameter_contract",
     "validate_snapshot_against_contract",
+    "report_exception",
+    "log_expected_exception",
 ]

@@ -7,8 +7,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from PIL import Image
 import rasterio
+from PIL import Image
 
 from dataselector.runtime.parameter_snapshot import compute_file_sha256
 from dataselector.workflows import annotation_plan as mod
@@ -157,7 +157,9 @@ def test_annotation_plan_generates_expected_manifest(tmp_path: Path):
             assert quicklook_ds.crs is not None
             assert not quicklook_ds.transform.is_identity
 
-    contract = json.loads((out_dir / "annotation_dataset_contract.json").read_text("utf-8"))
+    contract = json.loads(
+        (out_dir / "annotation_dataset_contract.json").read_text("utf-8")
+    )
     assert contract["source_hashes"]["selection_core"] == compute_file_sha256(
         run_dir / "selection_core.csv"
     )
@@ -165,7 +167,9 @@ def test_annotation_plan_generates_expected_manifest(tmp_path: Path):
         run_dir / "selection_case.csv"
     )
 
-    split_manifest = json.loads((out_dir / "patch_split_manifest.json").read_text("utf-8"))
+    split_manifest = json.loads(
+        (out_dir / "patch_split_manifest.json").read_text("utf-8")
+    )
     assert split_manifest["n_splits"] == 5
     assert isinstance(split_manifest["split_manifest_sha256"], str)
     assert len(split_manifest["split_manifest_sha256"]) == 64
@@ -223,7 +227,9 @@ def test_annotation_plan_deterministic_and_bounds(tmp_path: Path):
     assert (fold_counts == 1).all()
 
 
-def test_annotation_plan_fallback_records_replacement_reason(tmp_path: Path, monkeypatch):
+def test_annotation_plan_fallback_records_replacement_reason(
+    tmp_path: Path, monkeypatch
+):
     run_dir = _write_dummy_run(tmp_path)
 
     call_counter = {"count": 0}

@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from dataselector.cli_decorators import cli_command
 
 logger = logging.getLogger(__name__)
@@ -21,7 +23,9 @@ def _load_common_config(config_path: str | Path) -> tuple[dict[str, Any], Path]:
     from dataselector.pipeline.validation_config import get_required, load_config
 
     cfg = load_config(config_path)
-    output_dir = Path(get_required(cfg, ["output.dir", "pipeline.output_dir"], "output dir"))
+    output_dir = Path(
+        get_required(cfg, ["output.dir", "pipeline.output_dir"], "output dir")
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     return cfg, output_dir
 
@@ -62,7 +66,9 @@ def _extract_sweep_base_params(config: dict[str, Any]) -> dict[str, Any]:
             ["data.csv_path", "data.metadata_path", "data.csv_meta"],
             "data CSV path",
         ),
-        "n_samples": int(get_required(config, ["selection.n_samples"], "selection n_samples")),
+        "n_samples": int(
+            get_required(config, ["selection.n_samples"], "selection n_samples")
+        ),
         "batch_size": int(
             get_required(
                 config,
@@ -70,11 +76,16 @@ def _extract_sweep_base_params(config: dict[str, Any]) -> dict[str, Any]:
                 "feature batch_size",
             )
         ),
-        "n_clusters": int(get_required(config, ["clustering.n_clusters"], "clustering n_clusters")),
+        "n_clusters": int(
+            get_required(config, ["clustering.n_clusters"], "clustering n_clusters")
+        ),
         "min_distance_km": float(
             get_required(
                 config,
-                ["selection.min_distance_km", "selection.spatial_constraint.min_distance_km"],
+                [
+                    "selection.min_distance_km",
+                    "selection.spatial_constraint.min_distance_km",
+                ],
                 "selection min_distance_km",
             )
         ),
@@ -127,7 +138,9 @@ def _generate_sensitivity_variations(
     return variations
 
 
-def run_sensitivity_sweep(config_path: str | Path, variation_percent: float) -> dict[str, Any]:
+def run_sensitivity_sweep(
+    config_path: str | Path, variation_percent: float
+) -> dict[str, Any]:
     import pandas as pd
 
     from dataselector.pipeline.experiments import ExperimentRunner
@@ -138,7 +151,9 @@ def run_sensitivity_sweep(config_path: str | Path, variation_percent: float) -> 
     base_weights = {"alpha": alpha, "beta": beta, "gamma": gamma}
     variations = _generate_sensitivity_variations(base_weights, variation_percent)
 
-    runner = ExperimentRunner(output_dir=str(output_dir), feature_cache_dir=str(output_dir))
+    runner = ExperimentRunner(
+        output_dir=str(output_dir), feature_cache_dir=str(output_dir)
+    )
     rows: list[dict[str, Any]] = []
     for label, (w_alpha, w_beta, w_gamma) in variations:
         logger.info(
@@ -240,7 +255,9 @@ def run_ablation_study(config_path: str | Path) -> dict[str, Any]:
         ("trial_config", trial_weights),
     ]
 
-    runner = ExperimentRunner(output_dir=str(output_dir), feature_cache_dir=str(output_dir))
+    runner = ExperimentRunner(
+        output_dir=str(output_dir), feature_cache_dir=str(output_dir)
+    )
     rows: list[dict[str, Any]] = []
     for name, (alpha, beta, gamma) in scenarios:
         logger.info("Running ablation scenario %s", name)
@@ -383,7 +400,9 @@ def run_backbone_comparison(config_path: str | Path) -> dict[str, Any]:
         "data CSV path",
     )
     data_dir = Path(get_required(config, ["data.image_dir"], "data image_dir"))
-    n_clusters = int(get_required(config, ["clustering.n_clusters"], "clustering n_clusters"))
+    n_clusters = int(
+        get_required(config, ["clustering.n_clusters"], "clustering n_clusters")
+    )
     batch_size = int(
         get_required(
             config,
@@ -391,7 +410,10 @@ def run_backbone_comparison(config_path: str | Path) -> dict[str, Any]:
             "feature batch_size",
         )
     )
-    crop_size = tuple(int(x) for x in get_required(config, ["feature_extraction.crop_size"], "crop_size"))
+    crop_size = tuple(
+        int(x)
+        for x in get_required(config, ["feature_extraction.crop_size"], "crop_size")
+    )
     device = get_required(config, ["feature_extraction.device"], "feature device")
     if device == "auto":
         device = None
@@ -399,13 +421,19 @@ def run_backbone_comparison(config_path: str | Path) -> dict[str, Any]:
         get_required(config, ["feature_extraction.input_size"], "dinov2 input size")
     )
     resnet_input_size = int(
-        get_required(config, ["feature_extraction.resnet_input_size"], "resnet input size")
+        get_required(
+            config, ["feature_extraction.resnet_input_size"], "resnet input size"
+        )
     )
-    dinov2_pooling = str(
-        get_required(config, ["feature_extraction.pooling"], "dinov2 pooling")
-    ).strip().lower()
+    dinov2_pooling = (
+        str(get_required(config, ["feature_extraction.pooling"], "dinov2 pooling"))
+        .strip()
+        .lower()
+    )
     dinov2_model_variant = str(
-        get_required(config, ["feature_extraction.model_variant"], "dinov2 model variant")
+        get_required(
+            config, ["feature_extraction.model_variant"], "dinov2 model variant"
+        )
     ).strip()
     dinov2_repo = str(
         get_required(config, ["feature_extraction.dinov2_repo"], "dinov2 repo")
@@ -453,7 +481,10 @@ def run_backbone_comparison(config_path: str | Path) -> dict[str, Any]:
         encoding="utf-8",
     )
     logger.info("Backbone comparison written: %s", out_path)
-    return {"config_path": str(Path(config_path).resolve()), "results_json": str(out_path)}
+    return {
+        "config_path": str(Path(config_path).resolve()),
+        "results_json": str(out_path),
+    }
 
 
 def run_validate_kmeans(config_path: str | Path) -> dict[str, Any]:
@@ -482,11 +513,25 @@ def run_validate_kmeans(config_path: str | Path) -> dict[str, Any]:
             "feature batch_size",
         )
     )
-    n_clusters = int(get_required(config, ["clustering.n_clusters"], "clustering n_clusters"))
-    umap_components = int(get_required(config, ["clustering.umap_components"], "clustering umap_components"))
-    umap_neighbors = int(get_required(config, ["clustering.umap_n_neighbors"], "clustering umap_n_neighbors"))
+    n_clusters = int(
+        get_required(config, ["clustering.n_clusters"], "clustering n_clusters")
+    )
+    umap_components = int(
+        get_required(
+            config, ["clustering.umap_components"], "clustering umap_components"
+        )
+    )
+    umap_neighbors = int(
+        get_required(
+            config, ["clustering.umap_n_neighbors"], "clustering umap_n_neighbors"
+        )
+    )
     random_state = int(
-        get_required(config, ["clustering.umap_random_state", "selection.random_state"], "random_state")
+        get_required(
+            config,
+            ["clustering.umap_random_state", "selection.random_state"],
+            "random_state",
+        )
     )
 
     features = load_or_extract_features(
@@ -509,7 +554,8 @@ def run_validate_kmeans(config_path: str | Path) -> dict[str, Any]:
     metrics = {
         "silhouette_score": silhouette_avg,
         "silhouette_per_cluster": {
-            int(i): float(np.mean(silhouette_per[labels == i])) for i in range(n_clusters)
+            int(i): float(np.mean(silhouette_per[labels == i]))
+            for i in range(n_clusters)
         },
         "davies_bouldin_index": float(davies_bouldin_score(embeddings, labels)),
         "calinski_harabasz_index": float(calinski_harabasz_score(embeddings, labels)),
@@ -533,7 +579,10 @@ def run_validate_kmeans(config_path: str | Path) -> dict[str, Any]:
         encoding="utf-8",
     )
     logger.info("KMeans validation written: %s", out_path)
-    return {"config_path": str(Path(config_path).resolve()), "results_json": str(out_path)}
+    return {
+        "config_path": str(Path(config_path).resolve()),
+        "results_json": str(out_path),
+    }
 
 
 def _continuity_score(
@@ -585,14 +634,24 @@ def run_validate_umap(config_path: str | Path) -> dict[str, Any]:
             "feature batch_size",
         )
     )
-    n_components = int(get_required(config, ["clustering.umap_components"], "umap components"))
-    n_neighbors = int(get_required(config, ["clustering.umap_n_neighbors"], "umap neighbors"))
-    random_state = int(get_required(config, ["clustering.umap_random_state"], "umap random state"))
-    min_dist = float(get_required(config, ["clustering.umap_min_dist"], "umap min_dist"))
+    n_components = int(
+        get_required(config, ["clustering.umap_components"], "umap components")
+    )
+    n_neighbors = int(
+        get_required(config, ["clustering.umap_n_neighbors"], "umap neighbors")
+    )
+    random_state = int(
+        get_required(config, ["clustering.umap_random_state"], "umap random state")
+    )
+    min_dist = float(
+        get_required(config, ["clustering.umap_min_dist"], "umap min_dist")
+    )
     metric = str(get_required(config, ["clustering.umap_metric"], "umap metric"))
     n_jobs = int(get_required(config, ["clustering.umap_n_jobs"], "umap n_jobs"))
     max_samples = int(
-        get_required(config, ["validation.umap_max_samples"], "validation umap_max_samples")
+        get_required(
+            config, ["validation.umap_max_samples"], "validation umap_max_samples"
+        )
     )
 
     features = load_or_extract_features(
@@ -662,7 +721,10 @@ def run_validate_umap(config_path: str | Path) -> dict[str, Any]:
         encoding="utf-8",
     )
     logger.info("UMAP validation written: %s", out_path)
-    return {"config_path": str(Path(config_path).resolve()), "results_json": str(out_path)}
+    return {
+        "config_path": str(Path(config_path).resolve()),
+        "results_json": str(out_path),
+    }
 
 
 def run_snapshot_config(

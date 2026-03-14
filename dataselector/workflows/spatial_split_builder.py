@@ -145,7 +145,11 @@ def build_spatial_splits(
     labels = _component_labels(dist_mat, threshold_km=float(d_leak_km))
 
     tile_ids = _resolve_tile_ids(metric_df)
-    years = pd.to_numeric(metric_df.get("year"), errors="coerce").fillna(0).to_numpy(dtype=float)
+    years = (
+        pd.to_numeric(metric_df.get("year"), errors="coerce")
+        .fillna(0)
+        .to_numpy(dtype=float)
+    )
 
     split_cfg = split_policy.get("split", {}) if isinstance(split_policy, dict) else {}
     ratio_cfg = split_cfg.get("ratios", {}) if isinstance(split_cfg, dict) else {}
@@ -201,12 +205,12 @@ def build_spatial_splits(
         component_assignments[int(comp["component_id"])] = chosen
         split_indices[chosen].extend(comp["indices"])
         split_totals[chosen] += int(comp["size"])
-        split_year_counts[chosen][comp["year_tag"]] = (
-            split_year_counts[chosen].get(comp["year_tag"], 0) + int(comp["size"])
-        )
-        split_region_counts[chosen][comp["region_tag"]] = (
-            split_region_counts[chosen].get(comp["region_tag"], 0) + int(comp["size"])
-        )
+        split_year_counts[chosen][comp["year_tag"]] = split_year_counts[chosen].get(
+            comp["year_tag"], 0
+        ) + int(comp["size"])
+        split_region_counts[chosen][comp["region_tag"]] = split_region_counts[
+            chosen
+        ].get(comp["region_tag"], 0) + int(comp["size"])
 
     manifest = {
         "version": 1,

@@ -114,7 +114,9 @@ def run_fine_sweep(
                 n_lhs = run_cfg.get("n_lhs")
                 if n_lhs:
                     n_samples_cfg = int(n_lhs)
-                    print(f"ℹ️ Using n_samples from run config (n_lhs): {n_samples_cfg}")
+                    print(
+                        f"ℹ️ Using n_samples from run config (n_lhs): {n_samples_cfg}"
+                    )
 
             if n_samples_cfg is None:
                 expl_cfg_path = em.get_path("config") / "config_exploration.yaml"

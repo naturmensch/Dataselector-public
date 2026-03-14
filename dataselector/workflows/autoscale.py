@@ -264,7 +264,9 @@ def make_objective(
         trial.set_user_attr("spatial_spread_norm", float(objective_score.spread_norm))
         trial.set_user_attr("objective_score_raw", float(objective_score.raw_score))
         trial.set_user_attr("infeasible", bool(objective_score.infeasible))
-        trial.set_user_attr("feasibility_ratio", float(objective_score.feasibility_ratio))
+        trial.set_user_attr(
+            "feasibility_ratio", float(objective_score.feasibility_ratio)
+        )
         trial.set_user_attr("n_samples", int(n_samples))
 
         return float(objective_score.score)

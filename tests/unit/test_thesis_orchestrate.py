@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 
-
 def _write_minimal_inputs(root: Path) -> None:
     (root / "config").mkdir(parents=True, exist_ok=True)
     (root / "data").mkdir(parents=True, exist_ok=True)
@@ -32,12 +31,18 @@ def _write_minimal_inputs(root: Path) -> None:
         encoding="utf-8",
     )
     (root / "data" / "new_all_tiles.csv").write_text(
-        "ul_x,ul_y,lr_x,lr_y,year\n1,2,3,4,1900\n",
+        (
+            "ul_x,ul_y,lr_x,lr_y,year,source_crs,crs_source,"
+            "crs_provenance,crs_explicit\n"
+            "1,2,3,4,1900,EPSG:4326,sidecar_xml,explicit_sidecar_xml,true\n"
+        ),
         encoding="utf-8",
     )
 
 
-def test_thesis_orchestrate_precompute_only_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_thesis_orchestrate_precompute_only_success(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from dataselector.workflows import thesis_orchestrate as mod
 
     _write_minimal_inputs(tmp_path)
@@ -72,8 +77,61 @@ def test_thesis_orchestrate_precompute_only_success(tmp_path: Path, monkeypatch:
 
     assert rc == 0
     assert len(calls) == 1
+    assert calls[0]["tile_exclusion_policy"] == Path(
+        "config/tile_exclusion_policy.yaml"
+    )
+    assert calls[0]["apply_tile_exclusion"] is True
     meta = json.loads((out_dir / "run_metadata.json").read_text(encoding="utf-8"))
     assert meta["extra"]["orchestrator_mode"] == "precompute_only"
+
+
+def test_thesis_orchestrate_passes_phase5_flags_only_to_final_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from dataselector.workflows import thesis_orchestrate as mod
+
+    _write_minimal_inputs(tmp_path)
+    monkeypatch.chdir(tmp_path)
+
+    calls: list[dict[str, object]] = []
+
+    monkeypatch.setattr(mod, "_require_torch", lambda: None)
+    monkeypatch.setattr(mod, "run_optuna_autoscale_workflow", lambda **_: 0)
+
+    def _fake_run_thesis_pipeline(**kwargs):
+        calls.append(kwargs)
+        out_dir = Path(kwargs["output_dir"])
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "final_config.yaml").write_text("parameters: {}\n", encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(mod, "run_thesis_pipeline", _fake_run_thesis_pipeline)
+    monkeypatch.setattr(mod, "validate_snapshot_file", lambda _p: [])
+    monkeypatch.setattr(mod, "load_snapshot", lambda _p: {"parameters": {}})
+    monkeypatch.setattr(mod, "load_parameter_contract", lambda _p: {"parameters": {}})
+    monkeypatch.setattr(mod, "validate_snapshot_against_contract", lambda **_: [])
+
+    out_dir = tmp_path / "outputs" / "runs" / "orch_phase5"
+    rc = mod.run_thesis_orchestrate(
+        config="config/pipeline_config.yaml",
+        output_dir=str(out_dir),
+        precompute_only=False,
+        run_after_precompute=True,
+        build_splits="false",
+        build_handoffs=True,
+        patches_per_tile=3,
+        patch_include_case="true",
+        handoff_root="handoff_custom",
+    )
+
+    assert rc == 0
+    assert len(calls) == 2
+    assert calls[0]["no_auto_continue"] is True
+    assert calls[0]["build_handoffs"] is False
+    assert calls[1]["build_handoffs"] is True
+    assert calls[1]["patches_per_tile"] == 3
+    assert calls[1]["patch_include_case"] is True
+    assert calls[1]["handoff_root"] == "handoff_custom"
 
 
 def test_thesis_orchestrate_writes_tile_exclusion_metadata_without_splits(
@@ -92,14 +150,21 @@ def test_thesis_orchestrate_writes_tile_exclusion_metadata_without_splits(
         lambda **_: {
             "year_scope_audit_path": "outputs/runs/ignored/data_quality/year_scope_audit.csv",
             "year_scope_before_n": 676,
-            "year_scope_after_n": 673,
+            "year_scope_after_n": 675,
             "year_scope_before_max": 1985,
-            "year_scope_after_max": 1940,
+            "year_scope_after_max": 1985,
             "tile_exclusions_applied": True,
-            "tile_exclusions_count": 3,
-            "tile_excluded_shortnames": ["KDR_039", "KDR_521", "KDR_999"],
+            "tile_exclusions_count": 1,
+            "tile_excluded_shortnames": ["KDR_155b"],
+            "tile_flagged_count": 2,
+            "tile_flagged_shortnames": ["KDR_039", "KDR_521"],
+            "tile_flagged_classes": ["temporal_scope_outlier"],
+            "tile_flagged_caveats": [
+                {"shortName": "KDR_039"},
+                {"shortName": "KDR_521"},
+            ],
             "tile_exclusion_policy_sha256": "abc123",
-            "effective_tile_count": 673,
+            "effective_tile_count": 675,
         },
     )
 
@@ -128,10 +193,12 @@ def test_thesis_orchestrate_writes_tile_exclusion_metadata_without_splits(
     meta = json.loads((out_dir / "run_metadata.json").read_text(encoding="utf-8"))
     extra = meta["extra"]
     assert extra["tile_exclusions_applied"] is True
-    assert extra["tile_exclusions_count"] == 3
-    assert extra["tile_excluded_shortnames"] == ["KDR_039", "KDR_521", "KDR_999"]
+    assert extra["tile_exclusions_count"] == 1
+    assert extra["tile_excluded_shortnames"] == ["KDR_155b"]
+    assert extra["tile_flagged_count"] == 2
+    assert extra["tile_flagged_shortnames"] == ["KDR_039", "KDR_521"]
     assert extra["tile_exclusion_policy_sha256"] == "abc123"
-    assert extra["effective_tile_count"] == 673
+    assert extra["effective_tile_count"] == 675
 
 
 def test_thesis_orchestrate_keeps_year_scope_and_tile_exclusion_metadata_consistent(
@@ -150,14 +217,21 @@ def test_thesis_orchestrate_keeps_year_scope_and_tile_exclusion_metadata_consist
         lambda **_: {
             "year_scope_audit_path": "outputs/runs/ignored/data_quality/year_scope_audit.csv",
             "year_scope_before_n": 676,
-            "year_scope_after_n": 673,
+            "year_scope_after_n": 675,
             "year_scope_before_max": 1985,
-            "year_scope_after_max": 1940,
+            "year_scope_after_max": 1985,
             "tile_exclusions_applied": True,
-            "tile_exclusions_count": 3,
-            "tile_excluded_shortnames": ["KDR_039", "KDR_521", "KDR_999"],
+            "tile_exclusions_count": 1,
+            "tile_excluded_shortnames": ["KDR_155b"],
+            "tile_flagged_count": 2,
+            "tile_flagged_shortnames": ["KDR_039", "KDR_521"],
+            "tile_flagged_classes": ["temporal_scope_outlier"],
+            "tile_flagged_caveats": [
+                {"shortName": "KDR_039"},
+                {"shortName": "KDR_521"},
+            ],
             "tile_exclusion_policy_sha256": "abc123",
-            "effective_tile_count": 673,
+            "effective_tile_count": 675,
         },
     )
 
@@ -186,9 +260,12 @@ def test_thesis_orchestrate_keeps_year_scope_and_tile_exclusion_metadata_consist
     meta = json.loads((out_dir / "run_metadata.json").read_text(encoding="utf-8"))
     extra = meta["extra"]
     assert extra["year_scope_before_n"] == 676
-    assert extra["year_scope_after_n"] == 673
-    assert extra["tile_exclusions_count"] == 3
-    assert extra["year_scope_before_n"] - extra["year_scope_after_n"] == extra["tile_exclusions_count"]
+    assert extra["year_scope_after_n"] == 675
+    assert extra["tile_exclusions_count"] == 1
+    assert (
+        extra["year_scope_before_n"] - extra["year_scope_after_n"]
+        == extra["tile_exclusions_count"]
+    )
     assert extra["year_scope_after_n"] == extra["effective_tile_count"]
 
 
@@ -241,10 +318,12 @@ def test_thesis_orchestrate_preserves_pipeline_metadata(
     meta = json.loads((out_dir / "run_metadata.json").read_text(encoding="utf-8"))
     assert meta["extra"]["pipeline_marker"] == "kept"
     assert meta["extra"]["pipeline_metadata_preserved"] is True
-    assert (
-        meta["extra"]["pipeline_metadata_snapshot"]["command"]
-        == ["python", "-m", "dataselector", "thesis-pipeline"]
-    )
+    assert meta["extra"]["pipeline_metadata_snapshot"]["command"] == [
+        "python",
+        "-m",
+        "dataselector",
+        "thesis-pipeline",
+    ]
 
 
 def test_thesis_orchestrate_reconciles_runtime_state_conservatively(
@@ -395,16 +474,26 @@ def test_thesis_orchestrate_default_n_trials_is_370(tmp_path: Path) -> None:
     """Default `n_trials` for orchestrator should be 370 (policy change)."""
     import inspect
 
-    from dataselector.workflows.thesis_orchestrate import run_thesis_orchestrate, cli_thesis_orchestrate
+    from dataselector.workflows.thesis_orchestrate import (
+        cli_thesis_orchestrate,
+        run_thesis_orchestrate,
+    )
 
-    assert inspect.signature(run_thesis_orchestrate).parameters["n_trials"].default == 370
-    assert inspect.signature(cli_thesis_orchestrate).parameters["n_trials"].default == 370
+    assert (
+        inspect.signature(run_thesis_orchestrate).parameters["n_trials"].default == 370
+    )
+    assert (
+        inspect.signature(cli_thesis_orchestrate).parameters["n_trials"].default == 370
+    )
 
 
-@pytest.mark.parametrize("anchor_env, expected_pre_names", [
-    (None, None),              # Case 1: Standard, no env var
-    ("Hamburg", ["Hamburg"]),  # Case 2: With Anchor-Tile Env-Var
-])
+@pytest.mark.parametrize(
+    "anchor_env, expected_pre_names",
+    [
+        (None, None),  # Case 1: Standard, no env var
+        ("Hamburg", ["Hamburg"]),  # Case 2: With Anchor-Tile Env-Var
+    ],
+)
 def test_thesis_orchestrate_passes_arguments_correctly(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

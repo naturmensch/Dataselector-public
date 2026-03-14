@@ -74,7 +74,9 @@ def validate_snapshot_against_contract(
 
         provenance = section_map.get("_provenance", {})
         if not isinstance(provenance, dict):
-            errors.append(f"Snapshot missing provenance mapping for section '{section}'")
+            errors.append(
+                f"Snapshot missing provenance mapping for section '{section}'"
+            )
             continue
 
         entry = provenance.get(key)

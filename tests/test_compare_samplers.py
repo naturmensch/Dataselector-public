@@ -131,14 +131,11 @@ def test_compare_multi_seed_creates_summary(tmp_path, monkeypatch):
 
 
 def _install_seed_vs_unseed_stubs(monkeypatch, tmp_path):
-    from dataselector.workflows import compare_samplers
-    from dataselector.workflows import objective_scoring
-    from dataselector.data import io as data_io
-    from dataselector.data import metadata_source
-    from dataselector.data import spatial_schema
-    from dataselector.selection import clustering
-    from dataselector.selection import diversity_selector
     from dataselector.analysis import metrics as metrics_mod
+    from dataselector.data import io as data_io
+    from dataselector.data import metadata_source, spatial_schema
+    from dataselector.selection import clustering, diversity_selector
+    from dataselector.workflows import compare_samplers, objective_scoring
 
     features = np.arange(60, dtype=float).reshape(20, 3)
     metadata = pd.DataFrame(
@@ -181,7 +178,9 @@ def _install_seed_vs_unseed_stubs(monkeypatch, tmp_path):
             return _features[:, :2], labels
 
     class FakeDiversitySelector:
-        def __init__(self, n_samples, use_multi_criteria=True, random_state=42, **kwargs):
+        def __init__(
+            self, n_samples, use_multi_criteria=True, random_state=42, **kwargs
+        ):
             self.n_samples = int(n_samples)
             self.random_state = int(random_state)
 
@@ -214,20 +213,26 @@ def _install_seed_vs_unseed_stubs(monkeypatch, tmp_path):
 
     def fake_compute_metrics(selected_idx, metadata, cluster_labels, features):
         idx = np.asarray(selected_idx, dtype=int)
-        years = metadata.iloc[idx]["year"].to_numpy(dtype=float) if len(idx) else np.array([])
+        years = (
+            metadata.iloc[idx]["year"].to_numpy(dtype=float)
+            if len(idx)
+            else np.array([])
+        )
         spatial = idx.astype(float)
         return {
             "n_selected": int(len(idx)),
             "temporal_std": float(years.std()) if len(years) > 1 else 0.0,
-            "temporal_range": (
-                int(years.max() - years.min()) if len(years) > 1 else 0
+            "temporal_range": (int(years.max() - years.min()) if len(years) > 1 else 0),
+            "wwi_percent": (
+                float(np.mean((years >= 1914) & (years <= 1918)) * 100.0)
+                if len(years)
+                else 0.0
             ),
-            "wwi_percent": float(np.mean((years >= 1914) & (years <= 1918)) * 100.0)
-            if len(years)
-            else 0.0,
             "spatial_mean_km": float(spatial.mean()) if len(spatial) else 0.0,
             "spatial_min_km": float(spatial.min()) if len(spatial) else 0.0,
-            "clusters_covered": int(len(np.unique(cluster_labels[idx]))) if len(idx) else 0,
+            "clusters_covered": (
+                int(len(np.unique(cluster_labels[idx]))) if len(idx) else 0
+            ),
         }
 
     def fake_objective(
@@ -255,7 +260,9 @@ def _install_seed_vs_unseed_stubs(monkeypatch, tmp_path):
     monkeypatch.setattr(clustering, "ClusteringPipeline", FakeClusteringPipeline)
     monkeypatch.setattr(diversity_selector, "DiversitySelector", FakeDiversitySelector)
     monkeypatch.setattr(metrics_mod, "compute_metrics", fake_compute_metrics)
-    monkeypatch.setattr(compare_samplers, "_compute_objective_for_selection", fake_objective)
+    monkeypatch.setattr(
+        compare_samplers, "_compute_objective_for_selection", fake_objective
+    )
 
 
 def test_compare_seeded_vs_unseeded_multi_seed_outputs(tmp_path, monkeypatch):
@@ -322,7 +329,9 @@ def test_paired_stats_behavior_identical_vs_shifted():
         identical_rows.append(
             {"seed": seed, "scenario": "seed_Hamburg_name", "objective_score": same}
         )
-        shifted_rows.append({"seed": seed, "scenario": "no_seed", "objective_score": base})
+        shifted_rows.append(
+            {"seed": seed, "scenario": "no_seed", "objective_score": base}
+        )
         shifted_rows.append(
             {
                 "seed": seed,
@@ -469,14 +478,11 @@ def test_cli_compare_seed_vs_unseeded_backward_compatible(tmp_path, monkeypatch)
 def test_compare_seeded_vs_unseeded_marks_non_independent_seed_replay(
     tmp_path, monkeypatch
 ):
-    from dataselector.workflows import compare_samplers
-    from dataselector.workflows import objective_scoring
-    from dataselector.data import io as data_io
-    from dataselector.data import metadata_source
-    from dataselector.data import spatial_schema
-    from dataselector.selection import clustering
-    from dataselector.selection import diversity_selector
     from dataselector.analysis import metrics as metrics_mod
+    from dataselector.data import io as data_io
+    from dataselector.data import metadata_source, spatial_schema
+    from dataselector.selection import clustering, diversity_selector
+    from dataselector.workflows import compare_samplers, objective_scoring
 
     features = np.arange(60, dtype=float).reshape(20, 3)
     metadata = pd.DataFrame(
@@ -497,7 +503,9 @@ def test_compare_seeded_vs_unseeded_marks_non_independent_seed_replay(
     )
     monkeypatch.setattr(data_io, "load_or_extract_features", lambda *a, **k: features)
     monkeypatch.setattr(data_io, "load_metadata", lambda *a, **k: metadata.copy())
-    monkeypatch.setattr(objective_scoring, "compute_baselines", lambda **kwargs: (1.0, 1.0))
+    monkeypatch.setattr(
+        objective_scoring, "compute_baselines", lambda **kwargs: (1.0, 1.0)
+    )
     monkeypatch.setattr(
         spatial_schema,
         "normalize_spatial_schema",
@@ -542,7 +550,11 @@ def test_compare_seeded_vs_unseeded_marks_non_independent_seed_replay(
 
     def fake_compute_metrics(selected_idx, metadata, cluster_labels, features):
         idx = np.asarray(selected_idx, dtype=int)
-        years = metadata.iloc[idx]["year"].to_numpy(dtype=float) if len(idx) else np.array([])
+        years = (
+            metadata.iloc[idx]["year"].to_numpy(dtype=float)
+            if len(idx)
+            else np.array([])
+        )
         return {
             "n_selected": int(len(idx)),
             "temporal_std": float(years.std()) if len(years) > 1 else 0.0,
@@ -550,11 +562,15 @@ def test_compare_seeded_vs_unseeded_marks_non_independent_seed_replay(
             "wwi_percent": 0.0,
             "spatial_mean_km": float(idx.mean()) if len(idx) else 0.0,
             "spatial_min_km": float(idx.min()) if len(idx) else 0.0,
-            "clusters_covered": int(len(np.unique(cluster_labels[idx]))) if len(idx) else 0,
+            "clusters_covered": (
+                int(len(np.unique(cluster_labels[idx]))) if len(idx) else 0
+            ),
         }
 
     monkeypatch.setattr(clustering, "ClusteringPipeline", FakeClusteringPipeline)
-    monkeypatch.setattr(diversity_selector, "DiversitySelector", ConstantSelectionSelector)
+    monkeypatch.setattr(
+        diversity_selector, "DiversitySelector", ConstantSelectionSelector
+    )
     monkeypatch.setattr(metrics_mod, "compute_metrics", fake_compute_metrics)
 
     out_dir = tmp_path / "anchor_evidence" / "isolated"

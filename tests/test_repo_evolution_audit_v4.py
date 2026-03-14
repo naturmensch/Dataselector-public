@@ -54,7 +54,9 @@ def test_repo_evolution_audit_v4_commit_table_complete(v4_audit_output, repo_roo
     ref_df = pd.read_csv(out / "REF_SNAPSHOT.csv")
     refs = ref_df["ref_name"].astype(str).tolist()
     expected_out = _run_git(
-        repo_root, ["rev-list", "--topo-order", "--date-order", "--stdin"], stdin="\n".join(refs) + "\n"
+        repo_root,
+        ["rev-list", "--topo-order", "--date-order", "--stdin"],
+        stdin="\n".join(refs) + "\n",
     )
     expected = {ln.strip() for ln in expected_out.splitlines() if ln.strip()}
     commits = pd.read_csv(out / "COMMIT_HISTORY_FULL.csv")
@@ -145,4 +147,3 @@ def test_repo_evolution_audit_v4_coverage_gate(v4_audit_output):
     assert cov["finding_coverage_ratio"] == 1.0
     assert cov["missing_evidence_count"] == 0
     assert cov["open_question_count"] == 0
-

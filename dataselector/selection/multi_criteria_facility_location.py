@@ -243,7 +243,10 @@ class MultiCriteriaFacilityLocation:
         cand_x = self.x_coords[candidate_idx]
 
         # Use precomputed constraint matrix if available for O(1) checks.
-        if hasattr(self, "_spatial_constraint_km") and self._spatial_constraint_km is not None:
+        if (
+            hasattr(self, "_spatial_constraint_km")
+            and self._spatial_constraint_km is not None
+        ):
             # vectorized selection: check if any selected distance is below threshold
             dists = self._spatial_constraint_km[candidate_idx, selected_indices]
             return np.any(dists < self.min_distance_km)

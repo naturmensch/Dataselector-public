@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import re
-import subprocess
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Iterable, List, Set
 
 from dataselector.cli_decorators import cli_command
+from dataselector.runtime.error_reporting import log_expected_exception
+
+logger = logging.getLogger(__name__)
 
 # Protected paths configuration
 DEFAULT_PROTECTED = {
@@ -51,7 +55,14 @@ def offending_files(
                 if p == pf or p in pf.parents:
                     offenders.append(f)
                     break
-            except Exception:
+            except Exception as exc:
+                log_expected_exception(
+                    logger,
+                    "Protected-path parent check failed; falling back to string prefix comparison",
+                    exc=exc,
+                    context={"file": f, "protected_path": str(p)},
+                    level=logging.DEBUG,
+                )
                 # defensive
                 if str(f).startswith(str(p)):
                     offenders.append(f)
@@ -67,7 +78,13 @@ def git_staged_files() -> List[str]:
         )
         files = out.decode().splitlines()
         return [f for f in files if f]
-    except Exception:
+    except Exception as exc:
+        log_expected_exception(
+            logger,
+            "Could not read staged files from git; returning empty file list",
+            exc=exc,
+            level=logging.DEBUG,
+        )
         # Not a git repo or git not available — return empty list
         return []
 
@@ -81,7 +98,13 @@ def git_tracked_files() -> List[str]:
         out = subprocess.check_output(["git", "ls-files"], stderr=subprocess.DEVNULL)
         files = out.decode().splitlines()
         return [f for f in files if f]
-    except Exception:
+    except Exception as exc:
+        log_expected_exception(
+            logger,
+            "Could not read tracked files from git; returning empty file list",
+            exc=exc,
+            level=logging.DEBUG,
+        )
         return []
 
 
@@ -176,7 +199,14 @@ def check_geo() -> int:
     try:
         cfg = yaml.safe_load(open("config/pipeline_config.yaml"))
         geo_enabled = bool(cfg.get("features", {}).get("geo", True))
-    except Exception:
+    except Exception as exc:
+        log_expected_exception(
+            logger,
+            "Could not parse pipeline_config.yaml during geo check; assuming geo features are enabled",
+            exc=exc,
+            context={"config_path": "config/pipeline_config.yaml"},
+            level=logging.DEBUG,
+        )
         geo_enabled = True
 
     if not geo_enabled:
@@ -270,9 +300,7 @@ TRANSITIONAL_WRAPPER_ALLOWLIST: set[str] = set()
 
 INTERNAL_DOMAIN_IMPORT_PATTERNS = [
     re.compile(r"^\s*from\s+dataselector\.(pipeline|selection|features|workflows)\b"),
-    re.compile(
-        r"^\s*import\s+dataselector\.(pipeline|selection|features|workflows)\b"
-    ),
+    re.compile(r"^\s*import\s+dataselector\.(pipeline|selection|features|workflows)\b"),
 ]
 
 
@@ -294,9 +322,7 @@ def scan_file_env(path: Path):
             if re.search(r"\b(py)?test\b", ln) or re.search(r"\bpython\b", ln):
                 uses_wrapper = "exec_in_env.sh" in ln
                 uses_explicit_env = (
-                    "micromamba run" in ln
-                    or "conda run" in ln
-                    or "mamba run" in ln
+                    "micromamba run" in ln or "conda run" in ln or "mamba run" in ln
                 )
                 findings.append(
                     (
@@ -491,7 +517,9 @@ def check_script_wrappers(strict: bool = False) -> int:
         },
     },
 )
-def check_runtime_readiness(env: str = "dataselector", allow_compat: bool = False) -> int:
+def check_runtime_readiness(
+    env: str = "dataselector", allow_compat: bool = False
+) -> int:
     micromamba = shutil.which("micromamba")
     if micromamba:
         probes = [

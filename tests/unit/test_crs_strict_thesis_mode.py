@@ -82,3 +82,54 @@ def test_load_metadata_non_strict_allows_missing_metric_projection(
     df = io_mod.load_metadata(csv_path, resolve_images=False, strict_metric_crs=False)
     assert isinstance(df, pd.DataFrame)
     assert df.attrs.get("metric_crs") is None
+
+
+def test_load_metadata_strict_explicit_crs_fails_when_explicit_provenance_missing(
+    tmp_path: Path,
+):
+    from dataselector.data.io import load_metadata
+
+    csv_path = tmp_path / "meta.csv"
+    csv_path.write_text(
+        "longName,ul_x,ul_y,lr_x,lr_y,year\n"
+        "KDR_001_Test_1901.png,500000,5900000,500100,5899900,1901\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RuntimeError, match="Strict explicit CRS mode requires"):
+        load_metadata(
+            csv_path,
+            resolve_images=False,
+            strict_metric_crs=False,
+            strict_explicit_crs=True,
+            allow_heuristic_crs_fallback=False,
+        )
+
+
+def test_load_metadata_uses_declared_explicit_crs_without_heuristic_fallback(
+    tmp_path: Path,
+):
+    from dataselector.data.io import load_metadata
+
+    csv_path = tmp_path / "meta.csv"
+    csv_path.write_text(
+        "longName,ul_x,ul_y,lr_x,lr_y,year,source_crs,crs_source,crs_provenance,crs_explicit\n"
+        "KDR_001_Test_1901.png,13.3,52.6,13.5,52.4,1901,EPSG:4326,sidecar_xml,explicit_sidecar_xml,true\n",
+        encoding="utf-8",
+    )
+
+    df = load_metadata(
+        csv_path,
+        resolve_images=False,
+        strict_metric_crs=False,
+        strict_explicit_crs=True,
+        allow_heuristic_crs_fallback=False,
+    )
+
+    assert df.attrs["source_crs"] == "EPSG:4326"
+    assert df.attrs["crs_provenance_status"] in {
+        "explicit_uniform",
+        "consistent_declared",
+    }
+    assert df.attrs["crs_heuristic_fallback_count"] == 0
+    assert df.attrs["crs_strict_ready"] is True

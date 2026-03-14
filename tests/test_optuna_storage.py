@@ -7,39 +7,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from tests.utils import seed_immutable_feature_cache
+
 pytestmark = pytest.mark.smoke
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-def _write_immutable_feature_cache(
-    out_dir: Path, metadata_csv: Path, features: np.ndarray
-) -> None:
-    from dataselector.data.io import build_feature_identity
-    from dataselector.pipeline.cache import (
-        atomic_write_features_with_meta,
-        compute_meta_hash,
-        create_meta_info,
-    )
-
-    feature_identity = build_feature_identity(
-        feature_cfg={},
-        batch_size=16,
-        config_sha256=None,
-    )
-    params = {"batch_size": 16, "feature_identity": feature_identity}
-    meta_hash = compute_meta_hash(str(metadata_csv), params=params)
-    meta_info = create_meta_info(
-        str(metadata_csv),
-        params=params,
-        feature_identity=feature_identity,
-    )
-    atomic_write_features_with_meta(
-        cache_root=out_dir,
-        feats=np.asarray(features, dtype=np.float32),
-        meta_hash=meta_hash,
-        meta_info=meta_info,
-    )
 
 
 @pytest.fixture(autouse=True)
@@ -51,6 +23,11 @@ def skip_if_no_optuna():
 def test_optuna_storage_creation(tmp_path):
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT)
+    env["DATASELECTOR_APPLY_TILE_EXCLUSION"] = "0"
+    env["DATASELECTOR_TILE_EXCLUSION_POLICY"] = ""
+    env["DATASELECTOR_STRICT_CRS"] = "0"
+    env["DATASELECTOR_STRICT_EXPLICIT_CRS"] = "0"
+    env["DATASELECTOR_ALLOW_HEURISTIC_CRS_FALLBACK"] = "1"
 
     metadata_csv = tmp_path / "data" / "new_all_tiles.csv"
     metadata_csv.parent.mkdir(parents=True, exist_ok=True)
@@ -68,7 +45,7 @@ def test_optuna_storage_creation(tmp_path):
             "image_filename": [f"dummy_{i}.png" for i in range(4)],
         }
     ).to_csv(metadata_csv, index=False)
-    _write_immutable_feature_cache(
+    seed_immutable_feature_cache(
         out_dir=out_dir,
         metadata_csv=metadata_csv,
         features=np.random.RandomState(11).randn(4, 4),
@@ -135,6 +112,8 @@ def test_optuna_import_command(tmp_path):
 
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT)
+    env["DATASELECTOR_APPLY_TILE_EXCLUSION"] = "0"
+    env["DATASELECTOR_TILE_EXCLUSION_POLICY"] = ""
 
     res = subprocess.run(cmd, env=env, capture_output=True, text=True)
     assert res.returncode == 0, f"Import failed: {res.stderr}"

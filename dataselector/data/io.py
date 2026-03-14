@@ -1,3 +1,5 @@
+import hashlib
+import logging
 import os
 from inspect import signature
 from pathlib import Path
@@ -13,12 +15,112 @@ from dataselector.data.metadata_source import (
     assert_canonical_metadata,
     canonical_metadata_path,
 )
+from dataselector.runtime.error_reporting import log_expected_exception
 from dataselector.runtime.parameter_snapshot import compute_file_sha256
 
 PREPROCESS_PIPELINE_ID = "historical_grayscale_autocontrast_rgb_v1"
 CACHE_MODES = {"off", "read_only", "write_only", "read_write"}
 FEATURE_CACHE_SCOPES = {"run_local", "global_shared"}
 DEFAULT_FEATURE_CACHE_ROOT = Path("outputs/cache/features")
+
+logger = logging.getLogger(__name__)
+
+
+def _ensure_tile_policy_attrs(df: pd.DataFrame) -> None:
+    if not hasattr(df, "attrs"):
+        return
+    attrs = df.attrs
+    attrs.setdefault("tile_exclusions_applied", False)
+    attrs.setdefault("tile_exclusion_policy_sha256", None)
+    attrs.setdefault("tile_exclusions_count", 0)
+    attrs.setdefault("tile_excluded_shortnames", [])
+    attrs.setdefault("tile_flagged_count", 0)
+    attrs.setdefault("tile_flagged_shortnames", [])
+    attrs.setdefault("tile_flagged_classes", [])
+    attrs.setdefault("tile_flagged_caveats", [])
+    attrs.setdefault("effective_tile_count", int(len(df)))
+
+
+def _ensure_crs_provenance_attrs(df: pd.DataFrame) -> None:
+    if not hasattr(df, "attrs"):
+        return
+    attrs = df.attrs
+    attrs.setdefault("source_crs_declared", None)
+    attrs.setdefault("source_crs", None)
+    attrs.setdefault("metric_crs", None)
+    attrs.setdefault("crs_source", None)
+    attrs.setdefault("crs_provenance", None)
+    attrs.setdefault("crs_explicit", False)
+    attrs.setdefault("crs_provenance_status", "unknown")
+    attrs.setdefault("crs_explicit_tile_count", 0)
+    attrs.setdefault("crs_heuristic_fallback_count", 0)
+    attrs.setdefault("crs_missing_explicit_count", 0)
+    attrs.setdefault("crs_consistency_issue_count", 0)
+    attrs.setdefault("crs_consistency_issue_shortnames", [])
+    attrs.setdefault("crs_unique_explicit_source_crs", [])
+    attrs.setdefault("crs_explicit_source_crs", None)
+    attrs.setdefault("crs_strict_ready", False)
+
+
+def _resolve_feature_tile_policy_context(
+    *,
+    tile_exclusion_policy: str | Path | None,
+    apply_tile_exclusion: bool | None,
+) -> tuple[Path | None, bool]:
+    policy_path = (
+        Path(tile_exclusion_policy)
+        if tile_exclusion_policy is not None
+        else (
+            Path(os.getenv("DATASELECTOR_TILE_EXCLUSION_POLICY"))
+            if os.getenv("DATASELECTOR_TILE_EXCLUSION_POLICY")
+            else None
+        )
+    )
+    apply_policy = (
+        bool(apply_tile_exclusion)
+        if apply_tile_exclusion is not None
+        else os.getenv("DATASELECTOR_APPLY_TILE_EXCLUSION", "0") == "1"
+    )
+    return policy_path, apply_policy
+
+
+def _load_feature_metadata_view(
+    csv_meta: str | Path,
+    *,
+    resolve_images: bool,
+    tile_exclusion_policy: str | Path | None,
+    apply_tile_exclusion: bool,
+    strict_explicit_crs: bool | None = None,
+    allow_heuristic_crs_fallback: bool | None = None,
+) -> pd.DataFrame:
+    kwargs: dict[str, Any] = {}
+    load_sig = signature(load_metadata)
+    if "resolve_images" in load_sig.parameters:
+        kwargs["resolve_images"] = resolve_images
+    if "tile_exclusion_policy" in load_sig.parameters:
+        kwargs["tile_exclusion_policy"] = tile_exclusion_policy
+    if "apply_tile_exclusion" in load_sig.parameters:
+        kwargs["apply_tile_exclusion"] = apply_tile_exclusion
+    if "strict_explicit_crs" in load_sig.parameters:
+        kwargs["strict_explicit_crs"] = strict_explicit_crs
+    if "allow_heuristic_crs_fallback" in load_sig.parameters:
+        kwargs["allow_heuristic_crs_fallback"] = allow_heuristic_crs_fallback
+    return load_metadata(csv_meta, **kwargs)
+
+
+def _effective_metadata_basis(metadata: pd.DataFrame) -> dict[str, Any]:
+    normalized = metadata.copy()
+    if hasattr(normalized, "attrs"):
+        normalized.attrs = {}
+    row_hashes = pd.util.hash_pandas_object(normalized, index=True)
+    digest = hashlib.sha256()
+    digest.update("|".join(str(col) for col in normalized.columns).encode("utf-8"))
+    digest.update(row_hashes.to_numpy(dtype="uint64", copy=False).tobytes())
+    return {
+        "kind": "effective_metadata_rows_v1",
+        "row_count": int(len(normalized)),
+        "rows_sha256": digest.hexdigest(),
+    }
 
 
 def load_metadata(
@@ -30,10 +132,14 @@ def load_metadata(
     metric_epsg: int | None = None,
     tile_exclusion_policy: str | Path | None = None,
     apply_tile_exclusion: bool | None = None,
+    strict_explicit_crs: bool | None = None,
+    allow_heuristic_crs_fallback: bool | None = None,
 ) -> pd.DataFrame:
     mp = MetadataProcessor(str(csv_path))
     df = mp.load_csv()
     df = mp.add_temporal_metadata()
+    _ensure_tile_policy_attrs(df)
+    _ensure_crs_provenance_attrs(df)
 
     policy_path = (
         Path(tile_exclusion_policy)
@@ -69,8 +175,15 @@ def load_metadata(
             df.attrs["tile_exclusions_applied"] = bool(policy_result.applied)
             df.attrs["tile_exclusion_policy_sha256"] = policy_result.policy_sha256
             df.attrs["tile_exclusions_count"] = int(policy_result.excluded_count)
-            df.attrs["tile_excluded_shortnames"] = list(policy_result.excluded_shortnames)
+            df.attrs["tile_excluded_shortnames"] = list(
+                policy_result.excluded_shortnames
+            )
+            df.attrs["tile_flagged_count"] = int(policy_result.flagged_count)
+            df.attrs["tile_flagged_shortnames"] = list(policy_result.flagged_shortnames)
+            df.attrs["tile_flagged_classes"] = list(policy_result.flagged_classes)
+            df.attrs["tile_flagged_caveats"] = list(policy_result.flagged_caveats)
             df.attrs["effective_tile_count"] = int(len(df))
+            _ensure_crs_provenance_attrs(df)
 
     if resolve_images:
         resolved_image_dir = Path(
@@ -99,6 +212,38 @@ def load_metadata(
                 lambda p: Path(str(p)).name if pd.notna(p) and str(p).strip() else None
             )
 
+    strict_explicit_flag = (
+        bool(strict_explicit_crs)
+        if strict_explicit_crs is not None
+        else os.getenv("DATASELECTOR_STRICT_EXPLICIT_CRS", "0") == "1"
+    )
+    allow_heuristic_flag = (
+        bool(allow_heuristic_crs_fallback)
+        if allow_heuristic_crs_fallback is not None
+        else os.getenv("DATASELECTOR_ALLOW_HEURISTIC_CRS_FALLBACK", "1") == "1"
+    )
+    if hasattr(mp, "resolve_crs_provenance"):
+        crs_summary = mp.resolve_crs_provenance(
+            allow_heuristic_fallback=allow_heuristic_flag,
+            strict_explicit=strict_explicit_flag,
+        )
+        df = mp.df
+    else:
+        mp.df = df
+        crs_summary = {
+            "crs_provenance_status": "legacy_processor_fallback",
+            "crs_explicit_tile_count": 0,
+            "crs_heuristic_fallback_count": 0,
+            "crs_missing_explicit_count": int(len(df)),
+            "crs_consistency_issue_count": 0,
+            "crs_consistency_issue_shortnames": [],
+            "crs_unique_explicit_source_crs": [],
+            "crs_explicit_source_crs": None,
+            "crs_strict_ready": False,
+        }
+    _ensure_tile_policy_attrs(df)
+    _ensure_crs_provenance_attrs(df)
+
     # Ensure metric CRS (UTM) is available for precise spatial calculations
     # Attach into DataFrame.attrs to avoid fragile attribute access and to persist through copies
     strict_crs_flag = (
@@ -114,9 +259,34 @@ def load_metadata(
     gdf_metric = mp.ensure_metric_crs(target_epsg=target_epsg, strict=strict_crs_flag)
     attach_metric_gdf(df, gdf_metric)
     if hasattr(df, "attrs"):
-        df.attrs["source_crs"] = mp.source_crs
-        df.attrs["metric_crs"] = mp.metric_crs
-        df.attrs["transform_applied"] = bool(mp.transform_applied)
+        df.attrs["source_crs_declared"] = getattr(mp, "source_crs_declared", None)
+        df.attrs["source_crs"] = getattr(mp, "source_crs", None)
+        df.attrs["metric_crs"] = getattr(mp, "metric_crs", None)
+        df.attrs["crs_source"] = getattr(mp, "crs_source", None)
+        df.attrs["crs_provenance"] = getattr(mp, "crs_provenance", None)
+        df.attrs["crs_explicit"] = bool(getattr(mp, "crs_explicit", False))
+        df.attrs["transform_applied"] = bool(getattr(mp, "transform_applied", False))
+        df.attrs["crs_provenance_status"] = crs_summary.get("crs_provenance_status")
+        df.attrs["crs_explicit_tile_count"] = int(
+            crs_summary.get("crs_explicit_tile_count", 0)
+        )
+        df.attrs["crs_heuristic_fallback_count"] = int(
+            crs_summary.get("crs_heuristic_fallback_count", 0)
+        )
+        df.attrs["crs_missing_explicit_count"] = int(
+            crs_summary.get("crs_missing_explicit_count", 0)
+        )
+        df.attrs["crs_consistency_issue_count"] = int(
+            crs_summary.get("crs_consistency_issue_count", 0)
+        )
+        df.attrs["crs_consistency_issue_shortnames"] = list(
+            crs_summary.get("crs_consistency_issue_shortnames", [])
+        )
+        df.attrs["crs_unique_explicit_source_crs"] = list(
+            crs_summary.get("crs_unique_explicit_source_crs", [])
+        )
+        df.attrs["crs_explicit_source_crs"] = crs_summary.get("crs_explicit_source_crs")
+        df.attrs["crs_strict_ready"] = bool(crs_summary.get("crs_strict_ready", False))
         if "effective_tile_count" not in df.attrs:
             df.attrs["effective_tile_count"] = int(len(df))
     if strict_crs_flag and gdf_metric is None:
@@ -142,19 +312,26 @@ def attach_metric_gdf(df, gdf_metric):
         try:
             df.attrs["gdf_metric"] = gdf_metric
             return
-        except Exception:
-            # Fall through to attribute fallback.
-            # NOTE: Best-effort attachment only — if pandas.attrs is read-only or
-            # mutated in unexpected environments we intentionally do not fail
-            # the pipeline. This `pass` keeps the system robust across pandas
-            # versions and container runtimes while preserving metric data when
-            # possible.
-            ...
+        except Exception as exc:
+            log_expected_exception(
+                logger,
+                "Could not attach metric GeoDataFrame via DataFrame.attrs",
+                exc=exc,
+                context={"has_attrs": True},
+                level=logging.DEBUG,
+            )
 
     # Backward-compatible fallback for custom containers.
     try:
         setattr(df, "gdf_metric", gdf_metric)
-    except Exception:
+    except Exception as exc:
+        log_expected_exception(
+            logger,
+            "Could not attach metric GeoDataFrame via attribute fallback",
+            exc=exc,
+            context={"has_attrs": hasattr(df, "attrs")},
+            level=logging.DEBUG,
+        )
         return
 
 
@@ -164,7 +341,14 @@ def get_metric_gdf(df):
         try:
             if "gdf_metric" in df.attrs:
                 return df.attrs.get("gdf_metric")
-        except Exception:
+        except Exception as exc:
+            log_expected_exception(
+                logger,
+                "Could not read metric GeoDataFrame from DataFrame.attrs; falling back to attribute lookup",
+                exc=exc,
+                context={"has_attrs": True},
+                level=logging.DEBUG,
+            )
             return getattr(df, "gdf_metric", None)
     # Backward-compatible fallback
     return getattr(df, "gdf_metric", None)
@@ -229,8 +413,11 @@ def _resolve_feature_config(
                 merged.update(feat_cfg)
             return merged, path
         except Exception as exc:
-            print(
-                f"Warnung: Konnte Feature-Config nicht lesen ({exc}), nutze Defaults"
+            log_expected_exception(
+                logger,
+                "Could not parse feature config; using defaults",
+                exc=exc,
+                context={"config_path": path},
             )
     return dict(defaults), path if path is not None and path.exists() else None
 
@@ -249,7 +436,9 @@ def _resolve_feature_cache_settings(
     if cfg_path is not None and cfg_path.exists():
         try:
             payload = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
-            section = payload.get("feature_cache", {}) if isinstance(payload, dict) else {}
+            section = (
+                payload.get("feature_cache", {}) if isinstance(payload, dict) else {}
+            )
             if isinstance(section, dict):
                 configured_scope = section.get("scope")
                 configured_root = section.get("root")
@@ -257,8 +446,14 @@ def _resolve_feature_cache_settings(
                     scope = str(configured_scope).strip().lower()
                 if configured_root:
                     root = Path(str(configured_root))
-        except Exception:
-            pass
+        except Exception as exc:
+            log_expected_exception(
+                logger,
+                "Could not parse feature cache settings from config; using fallback cache defaults",
+                exc=exc,
+                context={"config_path": cfg_path},
+                level=logging.DEBUG,
+            )
 
     env_scope = os.getenv("DATASELECTOR_FEATURE_CACHE_SCOPE")
     env_root = os.getenv("DATASELECTOR_FEATURE_CACHE_ROOT")
@@ -300,7 +495,9 @@ def build_feature_identity(
     identity: dict[str, Any] = {
         "model_name": model,
         "model_variant": str(feature_cfg.get("model_variant", "dinov2_vits14")).strip(),
-        "dinov2_repo": str(feature_cfg.get("dinov2_repo", "facebookresearch/dinov2")).strip(),
+        "dinov2_repo": str(
+            feature_cfg.get("dinov2_repo", "facebookresearch/dinov2")
+        ).strip(),
         "dinov2_ref": str(feature_cfg.get("dinov2_ref", "main")).strip(),
         "pooling": str(feature_cfg.get("pooling", "cls")).strip().lower(),
         "input_size": int(input_size),
@@ -381,7 +578,9 @@ def _extract_features_with_provenance(
         crop_size=crop_size,
     )
     model_provenance = fe.get_model_provenance()
-    config_sha256 = compute_file_sha256(cfg_path) if cfg_path and cfg_path.exists() else None
+    config_sha256 = (
+        compute_file_sha256(cfg_path) if cfg_path and cfg_path.exists() else None
+    )
     feature_identity = build_feature_identity(
         feature_cfg=feature_cfg,
         batch_size=batch_size,
@@ -411,6 +610,10 @@ def load_or_extract_features(
     force_extract: bool = False,
     cache_scope: str | None = None,
     cache_root: str | Path | None = None,
+    tile_exclusion_policy: str | Path | None = None,
+    apply_tile_exclusion: bool | None = None,
+    strict_explicit_crs: bool | None = None,
+    allow_heuristic_crs_fallback: bool | None = None,
 ) -> np.ndarray:
     """Load features from cache or extract and store with immutable provenance."""
     from dataselector.pipeline.cache import (
@@ -452,15 +655,34 @@ def load_or_extract_features(
         context="load_or_extract_features",
         enforce_canonical=enforce_canonical,
     )
+    tile_policy_path, apply_tile_exclusion_flag = _resolve_feature_tile_policy_context(
+        tile_exclusion_policy=tile_exclusion_policy,
+        apply_tile_exclusion=apply_tile_exclusion,
+    )
+    meta_preview = _load_feature_metadata_view(
+        csv_meta,
+        resolve_images=False,
+        tile_exclusion_policy=tile_policy_path,
+        apply_tile_exclusion=apply_tile_exclusion_flag,
+        strict_explicit_crs=strict_explicit_crs,
+        allow_heuristic_crs_fallback=allow_heuristic_crs_fallback,
+    )
+    metadata_basis = _effective_metadata_basis(meta_preview)
 
     # Compute deterministic hash for this metadata + extraction params
-    config_sha256 = compute_file_sha256(cfg_path) if cfg_path and cfg_path.exists() else None
+    config_sha256 = (
+        compute_file_sha256(cfg_path) if cfg_path and cfg_path.exists() else None
+    )
     feature_identity = build_feature_identity(
         feature_cfg=feature_cfg,
         batch_size=batch_size,
         config_sha256=config_sha256,
     )
-    params = {"batch_size": batch_size, "feature_identity": feature_identity}
+    params = {
+        "batch_size": batch_size,
+        "feature_identity": feature_identity,
+        "metadata_basis": metadata_basis,
+    }
     meta_hash = compute_meta_hash(csv_meta, params=params)
 
     # Try to find existing hash-named cache
@@ -470,12 +692,9 @@ def load_or_extract_features(
 
     if cached is not None:
         # Basic shape validation
-        meta = load_metadata(csv_meta)
-        if cached.shape[0] != len(meta):
-            msg = (
-                "[WARN] Cache for hash {} has {} rows but metadata has {}.".format(
-                    meta_hash, cached.shape[0], len(meta)
-                )
+        if cached.shape[0] != len(meta_preview):
+            msg = "[WARN] Cache for hash {} has {} rows but metadata has {}.".format(
+                meta_hash, cached.shape[0], len(meta_preview)
             )
             if cache_mode == "read_only":
                 raise ValueError(msg + " read_only mode forbids re-extraction.")
@@ -488,13 +707,14 @@ def load_or_extract_features(
                 )
             cached_identity = cached_meta.get("feature_identity")
             if strict_cache_identity and not isinstance(cached_identity, dict):
-                msg = (
-                    f"[WARN] Cache meta for hash {meta_hash[:8]}... misses feature_identity"
-                )
+                msg = f"[WARN] Cache meta for hash {meta_hash[:8]}... misses feature_identity"
                 if cache_mode == "read_only":
                     raise ValueError(msg + " strict read_only mode forbids fallback.")
                 print(msg + " Re-extracting with current identity.")
-            elif isinstance(cached_identity, dict) and cached_identity != feature_identity:
+            elif (
+                isinstance(cached_identity, dict)
+                and cached_identity != feature_identity
+            ):
                 raise RuntimeError(
                     f"Immutable cache conflict for hash {meta_hash[:8]}...: "
                     "feature_identity in meta does not match current feature identity."
@@ -513,7 +733,14 @@ def load_or_extract_features(
 
     if cache_mode == "off":
         print("[INFO] cache_mode=off -> extracting features without cache read/write")
-        meta = load_metadata(csv_meta)
+        meta = _load_feature_metadata_view(
+            csv_meta,
+            resolve_images=True,
+            tile_exclusion_policy=tile_policy_path,
+            apply_tile_exclusion=apply_tile_exclusion_flag,
+            strict_explicit_crs=strict_explicit_crs,
+            allow_heuristic_crs_fallback=allow_heuristic_crs_fallback,
+        )
         feats, _ = _extract_features_with_provenance(
             meta,
             batch_size=batch_size,
@@ -526,7 +753,14 @@ def load_or_extract_features(
     print(
         f"[INFO] Feature cache miss (scope={effective_scope}, hash={meta_hash[:8]}...) - extracting features with batch_size={batch_size}..."
     )
-    meta = load_metadata(csv_meta)
+    meta = _load_feature_metadata_view(
+        csv_meta,
+        resolve_images=True,
+        tile_exclusion_policy=tile_policy_path,
+        apply_tile_exclusion=apply_tile_exclusion_flag,
+        strict_explicit_crs=strict_explicit_crs,
+        allow_heuristic_crs_fallback=allow_heuristic_crs_fallback,
+    )
     feats, provenance = _extract_features_with_provenance(
         meta,
         batch_size=batch_size,
@@ -543,6 +777,7 @@ def load_or_extract_features(
             feature_identity=provenance.get("feature_identity"),
             model_provenance=provenance.get("model_provenance"),
             config_sha256=provenance.get("config_sha256"),
+            metadata_basis=metadata_basis,
         )
         meta_info["cache_scope"] = effective_scope
         meta_info["cache_root"] = str(cache_dir.resolve())

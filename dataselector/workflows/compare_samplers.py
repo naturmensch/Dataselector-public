@@ -185,17 +185,21 @@ def _compute_paired_endpoint_stats(
             continue
         pivot = (
             df_metrics[["seed", "scenario", endpoint]]
-            .pivot_table(index="seed", columns="scenario", values=endpoint, aggfunc="first")
+            .pivot_table(
+                index="seed", columns="scenario", values=endpoint, aggfunc="first"
+            )
             .copy()
         )
-        if seeded_scenario not in pivot.columns or unseeded_scenario not in pivot.columns:
+        if (
+            seeded_scenario not in pivot.columns
+            or unseeded_scenario not in pivot.columns
+        ):
             continue
         paired = pivot[[seeded_scenario, unseeded_scenario]].dropna()
         if paired.empty:
             continue
-        delta = (
-            pd.to_numeric(paired[seeded_scenario], errors="coerce")
-            - pd.to_numeric(paired[unseeded_scenario], errors="coerce")
+        delta = pd.to_numeric(paired[seeded_scenario], errors="coerce") - pd.to_numeric(
+            paired[unseeded_scenario], errors="coerce"
         )
         delta_arr = delta.to_numpy(dtype=float)
         delta_arr = delta_arr[np.isfinite(delta_arr)]
@@ -210,7 +214,9 @@ def _compute_paired_endpoint_stats(
                 "n_pairs": int(delta_arr.size),
                 "mean_delta": float(delta_arr.mean()),
                 "median_delta": float(np.median(delta_arr)),
-                "std_delta": float(delta_arr.std(ddof=1)) if delta_arr.size > 1 else 0.0,
+                "std_delta": (
+                    float(delta_arr.std(ddof=1)) if delta_arr.size > 1 else 0.0
+                ),
                 "ci95_mean_delta_lo": ci_lo,
                 "ci95_mean_delta_hi": ci_hi,
                 "p_value_exact_paired": (
@@ -226,7 +232,11 @@ def _compute_paired_endpoint_stats(
                 "delta_direction": (
                     "seeded>unseeded"
                     if float(delta_arr.mean()) > 0
-                    else "seeded<unseeded" if float(delta_arr.mean()) < 0 else "no_change"
+                    else (
+                        "seeded<unseeded"
+                        if float(delta_arr.mean()) < 0
+                        else "no_change"
+                    )
                 ),
                 "inference_status": inference_status,
                 "inferential_statistics_valid": bool(inferential_ok),
@@ -275,7 +285,9 @@ def _compute_objective_for_selection(
     baseline_spread: float,
     target_n: int,
 ) -> dict[str, float | bool]:
-    from dataselector.data.spatial_schema import spatial_spread as compute_spatial_spread
+    from dataselector.data.spatial_schema import (
+        spatial_spread as compute_spatial_spread,
+    )
     from dataselector.workflows.objective_scoring import normalized_objective
 
     selected_idx = np.asarray(selected, dtype=int)
@@ -330,7 +342,9 @@ def _load_precomputed_features_fallback(*, repo_root: Path, n_rows: int) -> np.n
     candidates: list[Path] = []
     candidates.extend((repo_root / "outputs").glob("features-*.npy"))
     candidates.extend((repo_root / "outputs" / "runs").glob("features.npy"))
-    candidates.extend((repo_root / "outputs" / "runs").glob("**/parameter_resolution/features-*.npy"))
+    candidates.extend(
+        (repo_root / "outputs" / "runs").glob("**/parameter_resolution/features-*.npy")
+    )
 
     matching: list[tuple[float, Path, np.ndarray]] = []
     for path in candidates:
@@ -806,7 +820,9 @@ def compare_seeded_vs_unseeded(
         if isinstance(cfg.get("feature_extraction"), dict)
         else {}
     )
-    clu_cfg = cfg.get("clustering", {}) if isinstance(cfg.get("clustering"), dict) else {}
+    clu_cfg = (
+        cfg.get("clustering", {}) if isinstance(cfg.get("clustering"), dict) else {}
+    )
 
     resolved_n_samples = int(
         n_samples if n_samples is not None else sel_cfg.get("n_samples", 34)
@@ -961,9 +977,7 @@ def compare_seeded_vs_unseeded(
     overlap_by_seed: dict[int, dict[str, float | int]] = {}
     pair_signatures: list[str] = []
     for seed in seed_panel:
-        no_seed_row = df[
-            (df["seed"] == int(seed)) & (df["scenario"] == "no_seed")
-        ]
+        no_seed_row = df[(df["seed"] == int(seed)) & (df["scenario"] == "no_seed")]
         seeded_row = df[
             (df["seed"] == int(seed)) & (df["scenario"] == "seed_Hamburg_name")
         ]
@@ -1123,12 +1137,16 @@ def compare_production_runs_quick_delta(
 
     seeded_n_samples = _nested_get(seeded_run_meta, ["extra", "n_samples"], None)
     unseeded_n_samples = _nested_get(unseeded_run_meta, ["extra", "n_samples"], None)
-    seeded_min_dist_arr = _nested_get(seeded_run_meta, ["extra", "validation_min_distances"], [])
+    seeded_min_dist_arr = _nested_get(
+        seeded_run_meta, ["extra", "validation_min_distances"], []
+    )
     unseeded_min_dist_arr = _nested_get(
         unseeded_run_meta, ["extra", "validation_min_distances"], []
     )
     seeded_min_dist = (
-        float(seeded_min_dist_arr[0]) if isinstance(seeded_min_dist_arr, list) and seeded_min_dist_arr else float("nan")
+        float(seeded_min_dist_arr[0])
+        if isinstance(seeded_min_dist_arr, list) and seeded_min_dist_arr
+        else float("nan")
     )
     unseeded_min_dist = (
         float(unseeded_min_dist_arr[0])
@@ -1198,13 +1216,17 @@ def compare_production_runs_quick_delta(
                 "seeded_value": json.dumps(
                     seeded_tuning_meta.get(
                         "pre_selected_names",
-                        _nested_get(seeded_run_meta, ["extra", "pre_selected_names"], []),
+                        _nested_get(
+                            seeded_run_meta, ["extra", "pre_selected_names"], []
+                        ),
                     )
                 ),
                 "unseeded_value": json.dumps(
                     unseeded_tuning_meta.get(
                         "pre_selected_names",
-                        _nested_get(unseeded_run_meta, ["extra", "pre_selected_names"], []),
+                        _nested_get(
+                            unseeded_run_meta, ["extra", "pre_selected_names"], []
+                        ),
                     )
                 ),
                 "delta_seeded_minus_unseeded": float("nan"),

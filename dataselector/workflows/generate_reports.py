@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 import os
 import re
 from datetime import datetime, timezone
@@ -13,6 +14,9 @@ import pandas as pd
 import yaml
 
 from dataselector.cli_decorators import cli_command
+from dataselector.runtime.error_reporting import log_expected_exception
+
+logger = logging.getLogger(__name__)
 
 
 def _get_repo_root() -> Path:
@@ -24,7 +28,14 @@ def _safe_read_json_dict(path: Path) -> dict:
         return {}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as exc:
+        log_expected_exception(
+            logger,
+            "Could not parse JSON artifact; continuing with empty fallback",
+            exc=exc,
+            context={"path": path},
+            level=logging.DEBUG,
+        )
         return {}
     return payload if isinstance(payload, dict) else {}
 
@@ -34,7 +45,14 @@ def _safe_read_yaml_dict(path: Path) -> dict:
         return {}
     try:
         payload = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as exc:
+        log_expected_exception(
+            logger,
+            "Could not parse YAML artifact; continuing with empty fallback",
+            exc=exc,
+            context={"path": path},
+            level=logging.DEBUG,
+        )
         return {}
     return payload if isinstance(payload, dict) else {}
 
@@ -99,6 +117,38 @@ def _selection_provenance_block(selection: object) -> dict:
     return {}
 
 
+def _flagged_caveat_entries(run_extra: dict | None) -> list[dict]:
+    if not isinstance(run_extra, dict):
+        return []
+    raw_entries = run_extra.get("tile_flagged_caveats")
+    if not isinstance(raw_entries, list):
+        return []
+    entries: list[dict] = []
+    for entry in raw_entries:
+        if isinstance(entry, dict):
+            entries.append(entry)
+    return entries
+
+
+def _temporal_outlier_entries(run_extra: dict | None) -> list[dict]:
+    return [
+        entry
+        for entry in _flagged_caveat_entries(run_extra)
+        if str(entry.get("class", "")).strip().lower() == "temporal_scope_outlier"
+    ]
+
+
+def _format_temporal_outlier_note(entry: dict) -> str:
+    short_name = str(entry.get("shortName", "unknown")).strip() or "unknown"
+    year = entry.get("year")
+    year_suffix = f" ({year})" if year is not None else ""
+    return (
+        f"`{short_name}`{year_suffix}: retained for stylistic/data usability, "
+        "but outside the thesis core temporal frame and therefore suitable for "
+        "temporal interpretation only with explicit methodological caveat."
+    )
+
+
 def _parse_selection_weight_triplet(path_value: object) -> Optional[dict[str, float]]:
     if not isinstance(path_value, str) or not path_value.strip():
         return None
@@ -116,6 +166,30 @@ def _parse_selection_weight_triplet(path_value: object) -> Optional[dict[str, fl
         }
     except Exception:
         return None
+
+
+def _coerce_selection_weights(payload: object) -> Optional[dict[str, float]]:
+    if not isinstance(payload, dict):
+        return None
+    key_aliases = {
+        "alpha_visual": ("alpha_visual", "alpha"),
+        "beta_spatial": ("beta_spatial", "beta"),
+        "gamma_temporal": ("gamma_temporal", "gamma"),
+    }
+    out: dict[str, float] = {}
+    for canonical_key, aliases in key_aliases.items():
+        raw = None
+        for alias in aliases:
+            if payload.get(alias) is not None:
+                raw = payload.get(alias)
+                break
+        if raw is None:
+            return None
+        try:
+            out[canonical_key] = float(raw)
+        except Exception:
+            return None
+    return out
 
 
 def _format_selection_weights(weights: Optional[dict[str, float]]) -> str:
@@ -162,17 +236,22 @@ def _extract_materialized_selection_context(
     run_extra: dict | None = None,
 ) -> dict[str, object]:
     extra = run_extra if isinstance(run_extra, dict) else {}
-    selection_source = selection_contract.get("selection_source") or extra.get("selection_source")
-    selection_source_file = selection_contract.get("selection_source_file") or extra.get(
-        "selection_source_file"
+    selection_source = selection_contract.get("selection_source") or extra.get(
+        "selection_source"
     )
+    selection_source_file = selection_contract.get(
+        "selection_source_file"
+    ) or extra.get("selection_source_file")
     case_tile_names = _normalize_name_list(
         selection_contract.get("case_tile_names") or extra.get("case_tile_names")
     )
+    materialized_weights = _coerce_selection_weights(
+        selection_contract.get("selection_weights") or extra.get("selection_weights")
+    ) or _parse_selection_weight_triplet(selection_source_file)
     return {
         "selection_source": selection_source,
         "selection_source_file": selection_source_file,
-        "weights": _parse_selection_weight_triplet(selection_source_file),
+        "weights": materialized_weights,
         "case_tile_names": case_tile_names,
     }
 
@@ -261,10 +340,15 @@ def _build_claim_rows(
     selection_case_csv = output_dir / "selection_case.csv"
     selection_final_csv = output_dir / "selection_final_with_cases.csv"
     selection_contract_json = output_dir / "selection_contract.json"
-    validation_method_contract = output_dir / "validation" / "validation_method_contract.md"
-    validation_bootstrap_csv = output_dir / "validation" / "validation_results_bootstrap.csv"
+    validation_method_contract = (
+        output_dir / "validation" / "validation_method_contract.md"
+    )
+    validation_bootstrap_csv = (
+        output_dir / "validation" / "validation_results_bootstrap.csv"
+    )
     validation_summary_csv = output_dir / "validation" / "validation_summary_stats.csv"
     year_scope_audit_csv = output_dir / "data_quality" / "year_scope_audit.csv"
+    crs_provenance_audit_csv = output_dir / "data_quality" / "crs_provenance_audit.csv"
     run_metadata_json = output_dir / "run_metadata.json"
 
     requested_mode = (
@@ -276,7 +360,9 @@ def _build_claim_rows(
         requested_mode = _parse_requested_validation_mode(validation_method_contract)
 
     selection_contract = _safe_read_json_dict(selection_contract_json)
-    case_exclude_from_core = bool(selection_contract.get("case_exclude_from_core", False))
+    case_exclude_from_core = bool(
+        selection_contract.get("case_exclude_from_core", False)
+    )
 
     claims: list[dict[str, str]] = []
 
@@ -301,7 +387,11 @@ def _build_claim_rows(
             "claim": "Case tiles are documented separately and attached to the final operational set",
             "evidence_file": "; ".join(
                 _rel_or_abs(output_dir, p)
-                for p in [selection_case_csv, selection_final_csv, selection_contract_json]
+                for p in [
+                    selection_case_csv,
+                    selection_final_csv,
+                    selection_contract_json,
+                ]
             ),
             "status": (
                 "supported"
@@ -310,8 +400,12 @@ def _build_claim_rows(
             ),
         }
     )
-    hamburg_claim_artifacts_ready = selection_contract_json.exists() and selection_case_csv.exists()
-    hamburg_in_case_names = _contains_hamburg_name(selection_contract.get("case_tile_names"))
+    hamburg_claim_artifacts_ready = (
+        selection_contract_json.exists() and selection_case_csv.exists()
+    )
+    hamburg_in_case_names = _contains_hamburg_name(
+        selection_contract.get("case_tile_names")
+    )
     hamburg_in_case_csv = _selection_case_contains_hamburg(selection_case_csv)
     claims.append(
         {
@@ -337,7 +431,9 @@ def _build_claim_rows(
         }
     )
 
-    validation_ready = validation_method_contract.exists() and validation_summary_csv.exists()
+    validation_ready = (
+        validation_method_contract.exists() and validation_summary_csv.exists()
+    )
     bootstrap_ready = validation_bootstrap_csv.exists()
     claims.append(
         {
@@ -352,7 +448,9 @@ def _build_claim_rows(
             ),
             "status": (
                 "supported"
-                if validation_ready and bootstrap_ready and requested_mode == "bootstrap_candidates"
+                if validation_ready
+                and bootstrap_ready
+                and requested_mode == "bootstrap_candidates"
                 else ("requires_review" if validation_ready else "missing_evidence")
             ),
         }
@@ -360,14 +458,24 @@ def _build_claim_rows(
 
     tile_exclusions_applied = bool(run_extra.get("tile_exclusions_applied", False))
     tile_policy_hash = run_extra.get("tile_exclusion_policy_sha256")
+    temporal_outliers = _temporal_outlier_entries(run_extra)
+    metadata_crs = (
+        run_extra.get("metadata_crs", {}) if isinstance(run_extra, dict) else {}
+    )
     claims.append(
         {
             "claim": "Tile exclusion policy is applied and provenance-tracked in run metadata",
             "evidence_file": _rel_or_abs(output_dir, run_metadata_json),
             "status": (
                 "supported"
-                if run_metadata_json.exists() and tile_exclusions_applied and bool(tile_policy_hash)
-                else ("requires_review" if run_metadata_json.exists() else "missing_evidence")
+                if run_metadata_json.exists()
+                and tile_exclusions_applied
+                and bool(tile_policy_hash)
+                else (
+                    "requires_review"
+                    if run_metadata_json.exists()
+                    else "missing_evidence"
+                )
             ),
         }
     )
@@ -375,9 +483,52 @@ def _build_claim_rows(
         {
             "claim": "Temporal scope audit artifact is present for exclusion transparency",
             "evidence_file": _rel_or_abs(output_dir, year_scope_audit_csv),
-            "status": "supported" if year_scope_audit_csv.exists() else "missing_evidence",
+            "status": (
+                "supported" if year_scope_audit_csv.exists() else "missing_evidence"
+            ),
         }
     )
+    claims.append(
+        {
+            "claim": "CRS provenance audit artifact is present for thesis spatial calculations",
+            "evidence_file": _rel_or_abs(output_dir, crs_provenance_audit_csv),
+            "status": (
+                "supported" if crs_provenance_audit_csv.exists() else "missing_evidence"
+            ),
+        }
+    )
+    claims.append(
+        {
+            "claim": "Thesis CRS provenance is explicit and free of heuristic fallback",
+            "evidence_file": "; ".join(
+                [
+                    _rel_or_abs(output_dir, run_metadata_json),
+                    _rel_or_abs(output_dir, crs_provenance_audit_csv),
+                ]
+            ),
+            "status": (
+                "supported"
+                if run_metadata_json.exists()
+                and bool(metadata_crs.get("crs_strict_ready"))
+                and int(metadata_crs.get("crs_heuristic_fallback_count", 0)) == 0
+                else (
+                    "requires_review"
+                    if run_metadata_json.exists()
+                    else "missing_evidence"
+                )
+            ),
+        }
+    )
+    if temporal_outliers:
+        claims.append(
+            {
+                "claim": "Retained temporal outliers are explicitly flagged in run metadata and reporting",
+                "evidence_file": _rel_or_abs(output_dir, run_metadata_json),
+                "status": (
+                    "supported" if run_metadata_json.exists() else "missing_evidence"
+                ),
+            }
+        )
     return claims
 
 
@@ -432,9 +583,7 @@ def _write_thesis_method_artifacts(
     lines.append("|---|---|---|")
     for row in claims:
         evidence = row["evidence_file"].replace("|", "\\|")
-        lines.append(
-            f"| {row['claim']} | `{row['status']}` | `{evidence}` |"
-        )
+        lines.append(f"| {row['claim']} | `{row['status']}` | `{evidence}` |")
     lines.append("")
     lines.append("## Core+Case Contract")
     lines.append("")
@@ -497,7 +646,9 @@ def _write_thesis_method_artifacts(
             "- Reconciliation note: snapshot and final case tiles differ; this is allowed when the final run-level contract explicitly documents the resolved Case policy."
         )
     elif reconciliation_status == "aligned":
-        lines.append("- Reconciliation note: snapshot and final case tiles are consistent.")
+        lines.append(
+            "- Reconciliation note: snapshot and final case tiles are consistent."
+        )
     else:
         lines.append(
             "- Reconciliation note: no pipeline snapshot metadata found; interpret final run contract as authoritative."
@@ -541,9 +692,7 @@ def _write_thesis_method_artifacts(
         "- `materialized_selection_weights`: "
         f"`{_format_selection_weights(selection_reconciliation['materialized_weights'])}`"
     )
-    lines.append(
-        f"- `reconciliation_status`: `{selection_reconciliation['status']}`"
-    )
+    lines.append(f"- `reconciliation_status`: `{selection_reconciliation['status']}`")
     if selection_reconciliation["status"] == "aligned":
         lines.append(
             "- Reconciliation note: snapshot selection weights and the materialized selection source are aligned."
@@ -571,14 +720,79 @@ def _write_thesis_method_artifacts(
     lines.append("")
     lines.append("## Tile Exclusion & Year Scope")
     lines.append("")
-    lines.append(f"- tile_exclusions_applied: `{run_extra.get('tile_exclusions_applied')}`")
+    lines.append(
+        f"- tile_exclusions_applied: `{run_extra.get('tile_exclusions_applied')}`"
+    )
     lines.append(f"- tile_exclusions_count: `{run_extra.get('tile_exclusions_count')}`")
+    lines.append(f"- tile_flagged_count: `{run_extra.get('tile_flagged_count')}`")
+    lines.append(
+        f"- tile_flagged_shortnames: `{run_extra.get('tile_flagged_shortnames')}`"
+    )
+    lines.append(f"- tile_flagged_classes: `{run_extra.get('tile_flagged_classes')}`")
     lines.append(
         f"- tile_exclusion_policy_sha256: `{run_extra.get('tile_exclusion_policy_sha256')}`"
     )
     lines.append(
         f"- year_scope_audit: `{_rel_or_abs(output_dir, output_dir / 'data_quality' / 'year_scope_audit.csv')}`"
     )
+    temporal_outliers = _temporal_outlier_entries(run_extra)
+    if temporal_outliers:
+        lines.append(
+            "- Critical note: retained temporal outliers remain in the candidate pool, "
+            "but they sit outside the thesis core temporal frame and require an "
+            "explicit methodological caveat in any temporal interpretation."
+        )
+        for entry in temporal_outliers:
+            lines.append(f"  - {_format_temporal_outlier_note(entry)}")
+    lines.append("")
+    lines.append("## CRS Provenance")
+    lines.append("")
+    metadata_crs = (
+        run_extra.get("metadata_crs", {}) if isinstance(run_extra, dict) else {}
+    )
+    lines.append(f"- source_crs_declared: `{metadata_crs.get('source_crs_declared')}`")
+    lines.append(f"- source_crs: `{metadata_crs.get('source_crs')}`")
+    lines.append(f"- metric_crs: `{metadata_crs.get('metric_crs')}`")
+    lines.append(f"- crs_source: `{metadata_crs.get('crs_source')}`")
+    lines.append(f"- crs_provenance: `{metadata_crs.get('crs_provenance')}`")
+    lines.append(
+        f"- crs_provenance_status: `{metadata_crs.get('crs_provenance_status')}`"
+    )
+    lines.append(
+        f"- crs_explicit_tile_count: `{metadata_crs.get('crs_explicit_tile_count')}`"
+    )
+    lines.append(
+        f"- crs_heuristic_fallback_count: `{metadata_crs.get('crs_heuristic_fallback_count')}`"
+    )
+    lines.append(
+        f"- crs_missing_explicit_count: `{metadata_crs.get('crs_missing_explicit_count')}`"
+    )
+    lines.append(
+        f"- crs_consistency_issue_count: `{metadata_crs.get('crs_consistency_issue_count')}`"
+    )
+    lines.append(f"- crs_strict_ready: `{metadata_crs.get('crs_strict_ready')}`")
+    lines.append(
+        f"- crs_provenance_audit: `{_rel_or_abs(output_dir, output_dir / 'data_quality' / 'crs_provenance_audit.csv')}`"
+    )
+    if int(metadata_crs.get("crs_heuristic_fallback_count", 0) or 0) > 0:
+        lines.append(
+            "- Critical note: heuristic CRS fallback occurred; this run should not be treated as final thesis-grade geospatial provenance."
+        )
+    if int(metadata_crs.get("crs_missing_explicit_count", 0) or 0) > 0:
+        lines.append(
+            "- Critical note: some tiles lack explicit CRS provenance in sidecar/raster metadata."
+        )
+    if int(metadata_crs.get("crs_consistency_issue_count", 0) or 0) > 0:
+        lines.append(
+            "- Critical note: explicit CRS provenance and observed coordinate behavior are not fully consistent."
+        )
+    exceptions_log_path = _resolve_report_path(
+        output_dir, run_extra.get("exceptions_log_path")
+    )
+    if exceptions_log_path is not None:
+        lines.append(
+            f"- exceptions_log: `{_rel_or_abs(output_dir, exceptions_log_path)}`"
+        )
     lines.append("")
 
     audit_md = output_dir / "THESIS_METHOD_AUDIT.md"
@@ -1129,7 +1343,9 @@ def _generate_single_run_thesis_report(
         lines.append(f"- ✅ `{autoscale_summary_csv.relative_to(output_dir)}`")
     else:
         missing_required.append(resolution_dir / "optuna_autoscale_summary_*.csv")
-        lines.append("- ⚠️ Missing: `parameter_resolution/optuna_autoscale_summary_*.csv`")
+        lines.append(
+            "- ⚠️ Missing: `parameter_resolution/optuna_autoscale_summary_*.csv`"
+        )
     lines.append("")
 
     lines.append("## Exploration")
@@ -1158,11 +1374,15 @@ def _generate_single_run_thesis_report(
             lines.append(f"- Best value (from trials): **{best_value:.6f}**")
             if "number" in df_complete.columns:
                 best_trial = int(
-                    df_complete.loc[df_complete["value"] == best_value, "number"].iloc[0]
+                    df_complete.loc[df_complete["value"] == best_value, "number"].iloc[
+                        0
+                    ]
                 )
                 lines.append(f"- Best trial (from trials): **#{best_trial}**")
             lines.append(f"- Mean value: **{float(df_complete['value'].mean()):.6f}**")
-            std_value = float(df_complete["value"].std()) if len(df_complete) > 1 else 0.0
+            std_value = (
+                float(df_complete["value"].std()) if len(df_complete) > 1 else 0.0
+            )
             lines.append(f"- Std value: **{std_value:.6f}**")
         else:
             lines.append("- No completed value column available")
@@ -1171,7 +1391,9 @@ def _generate_single_run_thesis_report(
 
     if autoscale_best_json.exists():
         try:
-            best_trial_data = json.loads(autoscale_best_json.read_text(encoding="utf-8"))
+            best_trial_data = json.loads(
+                autoscale_best_json.read_text(encoding="utf-8")
+            )
             params = best_trial_data.get("params", {})
             if "value" in best_trial_data:
                 lines.append(
@@ -1183,8 +1405,8 @@ def _generate_single_run_thesis_report(
             user_attrs = best_trial_data.get("user_attrs", {})
             selected_n = user_attrs.get("n_samples")
             if selected_n is None:
-                selected_n = (
-                    best_trial_data.get("selection_meta", {}).get("selected_n_samples")
+                selected_n = best_trial_data.get("selection_meta", {}).get(
+                    "selected_n_samples"
                 )
             if selected_n is not None:
                 lines.append(f"- Selected n_samples: **{int(selected_n)}**")
@@ -1198,7 +1420,9 @@ def _generate_single_run_thesis_report(
             for key in sorted(params.keys()):
                 lines.append(f"  - `{key}`: `{params[key]}`")
         except Exception as exc:
-            lines.append(f"- Could not parse optuna_autoscale_best_latest.json: `{exc}`")
+            lines.append(
+                f"- Could not parse optuna_autoscale_best_latest.json: `{exc}`"
+            )
     else:
         lines.append("- Autoscale best artifact: not available")
 
@@ -1220,7 +1444,9 @@ def _generate_single_run_thesis_report(
             if trials_per_stage:
                 lines.append(f"- Trials per stage: `{trials_per_stage}`")
         except Exception as exc:
-            lines.append(f"- Could not parse optuna_autoscale_stage_policy.json: `{exc}`")
+            lines.append(
+                f"- Could not parse optuna_autoscale_stage_policy.json: `{exc}`"
+            )
 
     if autoscale_summary_csv is not None and autoscale_summary_csv.exists():
         try:
@@ -1310,10 +1536,10 @@ def _generate_single_run_thesis_report(
                 )
                 ranking_items = []
                 for _, row in ranked.iterrows():
-                    ranking_items.append(
-                        f"{row['sampler']}={float(row['mean']):.6f}"
-                    )
-                lines.append("- Sampler ranking (mean): `" + ", ".join(ranking_items) + "`")
+                    ranking_items.append(f"{row['sampler']}={float(row['mean']):.6f}")
+                lines.append(
+                    "- Sampler ranking (mean): `" + ", ".join(ranking_items) + "`"
+                )
         except Exception as exc:
             lines.append(f"- Could not parse sampler summary CSV: `{exc}`")
 
@@ -1536,9 +1762,7 @@ def _generate_single_run_thesis_report(
                     if exact_path.exists():
                         selected_tiles_file = exact_path
                     else:
-                        candidate_pattern = (
-                            f"selection_a{float(alpha):.6f}*_b{float(beta):.6f}*_g{float(gamma):.6f}*.csv"
-                        )
+                        candidate_pattern = f"selection_a{float(alpha):.6f}*_b{float(beta):.6f}*_g{float(gamma):.6f}*.csv"
                         candidates = sorted(tuning_weights_dir.glob(candidate_pattern))
                         if candidates:
                             selected_tiles_file = candidates[0]
@@ -1630,6 +1854,128 @@ def _generate_single_run_thesis_report(
             "- Interpretation: snapshot selection weights are unavailable here; dataset claims therefore bind to the materialized selection artifacts."
         )
     lines.append("")
+
+    lines.append("## Phase 5 Annotation & Handoff")
+    lines.append("")
+    phase_status = (
+        run_extra.get("phase_status", {}) if isinstance(run_extra, dict) else {}
+    )
+    phase5_status = (
+        phase_status.get("phase5_handoffs") if isinstance(phase_status, dict) else None
+    )
+    build_handoffs = bool(run_extra.get("build_handoffs", False))
+    if not build_handoffs:
+        lines.append("- Status: `skipped` (`build_handoffs=false`).")
+        lines.append(
+            "- Scope boundary: Phase 5 is optional post-freeze packaging and does not change snapshot or selection artifacts."
+        )
+        lines.append("")
+    else:
+        lines.append(f"- Status: `{phase5_status or 'unknown'}`")
+        lines.append(
+            f"- Patch scope: `{run_extra.get('patch_selection_group', 'core')}`"
+        )
+        lines.append(
+            f"- Patches per tile: `{run_extra.get('patches_per_tile', 'n/a')}`"
+        )
+        tile_handoff_dir = _resolve_report_path(
+            output_dir, run_extra.get("tile_handoff_dir")
+        )
+        tile_handoff_manifest = _resolve_report_path(
+            output_dir, run_extra.get("tile_handoff_manifest_path")
+        )
+        annotation_plan_dir = _resolve_report_path(
+            output_dir, run_extra.get("annotation_plan_dir")
+        )
+        annotation_contract = _resolve_report_path(
+            output_dir, run_extra.get("annotation_dataset_contract_path")
+        )
+        patch_handoff_dir = _resolve_report_path(
+            output_dir, run_extra.get("patch_handoff_dir")
+        )
+        patch_handoff_manifest = _resolve_report_path(
+            output_dir, run_extra.get("patch_handoff_manifest_path")
+        )
+        if tile_handoff_dir is not None:
+            lines.append(
+                f"- Tile handoff dir: `{_rel_or_abs(output_dir, tile_handoff_dir)}`"
+            )
+        if tile_handoff_manifest is not None:
+            lines.append(
+                f"- Tile handoff manifest: `{_rel_or_abs(output_dir, tile_handoff_manifest)}`"
+            )
+        if annotation_plan_dir is not None:
+            lines.append(
+                f"- Annotation plan dir: `{_rel_or_abs(output_dir, annotation_plan_dir)}`"
+            )
+        if annotation_contract is not None:
+            lines.append(
+                "- Annotation dataset contract: "
+                f"`{_rel_or_abs(output_dir, annotation_contract)}`"
+            )
+        if patch_handoff_dir is not None:
+            lines.append(
+                f"- Patch handoff dir: `{_rel_or_abs(output_dir, patch_handoff_dir)}`"
+            )
+        if patch_handoff_manifest is not None:
+            lines.append(
+                f"- Patch handoff manifest: `{_rel_or_abs(output_dir, patch_handoff_manifest)}`"
+            )
+        if run_extra.get("tile_handoff_selection_count") is not None:
+            lines.append(
+                f"- Tile handoff selection count: **{run_extra.get('tile_handoff_selection_count')}**"
+            )
+        if run_extra.get("patch_handoff_selection_count") is not None:
+            lines.append(
+                f"- Patch handoff selection count: **{run_extra.get('patch_handoff_selection_count')}**"
+            )
+        if run_extra.get("patches_total") is not None:
+            lines.append(
+                f"- Planned patches total: **{run_extra.get('patches_total')}**"
+            )
+        if run_extra.get("patches_qc_passed") is not None:
+            lines.append(
+                f"- Planned patches QC-passed: **{run_extra.get('patches_qc_passed')}**"
+            )
+        if run_extra.get("patches_qc_rejected") is not None:
+            lines.append(
+                f"- Planned patches QC-rejected: **{run_extra.get('patches_qc_rejected')}**"
+            )
+        freeze_verified = run_extra.get("phase5_freeze_boundary_verified")
+        if freeze_verified is not None:
+            lines.append(
+                f"- Freeze boundary verified after Phase 5: `{bool(freeze_verified)}`"
+            )
+        if phase5_status == "failed":
+            lines.append(
+                "- Failure semantics: the overall run failed after scientific freeze; snapshot and selection artifacts remain the authoritative frozen dataset."
+            )
+        lines.append("")
+
+    temporal_outliers = _temporal_outlier_entries(run_extra)
+    if temporal_outliers:
+        lines.append("## Temporal Caveats")
+        lines.append("")
+        lines.append(
+            "- Retained temporal outliers are present in this run. They remain usable, but fall outside the thesis core temporal frame (`1878-1945`)."
+        )
+        lines.append(
+            "- Critical interpretation rule: temporal conclusions that use these tiles require an explicit methodological caveat and should not treat them as representative evidence for the thesis core temporal frame on their own."
+        )
+        for entry in temporal_outliers:
+            lines.append(f"- {_format_temporal_outlier_note(entry)}")
+        lines.append("")
+
+    exceptions_log_path = _resolve_report_path(
+        output_dir, run_extra.get("exceptions_log_path")
+    )
+    if exceptions_log_path is not None and exceptions_log_path.exists():
+        lines.append("## Runtime Diagnostics")
+        lines.append("")
+        lines.append(
+            f"- Exception log: `{_rel_or_abs(output_dir, exceptions_log_path)}`"
+        )
+        lines.append("")
 
     if missing_required:
         lines.append("## Notes")

@@ -9,8 +9,8 @@ from scipy.spatial.distance import pdist
 
 from dataselector.data.spatial_schema import (
     normalize_spatial_schema,
-    spatial_spread as compute_spatial_spread,
 )
+from dataselector.data.spatial_schema import spatial_spread as compute_spatial_spread
 
 _EPS = 1e-12
 

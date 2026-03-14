@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,15 +17,22 @@ from dataselector.data.io import load_metadata, load_or_extract_features
 from dataselector.runtime import (
     activate_repro_mode,
     load_parameter_contract,
+    log_expected_exception,
+    report_exception,
     validate_snapshot_against_contract,
     write_run_metadata,
 )
-from dataselector.runtime.parameter_snapshot import load_snapshot, validate_snapshot_file
+from dataselector.runtime.parameter_snapshot import (
+    load_snapshot,
+    validate_snapshot_file,
+)
 from dataselector.workflows.leakage_audit import audit_split_leakage
 from dataselector.workflows.leakage_calibration import calibrate_leakage_buffer
 from dataselector.workflows.optuna_autoscale import run_optuna_autoscale_workflow
 from dataselector.workflows.spatial_split_builder import build_spatial_splits
 from dataselector.workflows.thesis_pipeline import run_thesis_pipeline
+
+logger = logging.getLogger(__name__)
 
 
 def _require_torch() -> None:
@@ -62,6 +70,13 @@ def _parse_bool(value: Any, *, label: str) -> bool:
     raise ValueError(f"{label} must be boolean-compatible (got {value!r})")
 
 
+def _parse_positive_int(value: Any, *, label: str) -> int:
+    parsed = int(value)
+    if parsed <= 0:
+        raise ValueError(f"{label} must be > 0 (got {parsed})")
+    return parsed
+
+
 def _resolve_build_splits(build_splits: Any, execution_profile: str) -> bool:
     if isinstance(build_splits, str) and build_splits.strip().lower() == "auto":
         return execution_profile == "thesis_repro"
@@ -83,7 +98,14 @@ def _load_existing_run_metadata(output_dir: Path) -> dict[str, Any] | None:
         return None
     try:
         payload = json.loads(metadata_path.read_text(encoding="utf-8"))
-    except Exception:
+    except Exception as exc:
+        log_expected_exception(
+            logger,
+            "Could not parse existing run metadata; orchestrator will continue without merge state",
+            exc=exc,
+            context={"metadata_path": metadata_path},
+            level=logging.DEBUG,
+        )
         return None
     if isinstance(payload, dict):
         return payload
@@ -101,9 +123,18 @@ def _merge_orchestrator_metadata_extra(
 
     existing_extra = existing.get("extra")
     merged: dict[str, Any] = {}
+    merged_exception_records: list[Any] | None = None
     if isinstance(existing_extra, dict):
         merged.update(existing_extra)
+        existing_records = existing_extra.get("exception_records")
+        incoming_records = orchestrator_extra.get("exception_records")
+        if isinstance(existing_records, list) and isinstance(incoming_records, list):
+            merged_exception_records = [*existing_records, *incoming_records]
+        elif isinstance(existing_records, list):
+            merged_exception_records = list(existing_records)
     merged.update(orchestrator_extra)
+    if merged_exception_records is not None:
+        merged["exception_records"] = merged_exception_records
     merged["pipeline_metadata_preserved"] = True
     merged["pipeline_metadata_snapshot"] = {
         "timestamp_utc": existing.get("timestamp_utc"),
@@ -271,6 +302,8 @@ def _build_leakage_safe_splits(
         enforce_canonical=True,
         strict_cache_identity=True,
         force_extract=False,
+        tile_exclusion_policy=tile_exclusion_policy,
+        apply_tile_exclusion=True,
     )
     if strict_real_data and len(features) != len(metadata):
         raise RuntimeError(
@@ -316,11 +349,25 @@ def _build_leakage_safe_splits(
         )
 
     return {
-        "tile_exclusions_applied": bool(metadata.attrs.get("tile_exclusions_applied", False)),
+        "tile_exclusions_applied": bool(
+            metadata.attrs.get("tile_exclusions_applied", False)
+        ),
         "tile_exclusions_count": int(metadata.attrs.get("tile_exclusions_count", 0)),
-        "tile_excluded_shortnames": list(metadata.attrs.get("tile_excluded_shortnames", [])),
-        "tile_exclusion_policy_sha256": metadata.attrs.get("tile_exclusion_policy_sha256"),
-        "effective_tile_count": int(metadata.attrs.get("effective_tile_count", len(metadata))),
+        "tile_excluded_shortnames": list(
+            metadata.attrs.get("tile_excluded_shortnames", [])
+        ),
+        "tile_flagged_count": int(metadata.attrs.get("tile_flagged_count", 0)),
+        "tile_flagged_shortnames": list(
+            metadata.attrs.get("tile_flagged_shortnames", [])
+        ),
+        "tile_flagged_classes": list(metadata.attrs.get("tile_flagged_classes", [])),
+        "tile_flagged_caveats": list(metadata.attrs.get("tile_flagged_caveats", [])),
+        "tile_exclusion_policy_sha256": metadata.attrs.get(
+            "tile_exclusion_policy_sha256"
+        ),
+        "effective_tile_count": int(
+            metadata.attrs.get("effective_tile_count", len(metadata))
+        ),
         "source_crs": metadata.attrs.get("source_crs"),
         "metric_crs": metadata.attrs.get("metric_crs"),
         "transform_applied": bool(metadata.attrs.get("transform_applied", False)),
@@ -365,12 +412,18 @@ def _write_year_scope_audit(
 
     def _row(scope: str, frame: pd.DataFrame) -> dict[str, Any]:
         years = pd.to_numeric(frame.get("year"), errors="coerce")
+        attrs = frame.attrs if hasattr(frame, "attrs") else {}
         return {
             "scope": scope,
             "n_tiles": int(len(frame)),
             "year_min": int(years.min()) if years.notna().any() else None,
             "year_max": int(years.max()) if years.notna().any() else None,
             "n_year_ge_1950": int((years >= 1950).fillna(False).sum()),
+            "tile_exclusions_count": int(attrs.get("tile_exclusions_count", 0)),
+            "tile_flagged_count": int(attrs.get("tile_flagged_count", 0)),
+            "tile_flagged_shortnames": ";".join(
+                str(value) for value in attrs.get("tile_flagged_shortnames", [])
+            ),
         }
 
     rows = [_row("before_exclusion", raw_meta), _row("after_exclusion", filt_meta)]
@@ -384,6 +437,10 @@ def _write_year_scope_audit(
         filt_attrs.get("tile_exclusions_count", max(0, len(raw_meta) - len(filt_meta)))
     )
     tile_excluded_shortnames = list(filt_attrs.get("tile_excluded_shortnames", []))
+    tile_flagged_count = int(filt_attrs.get("tile_flagged_count", 0))
+    tile_flagged_shortnames = list(filt_attrs.get("tile_flagged_shortnames", []))
+    tile_flagged_classes = list(filt_attrs.get("tile_flagged_classes", []))
+    tile_flagged_caveats = list(filt_attrs.get("tile_flagged_caveats", []))
     tile_exclusion_policy_sha256 = filt_attrs.get("tile_exclusion_policy_sha256")
     effective_tile_count = int(filt_attrs.get("effective_tile_count", len(filt_meta)))
 
@@ -396,9 +453,57 @@ def _write_year_scope_audit(
         "tile_exclusions_applied": tile_exclusions_applied,
         "tile_exclusions_count": tile_exclusions_count,
         "tile_excluded_shortnames": tile_excluded_shortnames,
+        "tile_flagged_count": tile_flagged_count,
+        "tile_flagged_shortnames": tile_flagged_shortnames,
+        "tile_flagged_classes": tile_flagged_classes,
+        "tile_flagged_caveats": tile_flagged_caveats,
         "tile_exclusion_policy_sha256": tile_exclusion_policy_sha256,
         "effective_tile_count": effective_tile_count,
     }
+
+
+def _write_crs_provenance_audit(
+    *,
+    out_dir: Path,
+    tile_exclusion_policy: Path,
+    execution_profile: str,
+) -> dict[str, Any]:
+    from dataselector.data.crs_provenance import audit_crs_provenance
+
+    data_quality_dir = out_dir / "data_quality"
+    data_quality_dir.mkdir(parents=True, exist_ok=True)
+    audit_path = data_quality_dir / "crs_provenance_audit.csv"
+
+    metadata = load_metadata(
+        "data/new_all_tiles.csv",
+        resolve_images=False,
+        strict_metric_crs=False,
+        strict_explicit_crs=False,
+        allow_heuristic_crs_fallback=True,
+        tile_exclusion_policy=tile_exclusion_policy,
+        apply_tile_exclusion=True,
+    )
+    audit_df, summary = audit_crs_provenance(metadata)
+    audit_df.to_csv(audit_path, index=False)
+
+    result = {
+        "crs_provenance_audit_path": str(audit_path),
+        **summary,
+        "source_crs": metadata.attrs.get("source_crs"),
+        "metric_crs": metadata.attrs.get("metric_crs"),
+        "transform_applied": bool(metadata.attrs.get("transform_applied", False)),
+    }
+    if execution_profile == "thesis_repro" and not bool(
+        summary.get("crs_strict_ready", False)
+    ):
+        raise RuntimeError(
+            "Explicit CRS audit failed for thesis_repro: "
+            f"status={summary.get('crs_provenance_status')}, "
+            f"missing={summary.get('crs_missing_explicit_count')}, "
+            f"heuristic={summary.get('crs_heuristic_fallback_count')}, "
+            f"mismatches={summary.get('crs_consistency_issue_count')}"
+        )
+    return result
 
 
 def run_thesis_orchestrate(
@@ -425,6 +530,10 @@ def run_thesis_orchestrate(
     leakage_buffer_km: str = "auto",
     build_splits: str | bool = "false",
     split_seed: int = 42,
+    build_handoffs: bool = False,
+    patches_per_tile: int = 2,
+    patch_include_case: str | bool = "false",
+    handoff_root: str = "handoff",
     force: bool = False,
     force_override_reason: str | None = None,
 ) -> int:
@@ -434,6 +543,14 @@ def run_thesis_orchestrate(
         strict_real_data,
         label="strict_real_data",
     )
+    patch_include_case_flag = _parse_bool(
+        patch_include_case,
+        label="patch_include_case",
+    )
+    patches_per_tile_value = _parse_positive_int(
+        patches_per_tile,
+        label="patches_per_tile",
+    )
     runtime_state = activate_repro_mode(profile=execution_profile, seed=seed)
     config_path = Path(config)
     if not config_path.exists():
@@ -441,9 +558,7 @@ def run_thesis_orchestrate(
 
     metadata_path = Path("data/new_all_tiles.csv")
     if not metadata_path.exists():
-        raise FileNotFoundError(
-            "Canonical metadata missing: data/new_all_tiles.csv"
-        )
+        raise FileNotFoundError("Canonical metadata missing: data/new_all_tiles.csv")
 
     _require_torch()
 
@@ -458,6 +573,7 @@ def run_thesis_orchestrate(
     resolution_dir.mkdir(parents=True, exist_ok=True)
     split_extra: dict[str, Any] = {}
     year_scope_extra: dict[str, Any] = {}
+    crs_audit_extra: dict[str, Any] = {"crs_provenance_audit_path": None}
 
     # --- ANCHOR TILE LOGIC ---
     anchor_tile_env = os.environ.get("DATASELECTOR_ANCHOR_TILE")
@@ -470,6 +586,16 @@ def run_thesis_orchestrate(
 
     # Keep feature extraction, autoscale and split-building on the same candidate pool.
     tile_policy_path = Path(tile_exclusion_policy)
+    if execution_profile == "thesis_repro":
+        os.environ["DATASELECTOR_STRICT_CRS"] = "1"
+        os.environ["DATASELECTOR_STRICT_EXPLICIT_CRS"] = "1"
+        os.environ["DATASELECTOR_ALLOW_HEURISTIC_CRS_FALLBACK"] = "0"
+        os.environ["DATASELECTOR_METRIC_EPSG"] = "25832"
+    else:
+        os.environ["DATASELECTOR_STRICT_CRS"] = "0"
+        os.environ["DATASELECTOR_STRICT_EXPLICIT_CRS"] = "0"
+        os.environ["DATASELECTOR_ALLOW_HEURISTIC_CRS_FALLBACK"] = "1"
+        os.environ["DATASELECTOR_METRIC_EPSG"] = "25832"
     if tile_policy_path.exists():
         os.environ["DATASELECTOR_APPLY_TILE_EXCLUSION"] = "1"
         os.environ["DATASELECTOR_TILE_EXCLUSION_POLICY"] = str(tile_policy_path)
@@ -479,7 +605,47 @@ def run_thesis_orchestrate(
                 tile_exclusion_policy=tile_policy_path,
             )
         except Exception as exc:
-            year_scope_extra = {"year_scope_audit_error": str(exc)}
+            record = report_exception(
+                exc,
+                phase="year_scope_audit",
+                user_message="Year-scope audit failed",
+                output_dir=out_dir,
+                logger=logger,
+                context={"tile_exclusion_policy": tile_policy_path},
+            )
+            year_scope_extra = {
+                "year_scope_audit_error": str(exc),
+                "exceptions_log_path": record.get("exceptions_log_path"),
+                "exception_records": [record],
+            }
+        try:
+            crs_audit_extra = _write_crs_provenance_audit(
+                out_dir=out_dir,
+                tile_exclusion_policy=tile_policy_path,
+                execution_profile=execution_profile,
+            )
+        except Exception as exc:
+            record = report_exception(
+                exc,
+                phase="crs_provenance_audit",
+                user_message="CRS provenance audit failed",
+                output_dir=out_dir,
+                logger=logger,
+                context={
+                    "tile_exclusion_policy": tile_policy_path,
+                    "execution_profile": execution_profile,
+                },
+            )
+            crs_audit_extra = {
+                "crs_provenance_audit_path": str(
+                    out_dir / "data_quality" / "crs_provenance_audit.csv"
+                ),
+                "crs_provenance_audit_error": str(exc),
+                "exceptions_log_path": record.get("exceptions_log_path"),
+                "exception_records": [record],
+            }
+            if execution_profile == "thesis_repro":
+                raise
 
     # 1) Precompute required artifacts (autoscale best + selected_n_samples).
     run_optuna_autoscale_workflow(
@@ -511,6 +677,9 @@ def run_thesis_orchestrate(
         config_path=config_path,
         cache_mode=cache_mode,
         pre_names=pre_selected_names,
+        tile_exclusion_policy=tile_policy_path,
+        apply_tile_exclusion=True,
+        build_handoffs=False,
     )
     if not resolution_ok:
         raise RuntimeError("Resolver/snapshot phase failed.")
@@ -518,7 +687,9 @@ def run_thesis_orchestrate(
     snapshot_path = _resolve_snapshot_path(out_dir)
     snapshot_errors = validate_snapshot_file(snapshot_path)
     snapshot = load_snapshot(snapshot_path)
-    contract = load_parameter_contract(Path("config/parameter_resolution_contract.yaml"))
+    contract = load_parameter_contract(
+        Path("config/parameter_resolution_contract.yaml")
+    )
     contract_errors = validate_snapshot_against_contract(
         snapshot=snapshot,
         contract=contract,
@@ -556,6 +727,7 @@ def run_thesis_orchestrate(
                 "force_override_used": bool(force),
                 "force_override_reason": force_override_reason if force else None,
                 **year_scope_extra,
+                **crs_audit_extra,
                 **split_extra,
             },
         )
@@ -600,6 +772,12 @@ def run_thesis_orchestrate(
         config_path=config_path,
         cache_mode=cache_mode,
         pre_names=pre_selected_names,
+        tile_exclusion_policy=tile_policy_path,
+        apply_tile_exclusion=True,
+        build_handoffs=bool(build_handoffs),
+        patches_per_tile=patches_per_tile_value,
+        patch_include_case=patch_include_case_flag,
+        handoff_root=handoff_root,
     )
 
     metadata_extra = _merge_orchestrator_metadata_extra(
@@ -617,6 +795,7 @@ def run_thesis_orchestrate(
             "strict_scientific": bool(strict_scientific),
             "run_success": bool(run_ok),
             **year_scope_extra,
+            **crs_audit_extra,
             **split_extra,
         },
     )
@@ -700,6 +879,23 @@ def run_thesis_orchestrate(
             "choices": ["auto", "true", "false"],
         },
         "split_seed": {"type": int, "default": 42},
+        "build_handoffs": {
+            "type": bool,
+            "action": "store_true",
+        },
+        "patches_per_tile": {
+            "type": int,
+            "default": 2,
+        },
+        "patch_include_case": {
+            "type": str,
+            "default": "false",
+            "choices": ["true", "false"],
+        },
+        "handoff_root": {
+            "type": str,
+            "default": "handoff",
+        },
         "force": {"type": bool, "action": "store_true"},
         "force_override_reason": {"type": str, "default": None},
     },
@@ -727,6 +923,10 @@ def cli_thesis_orchestrate(
     leakage_buffer_km: str = "auto",
     build_splits: str | bool = "false",
     split_seed: int = 42,
+    build_handoffs: bool = False,
+    patches_per_tile: int = 2,
+    patch_include_case: str | bool = "false",
+    handoff_root: str = "handoff",
     force: bool = False,
     force_override_reason: str | None = None,
 ) -> int:
@@ -753,6 +953,10 @@ def cli_thesis_orchestrate(
         leakage_buffer_km=leakage_buffer_km,
         build_splits=build_splits,
         split_seed=split_seed,
+        build_handoffs=build_handoffs,
+        patches_per_tile=patches_per_tile,
+        patch_include_case=patch_include_case,
+        handoff_root=handoff_root,
         force=force,
         force_override_reason=force_override_reason,
     )

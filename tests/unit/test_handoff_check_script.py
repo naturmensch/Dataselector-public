@@ -9,7 +9,6 @@ import pytest
 import rasterio
 from rasterio.transform import from_origin
 
-
 SCRIPT_PATH = Path(__file__).resolve().parents[2] / "scripts" / "handoff_check.sh"
 
 REQUIRED_MANIFEST_FIELDS = [
@@ -53,7 +52,14 @@ def _run_script(args: list[str]) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _write_dummy_quicklook_geotiff(path: Path, *, origin_x: float = 1000.0, origin_y: float = 2000.0) -> None:
+def test_handoff_check_script_is_package_wrapper() -> None:
+    text = SCRIPT_PATH.read_text(encoding="utf-8")
+    assert "dataselector.workflows.handoff_bundle" in text
+
+
+def _write_dummy_quicklook_geotiff(
+    path: Path, *, origin_x: float = 1000.0, origin_y: float = 2000.0
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     arr = np.zeros((3, 32, 32), dtype=np.uint8)
     transform = from_origin(origin_x, origin_y, 1.0, 1.0)
@@ -159,8 +165,7 @@ rules:
     match:
       shortName:
         - KDR_155b
-""".strip()
-        + "\n",
+""".strip() + "\n",
         encoding="utf-8",
     )
 
@@ -168,12 +173,16 @@ rules:
     images_dir.mkdir(parents=True, exist_ok=True)
     for short_name in ("KDR_101", "KDR_102"):
         (images_dir / f"{short_name}.png").write_bytes(b"PNG")
-        (images_dir / f"{short_name}.png.aux.xml").write_text("<PAMDataset/>", encoding="utf-8")
+        (images_dir / f"{short_name}.png.aux.xml").write_text(
+            "<PAMDataset/>", encoding="utf-8"
+        )
 
     return repo_root, run_dir, source_selection_csv
 
 
-def test_prepare_resolves_selection_from_report_and_writes_manifest_hash(tmp_path: Path) -> None:
+def test_prepare_resolves_selection_from_report_and_writes_manifest_hash(
+    tmp_path: Path,
+) -> None:
     repo_root, run_dir, _ = _create_basic_repo_fixture(tmp_path)
     handoff_dir = repo_root / "handoff" / "sel_report"
 
@@ -270,10 +279,137 @@ def test_prepare_falls_back_to_tuning_meta_when_report_missing(tmp_path: Path) -
 
     assert result.returncode == 0, result.stderr
 
-    with (handoff_dir / "selected_maps.csv").open("r", encoding="utf-8", newline="") as handle:
+    with (handoff_dir / "selected_maps.csv").open(
+        "r", encoding="utf-8", newline=""
+    ) as handle:
         rows = list(csv.DictReader(handle))
     assert len(rows) == 1
     assert rows[0]["shortName"] == "KDR_201"
+
+
+def test_prepare_prefers_selection_contract_core_for_thesis_v2_runs(
+    tmp_path: Path,
+) -> None:
+    repo_root = tmp_path
+    run_dir = repo_root / "outputs" / "runs" / "test_run_003"
+    tuning_dir = run_dir / "tuning_weights"
+    tuning_dir.mkdir(parents=True, exist_ok=True)
+
+    contract_core_csv = run_dir / "selection_core.csv"
+    _write_csv(
+        contract_core_csv,
+        [
+            {
+                "shortName": "KDR_301",
+                "image_path": "data/images/KDR_301.png",
+                "image_filename": "KDR_301.png",
+                "selection_rank": "0",
+            }
+        ],
+        fieldnames=["shortName", "image_path", "image_filename", "selection_rank"],
+    )
+
+    snapshot_csv = run_dir / "selection_snapshot_primary.csv"
+    _write_csv(
+        snapshot_csv,
+        [
+            {
+                "shortName": "KDR_301",
+                "image_path": "data/images/KDR_301.png",
+                "image_filename": "KDR_301.png",
+                "selection_rank": "0",
+            }
+        ],
+        fieldnames=["shortName", "image_path", "image_filename", "selection_rank"],
+    )
+
+    tuning_selection_csv = tuning_dir / "selection_a0.1_b0.2_g0.7.csv"
+    _write_csv(
+        tuning_selection_csv,
+        [
+            {
+                "shortName": "KDR_999",
+                "image_path": "data/images/KDR_999.png",
+                "image_filename": "KDR_999.png",
+                "selection_rank": "0",
+            }
+        ],
+        fieldnames=["shortName", "image_path", "image_filename", "selection_rank"],
+    )
+
+    (tuning_dir / "meta.json").write_text(
+        json.dumps(
+            {
+                "best_metrics": {
+                    "alpha": 0.1,
+                    "beta": 0.2,
+                    "gamma": 0.7,
+                }
+            },
+            ensure_ascii=True,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    (run_dir / "selection_contract.json").write_text(
+        json.dumps(
+            {
+                "selection_source": "snapshot_primary_selection",
+                "selection_source_file": "selection_snapshot_primary.csv",
+                "core_count": 1,
+                "case_count": 0,
+                "final_count": 1,
+            },
+            ensure_ascii=True,
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    (run_dir / "run_metadata.json").write_text(
+        json.dumps({"extra": {}}, ensure_ascii=True, indent=2),
+        encoding="utf-8",
+    )
+
+    policy_path = repo_root / "config" / "tile_exclusion_policy.yaml"
+    policy_path.parent.mkdir(parents=True, exist_ok=True)
+    policy_path.write_text("version: 1\nrules: []\n", encoding="utf-8")
+
+    images_dir = repo_root / "data" / "images"
+    images_dir.mkdir(parents=True, exist_ok=True)
+    for short_name in ("KDR_301", "KDR_999"):
+        (images_dir / f"{short_name}.png").write_bytes(b"PNG")
+        (images_dir / f"{short_name}.png.aux.xml").write_text(
+            "<PAMDataset/>", encoding="utf-8"
+        )
+
+    handoff_dir = repo_root / "handoff" / "sel_contract"
+    result = _run_script(
+        [
+            "prepare",
+            "--run-dir",
+            str(run_dir),
+            "--out",
+            str(handoff_dir),
+            "--repo-root",
+            str(repo_root),
+        ]
+    )
+
+    assert result.returncode == 0, result.stderr
+
+    manifest = json.loads(
+        (handoff_dir / "handoff_manifest.json").read_text(encoding="utf-8")
+    )
+    assert manifest["source_selection_resolution"] == "selection_contract_core"
+
+    with (handoff_dir / "selected_maps.csv").open(
+        "r", encoding="utf-8", newline=""
+    ) as handle:
+        rows = list(csv.DictReader(handle))
+    assert len(rows) == 1
+    assert rows[0]["shortName"] == "KDR_301"
 
 
 def test_verify_local_detects_exclusion_policy_violation(tmp_path: Path) -> None:
@@ -292,8 +428,7 @@ rules:
     match:
       shortName:
         - KDR_155b
-""".strip()
-        + "\n",
+""".strip() + "\n",
         encoding="utf-8",
     )
 
@@ -614,7 +749,9 @@ def test_prepare_patches_rejects_legacy_png_quicklooks(tmp_path: Path) -> None:
     legacy_rows: list[dict[str, str]] = []
     for row in rows:
         legacy_row = dict(row)
-        legacy_row["quicklook_path"] = str(legacy_row["quicklook_path"]).replace(".tif", ".png")
+        legacy_row["quicklook_path"] = str(legacy_row["quicklook_path"]).replace(
+            ".tif", ".png"
+        )
         legacy_rows.append(legacy_row)
         legacy_png = annotation_dir / legacy_row["quicklook_path"]
         legacy_png.parent.mkdir(parents=True, exist_ok=True)
@@ -674,8 +811,7 @@ rules:
     match:
       shortName:
         - KDR_155b
-""".strip()
-        + "\n",
+""".strip() + "\n",
         encoding="utf-8",
     )
 
@@ -868,6 +1004,7 @@ def test_verify_patches_rejects_png_quicklook(tmp_path: Path) -> None:
     assert "quicklook format invalid" in result.stderr
 
 
+@pytest.mark.filterwarnings("ignore:Dataset has no geotransform, gcps, or rpcs.*")
 def test_verify_patches_rejects_tif_without_georef(tmp_path: Path) -> None:
     repo_root = tmp_path
     handoff_dir = repo_root / "handoff" / "patch_tif_missing_georef"

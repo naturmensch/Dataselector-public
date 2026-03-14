@@ -10,6 +10,7 @@ Unterstützt drei Modi:
 3. Multi-Criteria: Unified distance metric (Visual+Spatial+Temporal)
 """
 
+import logging
 from typing import Dict, Optional
 
 import numpy as np
@@ -19,28 +20,46 @@ from dataselector.data.spatial_schema import (
     coordinates_look_projected,
     normalize_spatial_schema,
 )
+from dataselector.runtime.error_reporting import log_expected_exception
+
+logger = logging.getLogger(__name__)
 
 try:
     from apricot import FacilityLocationSelection
-except Exception:
+except Exception as exc:
     FacilityLocationSelection = None
-    print(
-        "[WARN] apricot FacilityLocationSelection not available; falling back to pure-Python methods where possible"
+    log_expected_exception(
+        logger,
+        "apricot FacilityLocationSelection not available; falling back to pure-Python methods where possible",
+        exc=exc,
+        level=logging.WARNING,
     )
 
 try:
     from dataselector.selection.multi_criteria_facility_location import (
         MultiCriteriaFacilityLocation,
     )
-except ImportError:
+except ImportError as exc:
     MultiCriteriaFacilityLocation = None
+    log_expected_exception(
+        logger,
+        "MultiCriteriaFacilityLocation import failed; multi-criteria backend disabled",
+        exc=exc,
+        level=logging.DEBUG,
+    )
 
 try:
     from dataselector.selection.spatial_facility_location import (
         SpatialConstrainedFacilityLocation,
     )
-except ImportError:
+except ImportError as exc:
     SpatialConstrainedFacilityLocation = None
+    log_expected_exception(
+        logger,
+        "SpatialConstrainedFacilityLocation import failed; spatial constraint integration backend disabled",
+        exc=exc,
+        level=logging.DEBUG,
+    )
 
 
 class DiversitySelector:
@@ -420,7 +439,9 @@ class DiversitySelector:
 
         # Scale temporal replication relative to visual feature dimensionality.
         # Default ratio 2.5% keeps contribution stable across backbones (e.g. 2048 vs 384 dims).
-        n_temporal_dims = max(1, int(round(features.shape[1] * self.temporal_dim_ratio)))
+        n_temporal_dims = max(
+            1, int(round(features.shape[1] * self.temporal_dim_ratio))
+        )
         years_replicated = np.tile(
             years_normalized.reshape(-1, 1), (1, n_temporal_dims)
         )

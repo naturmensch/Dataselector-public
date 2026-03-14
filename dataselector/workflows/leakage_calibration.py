@@ -61,7 +61,9 @@ def calibrate_leakage_buffer(
     similarities = similarities[valid_mask]
 
     if len(distances) == 0:
-        raise RuntimeError("Leakage calibration requires at least one pairwise distance.")
+        raise RuntimeError(
+            "Leakage calibration requires at least one pairwise distance."
+        )
 
     leakage_cfg = (split_policy.get("leakage", {}) or {}).get("calibration", {}) or {}
     bin_width = float(leakage_cfg.get("bin_width_km", 5.0))
@@ -101,7 +103,10 @@ def calibrate_leakage_buffer(
         far_vals = similarities
     threshold = float(np.mean(far_vals) + epsilon)
 
-    if isinstance(leakage_buffer_km, str) and leakage_buffer_km.strip().lower() == "auto":
+    if (
+        isinstance(leakage_buffer_km, str)
+        and leakage_buffer_km.strip().lower() == "auto"
+    ):
         d_leak_km = None
         means = calib_df["mean_similarity"].to_numpy(dtype=float)
         starts = calib_df["bin_start_km"].to_numpy(dtype=float)

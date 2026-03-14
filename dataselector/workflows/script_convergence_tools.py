@@ -75,7 +75,9 @@ def _resolve_min_distance_defaults(config_path: Path) -> dict[str, float | int]:
         return defaults
 
     sel = cfg.get("selection", {}) if isinstance(cfg.get("selection", {}), dict) else {}
-    clu = cfg.get("clustering", {}) if isinstance(cfg.get("clustering", {}), dict) else {}
+    clu = (
+        cfg.get("clustering", {}) if isinstance(cfg.get("clustering", {}), dict) else {}
+    )
 
     n_samples = sel.get("n_samples")
     if isinstance(n_samples, int) and n_samples > 0:
@@ -201,12 +203,17 @@ def _summarize_min_distance(df: Any) -> Any:
     best = pool.iloc[0]
     tie_mask = (
         (pool["target_met_rate"] >= float(best["target_met_rate"]) - 0.01)
-        & (pool["stability_jaccard_mean"] >= float(best["stability_jaccard_mean"]) - 0.02)
+        & (
+            pool["stability_jaccard_mean"]
+            >= float(best["stability_jaccard_mean"]) - 0.02
+        )
         & (pool["mean_clusters_covered"] >= float(best["mean_clusters_covered"]) - 0.2)
         & (pool["decision_score"] >= float(best["decision_score"]) - 0.05)
     )
     tied = pool[tie_mask].copy()
-    recommended = float(tied.sort_values("distance", ascending=True).iloc[0]["distance"])
+    recommended = float(
+        tied.sort_values("distance", ascending=True).iloc[0]["distance"]
+    )
 
     rationale = (
         "feasibility/stability/coverage rule with near-tie preference for smaller "
@@ -240,7 +247,9 @@ def run_compare_min_distance_policies(
     )
 
     defaults = _resolve_min_distance_defaults(Path(config_path))
-    resolved_n_samples = int(n_samples) if n_samples is not None else int(defaults["n_samples"])
+    resolved_n_samples = (
+        int(n_samples) if n_samples is not None else int(defaults["n_samples"])
+    )
     n_clusters = int(defaults["n_clusters"])
     alpha = float(defaults["alpha"])
     beta = float(defaults["beta"])
@@ -404,7 +413,9 @@ def run_compare_seed_vs_unseeded(
     return result
 
 
-def run_seed_benchmark(*, seeds: list[int] | None, output_dir: str | None, subset_n: int) -> dict[str, str]:
+def run_seed_benchmark(
+    *, seeds: list[int] | None, output_dir: str | None, subset_n: int
+) -> dict[str, str]:
     from dataselector.workflows.compare_samplers import benchmark_seed
 
     out_csv = benchmark_seed(
@@ -466,7 +477,9 @@ def _profile_mode(
     txt_file = out_dir / f"profile_{mode_name}.txt"
 
     with txt_file.open("w", encoding="utf-8") as handle:
-        pstats.Stats(prof, stream=handle).strip_dirs().sort_stats("cumulative").print_stats(50)
+        pstats.Stats(prof, stream=handle).strip_dirs().sort_stats(
+            "cumulative"
+        ).print_stats(50)
     prof.dump_stats(str(prof_file))
     return elapsed
 
@@ -485,12 +498,16 @@ def run_profile_selection(
 
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    features, metadata = _load_or_create_profile_data(out_dir, synthetic_n, synthetic_dim)
+    features, metadata = _load_or_create_profile_data(
+        out_dir, synthetic_n, synthetic_dim
+    )
 
     results: dict[str, float] = {}
 
     selector_legacy = DiversitySelector(n_samples=n_samples, use_multi_criteria=False)
-    selector_legacy.select(features, metadata, spatial_constraint=True, min_distance_km=min_distance_km)
+    selector_legacy.select(
+        features, metadata, spatial_constraint=True, min_distance_km=min_distance_km
+    )
     results["legacy"] = _profile_mode(
         mode_name="legacy",
         selector=selector_legacy,
@@ -508,7 +525,9 @@ def run_profile_selection(
         use_multi_criteria=False,
         use_constraint_integration=True,
     )
-    selector_constraint.select(features, metadata, spatial_constraint=True, min_distance_km=min_distance_km)
+    selector_constraint.select(
+        features, metadata, spatial_constraint=True, min_distance_km=min_distance_km
+    )
     results["constraint_integrated"] = _profile_mode(
         mode_name="constraint_integrated",
         selector=selector_constraint,
@@ -560,7 +579,11 @@ def run_temporal_sensitivity_test(
     import numpy as np
     import pandas as pd
 
-    from dataselector.data.io import get_metric_gdf, load_metadata, load_or_extract_features
+    from dataselector.data.io import (
+        get_metric_gdf,
+        load_metadata,
+        load_or_extract_features,
+    )
     from dataselector.selection.clustering import ClusteringPipeline
     from dataselector.selection.diversity_selector import DiversitySelector
     from dataselector.selection.spatial_facility_location import haversine_distance
@@ -584,7 +607,9 @@ def run_temporal_sensitivity_test(
             feat = features[:subset_n]
             meta = metadata.iloc[:subset_n].reset_index(drop=True)
             if getattr(metadata, "gdf_metric", None) is not None:
-                meta.gdf_metric = metadata.gdf_metric.iloc[:subset_n].reset_index(drop=True)
+                meta.gdf_metric = metadata.gdf_metric.iloc[:subset_n].reset_index(
+                    drop=True
+                )
         else:
             feat = features
             meta = metadata
@@ -607,7 +632,9 @@ def run_temporal_sensitivity_test(
 
             years = meta.iloc[selected]["year"].dropna().values
             temporal_std = float(np.std(years)) if len(years) > 0 else float("nan")
-            temporal_range = float(np.max(years) - np.min(years)) if len(years) > 0 else float("nan")
+            temporal_range = (
+                float(np.max(years) - np.min(years)) if len(years) > 0 else float("nan")
+            )
 
             use_metric = get_metric_gdf(meta) is not None
             pairwise: list[float] = []
@@ -615,8 +642,12 @@ def run_temporal_sensitivity_test(
                 for j in range(i + 1, len(selected)):
                     if use_metric:
                         gdf = get_metric_gdf(meta)
-                        a = gdf.loc[selected[i], ["_proj_x", "_proj_y"]].values.astype(float)
-                        b = gdf.loc[selected[j], ["_proj_x", "_proj_y"]].values.astype(float)
+                        a = gdf.loc[selected[i], ["_proj_x", "_proj_y"]].values.astype(
+                            float
+                        )
+                        b = gdf.loc[selected[j], ["_proj_x", "_proj_y"]].values.astype(
+                            float
+                        )
                         pairwise.append(float((((a - b) ** 2).sum()) ** 0.5 / 1000.0))
                     else:
                         r1 = meta.iloc[selected[i]]
@@ -814,8 +845,12 @@ def cli_compare_seed_vs_unseeded(
     min_distance_km: float | None = None,
     report_label: str | None = None,
     run_production_quick: bool = False,
-    production_seeded_run: str | None = "outputs/runs/thesis_orchestrate_full_20260213T151106Z_B",
-    production_unseeded_run: str | None = "outputs/runs/thesis_orchestrate_full_20260213T141421Z_B",
+    production_seeded_run: (
+        str | None
+    ) = "outputs/runs/thesis_orchestrate_full_20260213T151106Z_B",
+    production_unseeded_run: (
+        str | None
+    ) = "outputs/runs/thesis_orchestrate_full_20260213T141421Z_B",
 ) -> int:
     result = run_compare_seed_vs_unseeded(
         config_path=config_path,

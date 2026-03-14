@@ -54,6 +54,7 @@ def run_exploration(
     n_samples: int = 50,
     selection_n_samples: int | None = None,
     sampler: str = "lhs",
+    objective_authority: str | None = None,
     seed: int = 42,
     metadata_path: Path | str | None = None,
     min_distance_km: float | None = None,
@@ -75,6 +76,8 @@ def run_exploration(
         config (`selection.n_samples`) or autoscale artifact; otherwise fail-fast.
     sampler : str
         'lhs' or 'sobol'
+    objective_authority : str | None
+        Selection objective mode for sweep ranking.
     seed : int
         Random seed
     metadata_path : Path | str | None
@@ -105,6 +108,7 @@ def run_exploration(
 
     # Pipeline integration
     import os
+
     import yaml
 
     em = None
@@ -194,6 +198,17 @@ def run_exploration(
             )
         batch_size = int(cfg_batch)
 
+    if objective_authority is None:
+        objective_authority = (
+            str(
+                cfg.get("selection", {}).get(
+                    "objective_authority", "unified_normalized"
+                )
+            )
+            .strip()
+            .lower()
+        )
+
     # Resolve selection target size (separate from LHS point count).
     selection_target, selection_target_source = resolve_selection_n_samples(
         selection_n_samples,
@@ -223,6 +238,7 @@ def run_exploration(
     print(f"Min Distance Constraint: {min_distance} km ({min_distance_source})")
     print(f"n_clusters: {n_clusters}")
     print(f"batch_size: {batch_size}")
+    print(f"objective_authority: {objective_authority}")
     print(f"Seed: {seed}")
     print("=" * 70 + "\n")
 
@@ -234,6 +250,7 @@ def run_exploration(
         n_clusters=int(n_clusters),
         batch_size=int(batch_size),
         min_distance_km=min_distance,
+        objective_authority=objective_authority,
         patience=None,
         pre_selected=pre_indices,
         pre_selected_names=pre_names,
@@ -309,6 +326,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
+        "--objective-authority",
+        choices=["unified_normalized", "legacy_lexicographic"],
+        default=None,
+        help="Selection objective authority used for best-combination ranking",
+    )
+    parser.add_argument(
         "--metadata-path",
         type=str,
         required=False,
@@ -334,6 +357,7 @@ def main(argv: list[str] | None = None) -> int:
             n_samples=args.n_samples,
             selection_n_samples=args.selection_n_samples,
             sampler=args.sampler,
+            objective_authority=args.objective_authority,
             seed=args.seed,
             metadata_path=metadata_path,
             min_distance_km=args.min_distance_km,

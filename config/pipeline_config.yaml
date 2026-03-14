@@ -55,6 +55,14 @@ selection:
   # pre_selected_indices: [145]
   # Core+Case contract: case tiles are appended after core selection and do not
   # drive the core sampler by default.
+  # Selection authority:
+  # - snapshot_primary: final core set is materialized directly from validated snapshot params
+  # - materialized_csv_primary: legacy compatibility mode using tuning_weights selection CSV
+  selection_authority: snapshot_primary
+  # Objective authority:
+  # - unified_normalized: same normalized objective as autoscale (thesis default)
+  # - legacy_lexicographic: historical fallback ranking (non-default)
+  objective_authority: unified_normalized
   case_tile_names: ["Hamburg"]
   case_exclude_from_core: true
   case_attach_mode: append_unique

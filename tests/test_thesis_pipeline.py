@@ -14,8 +14,20 @@ def _minimal_resolved_config(
     min_distance_km: float = 28.5,
     optuna_sampler: str = "tpe",
     exploration_sampler: str = "lhs",
+    selection_authority: str | None = None,
+    objective_authority: str | None = None,
 ) -> str:
     n_samples_literal = "null" if n_samples is None else str(int(n_samples))
+    selection_authority_block = (
+        f"  selection_authority: {selection_authority}\n"
+        if selection_authority is not None
+        else ""
+    )
+    objective_authority_block = (
+        f"  objective_authority: {objective_authority}\n"
+        if objective_authority is not None
+        else ""
+    )
     return (
         "feature_extraction:\n"
         "  model: dinov2\n"
@@ -40,9 +52,31 @@ def _minimal_resolved_config(
         "  use_multi_criteria: true\n"
         "  use_constraint_integration: false\n"
         "  random_state: 42\n"
+        f"{selection_authority_block}"
+        f"{objective_authority_block}"
         f"  optuna_sampler: {optuna_sampler}\n"
         f"  exploration_sampler: {exploration_sampler}\n"
     )
+
+
+def _minimal_metadata_csv_text(*, year: int = 1900) -> str:
+    return (
+        "ul_x,ul_y,lr_x,lr_y,year,source_crs,crs_source,crs_provenance,crs_explicit\n"
+        f"1,2,3,4,{year},EPSG:4326,sidecar_xml,explicit_sidecar_xml,true\n"
+    )
+
+
+def _with_explicit_crs(df: pd.DataFrame, source_crs: str = "EPSG:3857") -> pd.DataFrame:
+    out = df.copy()
+    if "source_crs" not in out.columns:
+        out["source_crs"] = source_crs
+    if "crs_source" not in out.columns:
+        out["crs_source"] = "sidecar_xml"
+    if "crs_provenance" not in out.columns:
+        out["crs_provenance"] = "explicit_sidecar_xml"
+    if "crs_explicit" not in out.columns:
+        out["crs_explicit"] = True
+    return out
 
 
 def test_thesis_pipeline_importable():
@@ -77,6 +111,12 @@ def test_thesis_pipeline_signature():
         "hamburg",
         "validation_seeds",
         "validation_min_distances",
+        "tile_exclusion_policy",
+        "apply_tile_exclusion",
+        "build_handoffs",
+        "patches_per_tile",
+        "patch_include_case",
+        "handoff_root",
     ]
 
     for param in expected_params:
@@ -87,7 +127,7 @@ def test_run_thesis_pipeline_default_n_trials_is_370():
     """Ensure default Optuna trial budget was raised to 370 (policy update)."""
     import inspect
 
-    from dataselector.workflows.thesis_pipeline import run_thesis_pipeline, main
+    from dataselector.workflows.thesis_pipeline import main, run_thesis_pipeline
 
     assert inspect.signature(run_thesis_pipeline).parameters["n_trials"].default == 370
     assert inspect.signature(main).parameters["n_trials"].default == 370
@@ -123,7 +163,7 @@ def test_run_thesis_pipeline_fails_without_resolvable_n_samples(tmp_path, monkey
     (ws / "data").mkdir(parents=True, exist_ok=True)
     (ws / "config").mkdir(parents=True, exist_ok=True)
     (ws / "data" / "new_all_tiles.csv").write_text(
-        "ul_x,ul_y,lr_x,lr_y,year\n1,2,3,4,1900\n",
+        _minimal_metadata_csv_text(),
         encoding="utf-8",
     )
     (ws / "config" / "pipeline_config.yaml").write_text(
@@ -155,7 +195,7 @@ def test_run_thesis_pipeline_passes_metadata_path_to_stages(tmp_path, monkeypatc
     (ws / "data").mkdir(parents=True, exist_ok=True)
     (ws / "config").mkdir(parents=True, exist_ok=True)
     (ws / "data" / "new_all_tiles.csv").write_text(
-        "ul_x,ul_y,lr_x,lr_y,year\n1,2,3,4,1900\n",
+        _minimal_metadata_csv_text(),
         encoding="utf-8",
     )
     (ws / "config" / "pipeline_config.yaml").write_text(
@@ -222,6 +262,288 @@ def test_run_thesis_pipeline_phase4_single_run_report(tmp_path):
     assert (tmp_path / "outputs" / "THESIS_PIPELINE_REPORT.md").exists()
 
 
+def test_run_thesis_pipeline_phase5_skipped_by_default(tmp_path, monkeypatch):
+    from dataselector.workflows import thesis_pipeline as mod
+
+    ws = tmp_path
+    (ws / "data").mkdir(parents=True, exist_ok=True)
+    (ws / "config").mkdir(parents=True, exist_ok=True)
+    (ws / "data" / "new_all_tiles.csv").write_text(
+        _minimal_metadata_csv_text(),
+        encoding="utf-8",
+    )
+    (ws / "config" / "pipeline_config.yaml").write_text(
+        _minimal_resolved_config(n_samples=24),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(ws)
+    monkeypatch.setattr(
+        "dataselector.workflows.generate_reports.generate_thesis_final_report",
+        lambda **_kwargs: None,
+    )
+
+    success = mod.run_thesis_pipeline(
+        n_lhs=5,
+        n_trials=2,
+        skip_exploration=True,
+        skip_optimization=True,
+        skip_validation=True,
+        dry_run=False,
+        output_dir=ws / "outputs",
+        execution_profile="thesis_repro",
+        seed=11,
+    )
+
+    assert success is True
+    run_meta = json.loads((ws / "outputs" / "run_metadata.json").read_text("utf-8"))
+    extra = run_meta["extra"]
+    assert extra["build_handoffs"] is False
+    assert extra["patch_include_case"] is False
+    assert extra["patches_per_tile"] == 2
+    assert extra["phase_status"]["phase5_handoffs"] == "skipped"
+
+
+def test_run_thesis_pipeline_phase5_success_records_handoffs(tmp_path, monkeypatch):
+    from dataselector.workflows import thesis_pipeline as mod
+
+    ws = tmp_path
+    (ws / "data").mkdir(parents=True, exist_ok=True)
+    (ws / "config").mkdir(parents=True, exist_ok=True)
+    (ws / "data" / "new_all_tiles.csv").write_text(
+        _minimal_metadata_csv_text(),
+        encoding="utf-8",
+    )
+    (ws / "config" / "pipeline_config.yaml").write_text(
+        _minimal_resolved_config(n_samples=24),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(ws)
+
+    report_calls: list[dict[str, object]] = []
+
+    def _fake_report(**kwargs):
+        report_calls.append(kwargs)
+        return ws / "outputs" / "THESIS_PIPELINE_REPORT.md"
+
+    def _fake_phase5(**kwargs):
+        return {
+            "build_handoffs": True,
+            "handoff_root": str(ws / "handoff"),
+            "tile_handoff_dir": str(ws / "handoff" / "outputs"),
+            "tile_handoff_manifest_path": str(
+                ws / "handoff" / "outputs" / "handoff_manifest.json"
+            ),
+            "tile_handoff_selection_count": 24,
+            "tile_handoff_verify": {"status": "ok"},
+            "annotation_plan_dir": str(ws / "outputs" / "annotation_plan"),
+            "annotation_dataset_contract_path": str(
+                ws / "outputs" / "annotation_plan" / "annotation_dataset_contract.json"
+            ),
+            "patches_per_tile": 2,
+            "patch_include_case": False,
+            "patch_selection_group": "core",
+            "patches_total": 48,
+            "patches_qc_passed": 48,
+            "patches_qc_rejected": 0,
+            "patch_handoff_dir": str(ws / "handoff" / "outputs_patches_core"),
+            "patch_handoff_manifest_path": str(
+                ws / "handoff" / "outputs_patches_core" / "patch_handoff_manifest.json"
+            ),
+            "patch_handoff_selection_count": 48,
+            "patch_handoff_verify": {"status": "ok"},
+            "phase5_freeze_boundary_verified": True,
+            "phase5_freeze_boundary_hashes": {"selection_core.csv": "abc"},
+            "phase5_freeze_boundary_hashes_post": {"selection_core.csv": "abc"},
+        }
+
+    monkeypatch.setattr(
+        "dataselector.workflows.generate_reports.generate_thesis_final_report",
+        _fake_report,
+    )
+    monkeypatch.setattr(
+        "dataselector.workflows.thesis_pipeline._run_phase5_annotation_handoffs",
+        _fake_phase5,
+    )
+
+    success = mod.run_thesis_pipeline(
+        n_lhs=5,
+        n_trials=2,
+        skip_exploration=True,
+        skip_optimization=True,
+        skip_validation=True,
+        dry_run=False,
+        output_dir=ws / "outputs",
+        execution_profile="thesis_repro",
+        seed=11,
+        build_handoffs=True,
+        patches_per_tile=2,
+        patch_include_case=False,
+        handoff_root="handoff",
+    )
+
+    assert success is True
+    assert len(report_calls) == 2
+    run_meta = json.loads((ws / "outputs" / "run_metadata.json").read_text("utf-8"))
+    extra = run_meta["extra"]
+    assert extra["build_handoffs"] is True
+    assert extra["patch_include_case"] is False
+    assert extra["patch_selection_group"] == "core"
+    assert extra["patches_total"] == 48
+    assert extra["phase5_freeze_boundary_verified"] is True
+    assert extra["phase_status"]["phase5_handoffs"] == "success"
+
+
+def test_run_thesis_pipeline_phase5_failure_fails_run_but_keeps_selection_artifacts(
+    tmp_path, monkeypatch
+):
+    from dataselector.workflows import thesis_pipeline as mod
+
+    ws = tmp_path
+    (ws / "data").mkdir(parents=True, exist_ok=True)
+    (ws / "config").mkdir(parents=True, exist_ok=True)
+    output_dir = ws / "outputs"
+    (output_dir / "tuning_weights").mkdir(parents=True, exist_ok=True)
+
+    pd.DataFrame(
+        {
+            "shortName": ["KDR_001", "KDR_002"],
+            "longName": ["tile_one", "tile_two"],
+            "city": ["CityA", "CityB"],
+            "ul_x": [500000.0, 501000.0],
+            "ul_y": [5900000.0, 5901000.0],
+            "lr_x": [500100.0, 501100.0],
+            "lr_y": [5899900.0, 5900900.0],
+            "year": [1910, 1911],
+            "source_crs": ["EPSG:3857", "EPSG:3857"],
+            "crs_source": ["sidecar_xml", "sidecar_xml"],
+            "crs_provenance": ["explicit_sidecar_xml", "explicit_sidecar_xml"],
+            "crs_explicit": [True, True],
+        }
+    ).to_csv(ws / "data" / "new_all_tiles.csv", index=False)
+    (ws / "config" / "pipeline_config.yaml").write_text(
+        _minimal_resolved_config(n_samples=2),
+        encoding="utf-8",
+    )
+    (output_dir / "tuning_weights" / "meta.json").write_text(
+        json.dumps({"best_metrics": {"alpha": 0.4, "beta": 0.3, "gamma": 0.3}}),
+        encoding="utf-8",
+    )
+    pd.DataFrame(
+        [
+            {
+                "selection_rank": 0,
+                "shortName": "KDR_001",
+                "city": "CityA",
+                "year": 1910,
+            },
+            {
+                "selection_rank": 1,
+                "shortName": "KDR_002",
+                "city": "CityB",
+                "year": 1911,
+            },
+        ]
+    ).to_csv(
+        output_dir / "tuning_weights" / "selection_a0.4_b0.3_g0.3.csv", index=False
+    )
+
+    monkeypatch.chdir(ws)
+    monkeypatch.setattr(
+        "dataselector.workflows.generate_reports.generate_thesis_final_report",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "dataselector.workflows.thesis_pipeline._run_phase5_annotation_handoffs",
+        lambda **_kwargs: (_ for _ in ()).throw(RuntimeError("phase5 boom")),
+    )
+
+    success = mod.run_thesis_pipeline(
+        n_lhs=5,
+        n_trials=2,
+        skip_exploration=True,
+        skip_optimization=True,
+        skip_validation=True,
+        dry_run=False,
+        output_dir=output_dir,
+        execution_profile="thesis_repro",
+        seed=11,
+        build_handoffs=True,
+    )
+
+    assert success is False
+    assert (output_dir / "selection_core.csv").exists()
+    assert (output_dir / "selection_contract.json").exists()
+    run_meta = json.loads((output_dir / "run_metadata.json").read_text("utf-8"))
+    assert run_meta["extra"]["phase_status"]["phase5_handoffs"] == "failed"
+    assert run_meta["extra"]["build_handoffs"] is True
+
+
+def test_run_phase5_annotation_handoffs_verifies_freeze_boundary(tmp_path, monkeypatch):
+    from dataselector.workflows import thesis_pipeline as mod
+
+    output_dir = tmp_path / "outputs"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame([{"shortName": "KDR_001", "selection_rank": 0}]).to_csv(
+        output_dir / "selection_core.csv", index=False
+    )
+    pd.DataFrame(columns=["shortName", "selection_rank"]).to_csv(
+        output_dir / "selection_case.csv", index=False
+    )
+    pd.DataFrame([{"shortName": "KDR_001", "selection_rank": 0}]).to_csv(
+        output_dir / "selection_final_with_cases.csv", index=False
+    )
+    (output_dir / "selection_contract.json").write_text(
+        json.dumps({"selection_source": "snapshot_primary_selection"}),
+        encoding="utf-8",
+    )
+    snapshot_path = output_dir / "final_config.yaml"
+    snapshot_path.write_text("parameters: {}\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        mod,
+        "prepare_tile_handoff",
+        lambda **_kwargs: {"selection_count": 1},
+    )
+    monkeypatch.setattr(mod, "verify_tile_handoff", lambda **_kwargs: {"status": "ok"})
+
+    def _fake_annotation_plan(**_kwargs):
+        ann_dir = output_dir / "annotation_plan"
+        ann_dir.mkdir(parents=True, exist_ok=True)
+        contract_path = ann_dir / "annotation_dataset_contract.json"
+        contract_path.write_text("{}", encoding="utf-8")
+        return {
+            "output_dir": str(ann_dir),
+            "annotation_dataset_contract_json": str(contract_path),
+            "patches_total": 2,
+            "patches_qc_passed": 2,
+            "patches_qc_rejected": 0,
+        }
+
+    monkeypatch.setattr(mod, "run_thesis_build_annotation_plan", _fake_annotation_plan)
+    monkeypatch.setattr(
+        mod,
+        "prepare_patch_handoff",
+        lambda **_kwargs: {"selection_count": 2},
+    )
+    monkeypatch.setattr(mod, "verify_patch_handoff", lambda **_kwargs: {"status": "ok"})
+
+    result = mod._run_phase5_annotation_handoffs(
+        output_dir=output_dir,
+        resolved_snapshot_path=snapshot_path,
+        handoff_root=str(tmp_path / "handoff"),
+        patches_per_tile=2,
+        patch_include_case=False,
+        tile_exclusion_policy=None,
+    )
+
+    assert result["phase5_freeze_boundary_verified"] is True
+    assert (
+        result["phase5_freeze_boundary_hashes"]
+        == result["phase5_freeze_boundary_hashes_post"]
+    )
+    assert result["patch_selection_group"] == "core"
+
+
 def test_run_thesis_pipeline_fails_without_resolvable_optuna_sampler(
     tmp_path, monkeypatch
 ):
@@ -232,7 +554,7 @@ def test_run_thesis_pipeline_fails_without_resolvable_optuna_sampler(
     (ws / "data").mkdir(parents=True, exist_ok=True)
     (ws / "config").mkdir(parents=True, exist_ok=True)
     (ws / "data" / "new_all_tiles.csv").write_text(
-        "ul_x,ul_y,lr_x,lr_y,year\n1,2,3,4,1900\n",
+        _minimal_metadata_csv_text(),
         encoding="utf-8",
     )
     # Deliberately omit selection.optuna_sampler and sampler artifacts.
@@ -263,7 +585,7 @@ def test_run_thesis_pipeline_preselection_forwarding_and_dedup(tmp_path, monkeyp
     (ws / "data").mkdir(parents=True, exist_ok=True)
     (ws / "config").mkdir(parents=True, exist_ok=True)
     (ws / "data" / "new_all_tiles.csv").write_text(
-        "ul_x,ul_y,lr_x,lr_y,year\n1,2,3,4,1900\n",
+        _minimal_metadata_csv_text(),
         encoding="utf-8",
     )
     (ws / "config" / "pipeline_config.yaml").write_text(
@@ -357,7 +679,7 @@ def test_run_thesis_pipeline_writes_central_parameter_provenance(tmp_path, monke
     (ws / "data").mkdir(parents=True, exist_ok=True)
     (ws / "config").mkdir(parents=True, exist_ok=True)
     (ws / "data" / "new_all_tiles.csv").write_text(
-        "ul_x,ul_y,lr_x,lr_y,year\n1,2,3,4,1900\n",
+        _minimal_metadata_csv_text(),
         encoding="utf-8",
     )
     (ws / "config" / "pipeline_config.yaml").write_text(
@@ -395,7 +717,9 @@ def test_run_thesis_pipeline_writes_central_parameter_provenance(tmp_path, monke
     params = resolved["parameters"]
     assert "selection" in params and "_provenance" in params["selection"]
     assert "clustering" in params and "_provenance" in params["clustering"]
-    assert "feature_extraction" in params and "_provenance" in params["feature_extraction"]
+    assert (
+        "feature_extraction" in params and "_provenance" in params["feature_extraction"]
+    )
     assert "alpha_visual" in params["selection"]["_provenance"]
     assert "n_clusters" in params["clustering"]["_provenance"]
     assert "batch_size" in params["feature_extraction"]["_provenance"]
@@ -525,7 +849,9 @@ def test_run_thesis_pipeline_core_case_empty_append_has_no_futurewarning(
             "year": [1910, 1911],
             "selection_rank": [0, 1],
         }
-    ).to_csv(output_dir / "tuning_weights" / "selection_a0.4_b0.3_g0.3.csv", index=False)
+    ).to_csv(
+        output_dir / "tuning_weights" / "selection_a0.4_b0.3_g0.3.csv", index=False
+    )
 
     monkeypatch.chdir(ws)
     monkeypatch.setattr(
@@ -557,7 +883,155 @@ def test_run_thesis_pipeline_core_case_empty_append_has_no_futurewarning(
     assert contract["final_count"] == 2
 
 
-def test_run_thesis_pipeline_compute_params_uses_autoscale_artifact(tmp_path, monkeypatch):
+def test_run_thesis_pipeline_core_case_export_strips_unsafe_dataframe_attrs(
+    tmp_path, monkeypatch
+):
+    """Core+Case export must survive pandas attrs containing DataFrame payloads."""
+    from dataselector.workflows import thesis_pipeline as mod
+
+    ws = tmp_path
+    (ws / "data").mkdir(parents=True, exist_ok=True)
+    (ws / "config").mkdir(parents=True, exist_ok=True)
+    output_dir = ws / "outputs"
+    (output_dir / "tuning_weights").mkdir(parents=True, exist_ok=True)
+
+    pd.DataFrame(
+        {
+            "shortName": ["KDR_146", "KDR_002"],
+            "longName": ["hamburg_tile", "kiel_tile"],
+            "city": ["Hamburg", "Kiel"],
+            "ul_x": [500000.0, 501000.0],
+            "ul_y": [5900000.0, 5901000.0],
+            "lr_x": [500100.0, 501100.0],
+            "lr_y": [5899900.0, 5900900.0],
+            "year": [1910, 1911],
+        }
+    ).to_csv(ws / "data" / "new_all_tiles.csv", index=False)
+    (ws / "config" / "pipeline_config.yaml").write_text(
+        _minimal_resolved_config(n_samples=2),
+        encoding="utf-8",
+    )
+    (output_dir / "tuning_weights" / "meta.json").write_text(
+        json.dumps({"best_metrics": {"alpha": 0.4, "beta": 0.3, "gamma": 0.3}}),
+        encoding="utf-8",
+    )
+    pd.DataFrame(
+        {
+            "shortName": ["KDR_146", "KDR_002"],
+            "longName": ["hamburg_tile", "kiel_tile"],
+            "city": ["Hamburg", "Kiel"],
+            "year": [1910, 1911],
+            "selection_rank": [0, 1],
+        }
+    ).to_csv(
+        output_dir / "tuning_weights" / "selection_a0.4_b0.3_g0.3.csv", index=False
+    )
+
+    monkeypatch.chdir(ws)
+    monkeypatch.setattr(
+        "dataselector.workflows.generate_reports.generate_thesis_final_report",
+        lambda **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "dataselector.data.io.attach_metric_gdf",
+        lambda df, _gdf_metric: df.attrs.__setitem__(
+            "gdf_metric", pd.DataFrame({"dummy": [1]})
+        ),
+    )
+
+    success = mod.run_thesis_pipeline(
+        n_lhs=5,
+        n_trials=2,
+        skip_exploration=True,
+        skip_optimization=True,
+        skip_validation=True,
+        dry_run=False,
+        output_dir=output_dir,
+        seed=11,
+        case_names=["Hamburg"],
+        case_exclude_from_core=True,
+        case_attach_mode="append_unique",
+    )
+
+    assert success is True
+    assert (output_dir / "selection_contract.json").exists()
+    final_df = pd.read_csv(output_dir / "selection_final_with_cases.csv")
+    assert set(final_df["city"]) == {"Hamburg", "Kiel"}
+
+
+def test_run_thesis_pipeline_records_flagged_temporal_outliers_in_run_metadata(
+    tmp_path, monkeypatch
+):
+    from dataselector.workflows import thesis_pipeline as mod
+
+    ws = tmp_path
+    (ws / "data").mkdir(parents=True, exist_ok=True)
+    (ws / "config").mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        {
+            "shortName": ["KDR_155", "KDR_155b", "KDR_039", "KDR_521"],
+            "longName": ["a", "b", "c", "d"],
+            "city": ["A", "A", "B", "C"],
+            "ul_x": [500000.0, 501000.0, 502000.0, 503000.0],
+            "ul_y": [5900000.0, 5901000.0, 5902000.0, 5903000.0],
+            "lr_x": [500100.0, 501100.0, 502100.0, 503100.0],
+            "lr_y": [5899900.0, 5900900.0, 5901900.0, 5902900.0],
+            "year": [1910, 1911, 1980, 1985],
+        }
+    ).to_csv(ws / "data" / "new_all_tiles.csv", index=False)
+    (ws / "config" / "pipeline_config.yaml").write_text(
+        _minimal_resolved_config(n_samples=2),
+        encoding="utf-8",
+    )
+    (ws / "config" / "tile_exclusion_policy.yaml").write_text(
+        "\n".join(
+            [
+                "constants:",
+                "  kdr_core_publication_frame:",
+                "    year_min: 1878",
+                "    year_max: 1945",
+                "rules:",
+                "  - id: exclude_kdr_155b",
+                "    class: representation_duplicate_variant",
+                "    action: exclude_from_candidate_pool",
+                "    match:",
+                "      shortName: [KDR_155b]",
+                "  - id: flag_post_kdr_series_temporal_outliers",
+                "    class: temporal_scope_outlier",
+                "    action: flag_for_reporting",
+                "    rationale: retained but temporally out-of-scope",
+                "    match:",
+                "      year_gt_ref: kdr_core_publication_frame.year_max",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(ws)
+
+    success = mod.run_thesis_pipeline(
+        n_lhs=5,
+        n_trials=2,
+        skip_validation=True,
+        dry_run=True,
+        output_dir=ws / "outputs",
+        seed=11,
+        tile_exclusion_policy=ws / "config" / "tile_exclusion_policy.yaml",
+        apply_tile_exclusion=True,
+    )
+
+    assert success is True
+    run_meta = json.loads((ws / "outputs" / "run_metadata.json").read_text("utf-8"))
+    extra = run_meta["extra"]
+    assert extra["tile_exclusions_count"] == 1
+    assert extra["tile_excluded_shortnames"] == ["KDR_155b"]
+    assert extra["tile_flagged_count"] == 2
+    assert extra["tile_flagged_shortnames"] == ["KDR_039", "KDR_521"]
+    assert extra["tile_flagged_classes"] == ["temporal_scope_outlier"]
+
+
+def test_run_thesis_pipeline_compute_params_uses_autoscale_artifact(
+    tmp_path, monkeypatch
+):
     """compute-params should prefer autoscale artifact values for critical selection params."""
     from dataselector.workflows import thesis_pipeline as mod
 
@@ -567,14 +1041,16 @@ def test_run_thesis_pipeline_compute_params_uses_autoscale_artifact(tmp_path, mo
     (ws / "outputs" / "parameter_resolution").mkdir(parents=True, exist_ok=True)
 
     (ws / "data" / "new_all_tiles.csv").write_text(
-        "ul_x,ul_y,lr_x,lr_y,year\n1,2,3,4,1900\n",
+        _minimal_metadata_csv_text(),
         encoding="utf-8",
     )
     (ws / "config" / "pipeline_config.yaml").write_text(
         _minimal_resolved_config(n_samples=24, min_distance_km=28.5),
         encoding="utf-8",
     )
-    (ws / "outputs" / "parameter_resolution" / "optuna_autoscale_best_latest.json").write_text(
+    (
+        ws / "outputs" / "parameter_resolution" / "optuna_autoscale_best_latest.json"
+    ).write_text(
         json.dumps(
             {
                 "value": 1.0,
@@ -615,7 +1091,9 @@ def test_run_thesis_pipeline_compute_params_uses_autoscale_artifact(tmp_path, mo
     run_meta = json.loads((ws / "outputs" / "run_metadata.json").read_text("utf-8"))
     assert run_meta["extra"]["n_samples"] == 29
     assert run_meta["extra"]["n_samples_source"] == "computed_autoscale_artifact"
-    assert run_meta["extra"]["computed_selection_method"] == "computed_autoscale_artifact"
+    assert (
+        run_meta["extra"]["computed_selection_method"] == "computed_autoscale_artifact"
+    )
 
     import yaml
 
@@ -626,17 +1104,20 @@ def test_run_thesis_pipeline_compute_params_uses_autoscale_artifact(tmp_path, mo
     assert params["selection"]["beta_spatial"] == pytest.approx(0.3)
     assert params["selection"]["gamma_temporal"] == pytest.approx(0.5)
     assert params["selection"]["min_distance_km"] == pytest.approx(33.0)
-    assert params["selection"]["_provenance"]["alpha_visual"]["method"] == "computed_autoscale_artifact"
+    assert (
+        params["selection"]["_provenance"]["alpha_visual"]["method"]
+        == "computed_autoscale_artifact"
+    )
     assert (
         params["selection"]["_provenance"]["min_distance_km"]["method"]
         == "computed_autoscale_artifact"
     )
 
 
-def test_run_thesis_pipeline_keeps_materialized_selection_when_snapshot_weights_differ(
+def test_run_thesis_pipeline_keeps_materialized_selection_when_snapshot_weights_differ_in_legacy_mode(
     tmp_path, monkeypatch
 ):
-    """Snapshot parameter context must not trigger re-selection of the frozen dataset."""
+    """Legacy authority must keep materialized tuning CSV when snapshot weights differ."""
     from dataselector.workflows import thesis_pipeline as mod
 
     ws = tmp_path
@@ -646,23 +1127,32 @@ def test_run_thesis_pipeline_keeps_materialized_selection_when_snapshot_weights_
     (output_dir / "parameter_resolution").mkdir(parents=True, exist_ok=True)
     (output_dir / "tuning_weights").mkdir(parents=True, exist_ok=True)
 
-    pd.DataFrame(
-        {
-            "shortName": ["KDR_001", "KDR_002"],
-            "longName": ["tile_one", "tile_two"],
-            "city": ["CityA", "CityB"],
-            "ul_x": [500000.0, 501000.0],
-            "ul_y": [5900000.0, 5901000.0],
-            "lr_x": [500100.0, 501100.0],
-            "lr_y": [5899900.0, 5900900.0],
-            "year": [1910, 1911],
-        }
+    _with_explicit_crs(
+        pd.DataFrame(
+            {
+                "shortName": ["KDR_001", "KDR_002"],
+                "longName": ["tile_one", "tile_two"],
+                "city": ["CityA", "CityB"],
+                "ul_x": [500000.0, 501000.0],
+                "ul_y": [5900000.0, 5901000.0],
+                "lr_x": [500100.0, 501100.0],
+                "lr_y": [5899900.0, 5900900.0],
+                "year": [1910, 1911],
+            }
+        )
     ).to_csv(ws / "data" / "new_all_tiles.csv", index=False)
     (ws / "config" / "pipeline_config.yaml").write_text(
-        _minimal_resolved_config(n_samples=2, min_distance_km=28.5),
+        _minimal_resolved_config(
+            n_samples=2,
+            min_distance_km=28.5,
+            selection_authority="materialized_csv_primary",
+            objective_authority="unified_normalized",
+        ),
         encoding="utf-8",
     )
-    (output_dir / "parameter_resolution" / "optuna_autoscale_best_latest.json").write_text(
+    (
+        output_dir / "parameter_resolution" / "optuna_autoscale_best_latest.json"
+    ).write_text(
         json.dumps(
             {
                 "value": 1.0,
@@ -690,7 +1180,9 @@ def test_run_thesis_pipeline_keeps_materialized_selection_when_snapshot_weights_
             "year": [1911, 1910],
             "origin_tag": ["materialized_source", "materialized_source"],
         }
-    ).to_csv(output_dir / "tuning_weights" / "selection_a0.4_b0.3_g0.3.csv", index=False)
+    ).to_csv(
+        output_dir / "tuning_weights" / "selection_a0.4_b0.3_g0.3.csv", index=False
+    )
 
     monkeypatch.chdir(ws)
     monkeypatch.setattr(
@@ -715,7 +1207,11 @@ def test_run_thesis_pipeline_keeps_materialized_selection_when_snapshot_weights_
     assert success is True
     contract = json.loads((output_dir / "selection_contract.json").read_text("utf-8"))
     core_df = pd.read_csv(output_dir / "selection_core.csv")
-    snapshot_path = Path(json.loads((output_dir / "run_metadata.json").read_text("utf-8"))["extra"]["resolved_snapshot_path"])
+    snapshot_path = Path(
+        json.loads((output_dir / "run_metadata.json").read_text("utf-8"))["extra"][
+            "resolved_snapshot_path"
+        ]
+    )
 
     import yaml
 
@@ -726,13 +1222,264 @@ def test_run_thesis_pipeline_keeps_materialized_selection_when_snapshot_weights_
     assert params["beta_spatial"] == pytest.approx(0.2)
     assert params["gamma_temporal"] == pytest.approx(0.7)
     assert contract["selection_source"] == "tuning_weights_best_metrics"
-    assert contract["selection_source_file"] == "tuning_weights/selection_a0.4_b0.3_g0.3.csv"
+    assert (
+        contract["selection_source_file"]
+        == "tuning_weights/selection_a0.4_b0.3_g0.3.csv"
+    )
     assert list(core_df["shortName"]) == ["KDR_002", "KDR_001"]
     assert "origin_tag" in core_df.columns
     assert set(core_df["origin_tag"]) == {"materialized_source"}
 
 
-def test_resolve_optuna_sampler_uses_requested_trials_without_clamp(tmp_path, monkeypatch):
+def test_run_thesis_pipeline_snapshot_primary_ignores_materialized_selection_when_weights_differ(
+    tmp_path, monkeypatch
+):
+    """Snapshot authority must materialize core from snapshot params, not tuning CSV."""
+    from dataselector.workflows import thesis_pipeline as mod
+
+    ws = tmp_path
+    (ws / "data").mkdir(parents=True, exist_ok=True)
+    (ws / "config").mkdir(parents=True, exist_ok=True)
+    output_dir = ws / "outputs"
+    (output_dir / "parameter_resolution").mkdir(parents=True, exist_ok=True)
+    (output_dir / "tuning_weights").mkdir(parents=True, exist_ok=True)
+
+    _with_explicit_crs(
+        pd.DataFrame(
+            {
+                "shortName": ["KDR_001", "KDR_002"],
+                "longName": ["tile_one", "tile_two"],
+                "city": ["CityA", "CityB"],
+                "ul_x": [500000.0, 501000.0],
+                "ul_y": [5900000.0, 5901000.0],
+                "lr_x": [500100.0, 501100.0],
+                "lr_y": [5899900.0, 5900900.0],
+                "year": [1910, 1911],
+            }
+        )
+    ).to_csv(ws / "data" / "new_all_tiles.csv", index=False)
+    (ws / "config" / "pipeline_config.yaml").write_text(
+        _minimal_resolved_config(
+            n_samples=2,
+            min_distance_km=28.5,
+            selection_authority="snapshot_primary",
+            objective_authority="unified_normalized",
+        ),
+        encoding="utf-8",
+    )
+    (
+        output_dir / "parameter_resolution" / "optuna_autoscale_best_latest.json"
+    ).write_text(
+        json.dumps(
+            {
+                "value": 1.0,
+                "params": {"a": 0.1, "b": 0.2, "c": 0.7, "min_distance_km": 33},
+                "user_attrs": {
+                    "alpha": 0.1,
+                    "beta": 0.2,
+                    "gamma": 0.7,
+                    "n_samples": 2,
+                    "min_distance_km": 33,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    (output_dir / "tuning_weights" / "meta.json").write_text(
+        json.dumps({"best_metrics": {"alpha": 0.4, "beta": 0.3, "gamma": 0.3}}),
+        encoding="utf-8",
+    )
+    pd.DataFrame(
+        {
+            "selection_rank": [0, 1],
+            "shortName": ["KDR_002", "KDR_001"],
+            "city": ["CityB", "CityA"],
+            "year": [1911, 1910],
+            "origin_tag": ["materialized_source", "materialized_source"],
+        }
+    ).to_csv(
+        output_dir / "tuning_weights" / "selection_a0.4_b0.3_g0.3.csv", index=False
+    )
+
+    monkeypatch.chdir(ws)
+    monkeypatch.setattr(
+        "dataselector.workflows.generate_reports.generate_thesis_final_report",
+        lambda **_kwargs: None,
+    )
+
+    def fake_snapshot_core_selection(**kwargs):
+        core_df = pd.DataFrame(
+            {
+                "selection_rank": [0, 1],
+                "shortName": ["KDR_001", "KDR_002"],
+                "city": ["CityA", "CityB"],
+                "year": [1910, 1911],
+                "origin_tag": ["snapshot_source", "snapshot_source"],
+            }
+        )
+        out_path = Path(kwargs["output_dir"]) / "selection_snapshot_primary.csv"
+        core_df.to_csv(out_path, index=False)
+        return core_df, out_path, []
+
+    monkeypatch.setattr(
+        "dataselector.workflows.thesis_pipeline._materialize_snapshot_primary_core_selection",
+        fake_snapshot_core_selection,
+    )
+
+    success = mod.run_thesis_pipeline(
+        n_lhs=5,
+        n_trials=2,
+        compute_params=True,
+        skip_exploration=True,
+        skip_optimization=True,
+        skip_validation=True,
+        dry_run=False,
+        output_dir=output_dir,
+        execution_profile="thesis_repro",
+        seed=11,
+        snapshot_config=True,
+    )
+
+    assert success is True
+    contract = json.loads((output_dir / "selection_contract.json").read_text("utf-8"))
+    core_df = pd.read_csv(output_dir / "selection_core.csv")
+
+    assert contract["selection_source"] == "snapshot_primary_selection"
+    assert contract["selection_source_file"] == "selection_snapshot_primary.csv"
+    assert contract["selection_authority"] == "snapshot_primary"
+    assert contract["objective_authority"] == "unified_normalized"
+    assert contract["selection_weights"]["alpha_visual"] == pytest.approx(0.1)
+    assert contract["selection_weights"]["beta_spatial"] == pytest.approx(0.2)
+    assert contract["selection_weights"]["gamma_temporal"] == pytest.approx(0.7)
+    assert list(core_df["shortName"]) == ["KDR_001", "KDR_002"]
+    assert set(core_df["origin_tag"]) == {"snapshot_source"}
+
+
+def test_run_thesis_pipeline_snapshot_primary_is_reproducible_for_same_snapshot_and_seed(
+    tmp_path, monkeypatch
+):
+    """Same snapshot context + same seed should yield stable core CSV hash."""
+    from dataselector.workflows import thesis_pipeline as mod
+
+    ws = tmp_path
+    (ws / "data").mkdir(parents=True, exist_ok=True)
+    (ws / "config").mkdir(parents=True, exist_ok=True)
+
+    _with_explicit_crs(
+        pd.DataFrame(
+            {
+                "shortName": ["KDR_001", "KDR_002"],
+                "longName": ["tile_one", "tile_two"],
+                "city": ["CityA", "CityB"],
+                "ul_x": [500000.0, 501000.0],
+                "ul_y": [5900000.0, 5901000.0],
+                "lr_x": [500100.0, 501100.0],
+                "lr_y": [5899900.0, 5900900.0],
+                "year": [1910, 1911],
+            }
+        )
+    ).to_csv(ws / "data" / "new_all_tiles.csv", index=False)
+    (ws / "config" / "pipeline_config.yaml").write_text(
+        _minimal_resolved_config(
+            n_samples=2,
+            min_distance_km=28.5,
+            selection_authority="snapshot_primary",
+            objective_authority="unified_normalized",
+        ),
+        encoding="utf-8",
+    )
+
+    autoscale_payload = json.dumps(
+        {
+            "value": 1.0,
+            "params": {"a": 0.1, "b": 0.2, "c": 0.7, "min_distance_km": 33},
+            "user_attrs": {
+                "alpha": 0.1,
+                "beta": 0.2,
+                "gamma": 0.7,
+                "n_samples": 2,
+                "min_distance_km": 33,
+            },
+        }
+    )
+    output_dir_1 = ws / "outputs_1"
+    output_dir_2 = ws / "outputs_2"
+    (output_dir_1 / "parameter_resolution").mkdir(parents=True, exist_ok=True)
+    (output_dir_2 / "parameter_resolution").mkdir(parents=True, exist_ok=True)
+    (
+        output_dir_1 / "parameter_resolution" / "optuna_autoscale_best_latest.json"
+    ).write_text(
+        autoscale_payload,
+        encoding="utf-8",
+    )
+    (
+        output_dir_2 / "parameter_resolution" / "optuna_autoscale_best_latest.json"
+    ).write_text(
+        autoscale_payload,
+        encoding="utf-8",
+    )
+
+    monkeypatch.chdir(ws)
+    monkeypatch.setattr(
+        "dataselector.workflows.generate_reports.generate_thesis_final_report",
+        lambda **_kwargs: None,
+    )
+
+    def fake_snapshot_core_selection(**kwargs):
+        core_df = pd.DataFrame(
+            {
+                "selection_rank": [0, 1],
+                "shortName": ["KDR_001", "KDR_002"],
+                "city": ["CityA", "CityB"],
+                "year": [1910, 1911],
+            }
+        )
+        out_path = Path(kwargs["output_dir"]) / "selection_snapshot_primary.csv"
+        core_df.to_csv(out_path, index=False)
+        return core_df, out_path, []
+
+    monkeypatch.setattr(
+        "dataselector.workflows.thesis_pipeline._materialize_snapshot_primary_core_selection",
+        fake_snapshot_core_selection,
+    )
+
+    success_1 = mod.run_thesis_pipeline(
+        n_lhs=5,
+        n_trials=2,
+        compute_params=True,
+        skip_exploration=True,
+        skip_optimization=True,
+        skip_validation=True,
+        dry_run=False,
+        output_dir=output_dir_1,
+        execution_profile="thesis_repro",
+        seed=11,
+        snapshot_config=True,
+    )
+    success_2 = mod.run_thesis_pipeline(
+        n_lhs=5,
+        n_trials=2,
+        compute_params=True,
+        skip_exploration=True,
+        skip_optimization=True,
+        skip_validation=True,
+        dry_run=False,
+        output_dir=output_dir_2,
+        execution_profile="thesis_repro",
+        seed=11,
+        snapshot_config=True,
+    )
+
+    assert success_1 is True
+    assert success_2 is True
+    hash_1 = mod.compute_file_sha256(output_dir_1 / "selection_core.csv")
+    hash_2 = mod.compute_file_sha256(output_dir_2 / "selection_core.csv")
+    assert hash_1 == hash_2
+
+
+def test_resolve_optuna_sampler_uses_requested_trials_without_clamp(
+    tmp_path, monkeypatch
+):
     """Auto sampler determination should forward requested n_trials budget unchanged."""
     from dataselector.workflows import thesis_pipeline as mod
 
@@ -778,7 +1525,7 @@ def test_run_thesis_pipeline_materializes_run_local_sampler_evidence(
     (ws / "data").mkdir(parents=True, exist_ok=True)
     (ws / "config").mkdir(parents=True, exist_ok=True)
     (ws / "data" / "new_all_tiles.csv").write_text(
-        "ul_x,ul_y,lr_x,lr_y,year\n1,2,3,4,1900\n",
+        _minimal_metadata_csv_text(),
         encoding="utf-8",
     )
     (ws / "config" / "pipeline_config.yaml").write_text(
@@ -822,29 +1569,6 @@ def test_run_thesis_pipeline_materializes_run_local_sampler_evidence(
     assert prov["source_file"] == sampler_artifact_path
 
 
-@pytest.mark.skipif(
-    True, reason="Requires full pipeline setup (data, features, config)"
-)
-def test_run_thesis_pipeline_integration():
-    """Integration test for run_thesis_pipeline (skipped in CI)."""
-    import tempfile
-    from pathlib import Path
-
-    from dataselector.workflows.thesis_pipeline import run_thesis_pipeline
-
-    with tempfile.TemporaryDirectory() as tmpdir:
-        output_dir = Path(tmpdir) / "outputs"
-
-        success = run_thesis_pipeline(
-            n_lhs=10,
-            n_trials=5,
-            dry_run=True,
-            output_dir=output_dir,
-        )
-
-        assert success is True
-
-
 def test_cli_integration():
     """Test CLI integration via subprocess (smoke test)."""
     import subprocess
@@ -868,6 +1592,10 @@ def test_cli_integration():
     assert "--case-attach-mode" in out
     assert "--n-samples" in out
     assert "--validation-seeds" in out
+    assert "--build-handoffs" in out
+    assert "--patches-per-tile" in out
+    assert "--patch-include-case" in out
+    assert "--handoff-root" in out
     assert "--validation-min-distances" in out
     assert "--validation-replicate-mode" in out
     assert "--validation-n-bootstrap" in out

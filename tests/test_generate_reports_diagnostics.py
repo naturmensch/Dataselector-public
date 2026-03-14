@@ -75,8 +75,18 @@ def _write_minimal_artifacts(run_dir: Path, *, n_selected_values: list[int]) -> 
     )
     pd.DataFrame(
         [
-            {"selection_rank": 0, "shortName": "KDR_001", "city": "CityA", "year": 1900},
-            {"selection_rank": 1, "shortName": "KDR_002", "city": "CityB", "year": 1910},
+            {
+                "selection_rank": 0,
+                "shortName": "KDR_001",
+                "city": "CityA",
+                "year": 1900,
+            },
+            {
+                "selection_rank": 1,
+                "shortName": "KDR_002",
+                "city": "CityB",
+                "year": 1910,
+            },
         ]
     ).to_csv(
         run_dir / "tuning_weights" / "selection_a0.2_b0.3_g0.5.csv",
@@ -199,8 +209,18 @@ def test_report_writes_method_audit_and_key_claims(tmp_path: Path):
 
     pd.DataFrame(
         [
-            {"selection_rank": 0, "shortName": "KDR_001", "city": "CityA", "year": 1900},
-            {"selection_rank": 1, "shortName": "KDR_002", "city": "CityB", "year": 1910},
+            {
+                "selection_rank": 0,
+                "shortName": "KDR_001",
+                "city": "CityA",
+                "year": 1900,
+            },
+            {
+                "selection_rank": 1,
+                "shortName": "KDR_002",
+                "city": "CityB",
+                "year": 1910,
+            },
         ]
     ).to_csv(run_dir / "selection_core.csv", index=False)
     pd.DataFrame(
@@ -208,9 +228,24 @@ def test_report_writes_method_audit_and_key_claims(tmp_path: Path):
     ).to_csv(run_dir / "selection_case.csv", index=False)
     pd.DataFrame(
         [
-            {"selection_rank": 0, "shortName": "KDR_001", "city": "CityA", "year": 1900},
-            {"selection_rank": 1, "shortName": "KDR_002", "city": "CityB", "year": 1910},
-            {"selection_rank": 2, "shortName": "KDR_146", "city": "Hamburg", "year": 1918},
+            {
+                "selection_rank": 0,
+                "shortName": "KDR_001",
+                "city": "CityA",
+                "year": 1900,
+            },
+            {
+                "selection_rank": 1,
+                "shortName": "KDR_002",
+                "city": "CityB",
+                "year": 1910,
+            },
+            {
+                "selection_rank": 2,
+                "shortName": "KDR_146",
+                "city": "Hamburg",
+                "year": 1918,
+            },
         ]
     ).to_csv(run_dir / "selection_final_with_cases.csv", index=False)
     (run_dir / "selection_contract.json").write_text(
@@ -270,6 +305,11 @@ def test_report_writes_method_audit_and_key_claims(tmp_path: Path):
     pd.DataFrame([{"phase": "after_exclusion", "year_max": 1921}]).to_csv(
         run_dir / "data_quality" / "year_scope_audit.csv", index=False
     )
+    (run_dir / "diagnostics").mkdir(parents=True, exist_ok=True)
+    (run_dir / "diagnostics" / "exceptions.log").write_text(
+        "phase: example\ntraceback: example\n",
+        encoding="utf-8",
+    )
 
     (run_dir / "run_metadata.json").write_text(
         json.dumps(
@@ -277,13 +317,28 @@ def test_report_writes_method_audit_and_key_claims(tmp_path: Path):
                 "extra": {
                     "validation_replicate_mode": "bootstrap_candidates",
                     "tile_exclusions_applied": True,
-                    "tile_exclusions_count": 2,
+                    "tile_exclusions_count": 1,
+                    "tile_excluded_shortnames": ["KDR_155b"],
+                    "tile_flagged_count": 2,
+                    "tile_flagged_shortnames": ["KDR_039", "KDR_521"],
+                    "tile_flagged_classes": ["temporal_scope_outlier"],
+                    "tile_flagged_caveats": [
+                        {
+                            "shortName": "KDR_039",
+                            "year": 1980,
+                            "class": "temporal_scope_outlier",
+                        },
+                        {
+                            "shortName": "KDR_521",
+                            "year": 1985,
+                            "class": "temporal_scope_outlier",
+                        },
+                    ],
                     "tile_exclusion_policy_sha256": "abc123",
+                    "exceptions_log_path": "diagnostics/exceptions.log",
                     "case_tile_names": ["Hamburg"],
                     "snapshot_path": "final_config_resolution.yaml",
-                    "pipeline_metadata_snapshot": {
-                        "extra": {"case_tile_names": []}
-                    },
+                    "pipeline_metadata_snapshot": {"extra": {"case_tile_names": []}},
                 }
             }
         ),
@@ -303,9 +358,18 @@ def test_report_writes_method_audit_and_key_claims(tmp_path: Path):
     assert "## Selection Provenance" in report
     assert "- Parameter snapshot: `final_config_resolution.yaml`" in report
     assert "- Materialized selection source: `tuning_weights_best_metrics`" in report
-    assert "- Materialized selection source file: `tuning_weights/selection_a0.2_b0.3_g0.5.csv`" in report
-    assert "- Snapshot selection weights: `alpha=0.600000, beta=0.200000, gamma=0.200000`" in report
-    assert "- Materialized selection weights: `alpha=0.200000, beta=0.300000, gamma=0.500000`" in report
+    assert (
+        "- Materialized selection source file: `tuning_weights/selection_a0.2_b0.3_g0.5.csv`"
+        in report
+    )
+    assert (
+        "- Snapshot selection weights: `alpha=0.600000, beta=0.200000, gamma=0.200000`"
+        in report
+    )
+    assert (
+        "- Materialized selection weights: `alpha=0.200000, beta=0.300000, gamma=0.500000`"
+        in report
+    )
     assert "- Selection reconciliation status: `documented_difference`" in report
 
     claims_df = pd.read_csv(key_claims)
@@ -335,8 +399,197 @@ def test_report_writes_method_audit_and_key_claims(tmp_path: Path):
     assert "- `final_case_tile_names`: `['Hamburg']`" in method_audit_text
     assert "- `reconciliation_status`: `documented_difference`" in method_audit_text
     assert "## Selection Reconciliation" in method_audit_text
-    assert "- `selection_snapshot_path`: `final_config_resolution.yaml`" in method_audit_text
-    assert "- `materialized_selection_source`: `tuning_weights_best_metrics`" in method_audit_text
-    assert "- `materialized_selection_source_file`: `tuning_weights/selection_a0.2_b0.3_g0.5.csv`" in method_audit_text
-    assert "- `pipeline_snapshot_selection_weights`: `alpha=0.600000, beta=0.200000, gamma=0.200000`" in method_audit_text
-    assert "- `materialized_selection_weights`: `alpha=0.200000, beta=0.300000, gamma=0.500000`" in method_audit_text
+    assert (
+        "- `selection_snapshot_path`: `final_config_resolution.yaml`"
+        in method_audit_text
+    )
+    assert (
+        "- `materialized_selection_source`: `tuning_weights_best_metrics`"
+        in method_audit_text
+    )
+    assert (
+        "- `materialized_selection_source_file`: `tuning_weights/selection_a0.2_b0.3_g0.5.csv`"
+        in method_audit_text
+    )
+    assert (
+        "- `pipeline_snapshot_selection_weights`: `alpha=0.600000, beta=0.200000, gamma=0.200000`"
+        in method_audit_text
+    )
+    assert (
+        "- `materialized_selection_weights`: `alpha=0.200000, beta=0.300000, gamma=0.500000`"
+        in method_audit_text
+    )
+    assert "## Temporal Caveats" in report
+    assert "`KDR_039` (1980)" in report
+    assert "`KDR_521` (1985)" in report
+    assert "- tile_flagged_shortnames: `['KDR_039', 'KDR_521']`" in method_audit_text
+    assert (
+        "retained temporal outliers remain in the candidate pool" in method_audit_text
+    )
+    assert "require an explicit methodological caveat" in method_audit_text
+    assert "must not be used to justify temporal conclusions" not in method_audit_text
+    assert "should not treat them as representative evidence" in report
+    assert "must not drive thesis-level temporal conclusions" not in report
+    assert (
+        "suitable for temporal interpretation only with explicit methodological caveat"
+        in report
+    )
+    assert "- exceptions_log: `diagnostics/exceptions.log`" in method_audit_text
+
+
+def test_report_selection_reconciliation_aligned_for_snapshot_primary(tmp_path: Path):
+    run_dir = tmp_path / "run_selection_aligned"
+    _write_minimal_artifacts(run_dir, n_selected_values=[1, 2, 3])
+
+    pd.DataFrame(
+        [{"selection_rank": 0, "shortName": "KDR_001", "city": "CityA", "year": 1900}]
+    ).to_csv(run_dir / "selection_core.csv", index=False)
+    pd.DataFrame(columns=["selection_rank", "shortName", "city", "year"]).to_csv(
+        run_dir / "selection_case.csv", index=False
+    )
+    pd.DataFrame(
+        [{"selection_rank": 0, "shortName": "KDR_001", "city": "CityA", "year": 1900}]
+    ).to_csv(run_dir / "selection_final_with_cases.csv", index=False)
+
+    (run_dir / "selection_snapshot_primary.csv").write_text(
+        "selection_rank,shortName,city,year\n0,KDR_001,CityA,1900\n",
+        encoding="utf-8",
+    )
+    (run_dir / "selection_contract.json").write_text(
+        json.dumps(
+            {
+                "selection_source": "snapshot_primary_selection",
+                "selection_source_file": "selection_snapshot_primary.csv",
+                "selection_authority": "snapshot_primary",
+                "objective_authority": "unified_normalized",
+                "selection_weights": {
+                    "alpha": 0.6,
+                    "beta": 0.2,
+                    "gamma": 0.2,
+                },
+                "case_tile_names": [],
+                "case_exclude_from_core": True,
+                "case_attach_mode": "append_unique",
+                "core_count": 1,
+                "case_count_resolved": 0,
+                "case_count_attached": 0,
+                "case_count": 0,
+                "final_count": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    snapshot_path = run_dir / "final_config_resolution.yaml"
+    snapshot_path.write_text(
+        "\n".join(
+            [
+                "parameters:",
+                "  selection:",
+                "    alpha_visual: 0.6",
+                "    beta_spatial: 0.2",
+                "    gamma_temporal: 0.2",
+                "    case_tile_names: []",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (run_dir / "run_metadata.json").write_text(
+        json.dumps({"extra": {"snapshot_path": "final_config_resolution.yaml"}}),
+        encoding="utf-8",
+    )
+
+    report_file = _generate_single_run_thesis_report(run_dir, timestamp="T5")
+    report = report_file.read_text(encoding="utf-8")
+    method_audit_text = (run_dir / "THESIS_METHOD_AUDIT.md").read_text(encoding="utf-8")
+
+    assert "- Materialized selection source: `snapshot_primary_selection`" in report
+    assert (
+        "- Materialized selection source file: `selection_snapshot_primary.csv`"
+        in report
+    )
+    assert "- Selection reconciliation status: `aligned`" in report
+    assert (
+        "Interpretation: snapshot selection weights and the materialized selection source are aligned for this run."
+        in report
+    )
+
+    assert "## Selection Reconciliation" in method_audit_text
+    assert (
+        "- `materialized_selection_source`: `snapshot_primary_selection`"
+        in method_audit_text
+    )
+    assert (
+        "- `materialized_selection_source_file`: `selection_snapshot_primary.csv`"
+        in method_audit_text
+    )
+    assert (
+        "- `pipeline_snapshot_selection_weights`: `alpha=0.600000, beta=0.200000, gamma=0.200000`"
+        in method_audit_text
+    )
+    assert (
+        "- `materialized_selection_weights`: `alpha=0.600000, beta=0.200000, gamma=0.200000`"
+        in method_audit_text
+    )
+    assert "- `reconciliation_status`: `aligned`" in method_audit_text
+
+
+def test_report_includes_phase5_annotation_handoff_section(tmp_path: Path):
+    run_dir = tmp_path / "run_phase5"
+    _write_minimal_artifacts(run_dir, n_selected_values=[1, 2, 3])
+
+    annotation_dir = run_dir / "annotation_plan"
+    annotation_dir.mkdir(parents=True, exist_ok=True)
+    handoff_dir = tmp_path / "handoff" / "run_phase5"
+    patch_handoff_dir = tmp_path / "handoff" / "run_phase5_patches_core"
+    handoff_dir.mkdir(parents=True, exist_ok=True)
+    patch_handoff_dir.mkdir(parents=True, exist_ok=True)
+    (annotation_dir / "annotation_dataset_contract.json").write_text(
+        "{}", encoding="utf-8"
+    )
+    (handoff_dir / "handoff_manifest.json").write_text("{}", encoding="utf-8")
+    (patch_handoff_dir / "patch_handoff_manifest.json").write_text(
+        "{}", encoding="utf-8"
+    )
+
+    (run_dir / "run_metadata.json").write_text(
+        json.dumps(
+            {
+                "extra": {
+                    "build_handoffs": True,
+                    "patches_per_tile": 2,
+                    "patch_selection_group": "core",
+                    "patch_include_case": False,
+                    "tile_handoff_dir": str(handoff_dir),
+                    "tile_handoff_manifest_path": str(
+                        handoff_dir / "handoff_manifest.json"
+                    ),
+                    "tile_handoff_selection_count": 27,
+                    "annotation_plan_dir": str(annotation_dir),
+                    "annotation_dataset_contract_path": str(
+                        annotation_dir / "annotation_dataset_contract.json"
+                    ),
+                    "patch_handoff_dir": str(patch_handoff_dir),
+                    "patch_handoff_manifest_path": str(
+                        patch_handoff_dir / "patch_handoff_manifest.json"
+                    ),
+                    "patch_handoff_selection_count": 54,
+                    "patches_total": 54,
+                    "patches_qc_passed": 54,
+                    "patches_qc_rejected": 0,
+                    "phase5_freeze_boundary_verified": True,
+                    "phase_status": {"phase5_handoffs": "success"},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report_file = _generate_single_run_thesis_report(run_dir, timestamp="T6")
+    report = report_file.read_text(encoding="utf-8")
+
+    assert "## Phase 5 Annotation & Handoff" in report
+    assert "- Status: `success`" in report
+    assert "- Patch scope: `core`" in report
+    assert "- Tile handoff selection count: **27**" in report
+    assert "- Patch handoff selection count: **54**" in report
+    assert "- Freeze boundary verified after Phase 5: `True`" in report

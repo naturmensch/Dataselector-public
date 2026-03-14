@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pandas as pd
 
 from dataselector.data.spatial_distance import (
@@ -118,7 +117,7 @@ def audit_split_leakage(
     audit_df = pd.DataFrame(rows)
     audit_csv = split_dir / "leakage_audit.csv"
     audit_df.to_csv(audit_csv, index=False)
-    violations = int((audit_df.get("violation", pd.Series(dtype=bool)) == True).sum())  # noqa: E712
+    violations = int(audit_df.get("violation", pd.Series(dtype=bool)).sum())
 
     return LeakageAuditResult(
         audit_csv_path=audit_csv,

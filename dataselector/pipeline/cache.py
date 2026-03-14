@@ -132,14 +132,18 @@ def find_cache_by_hash(cache_root: str | Path, meta_hash: str) -> Optional[Path]
     return None
 
 
-def load_features_by_hash(cache_root: str | Path, meta_hash: str) -> Optional[np.ndarray]:
+def load_features_by_hash(
+    cache_root: str | Path, meta_hash: str
+) -> Optional[np.ndarray]:
     path = find_cache_by_hash(cache_root, meta_hash)
     if path is None:
         return None
     return np.load(path)
 
 
-def load_meta_by_hash(cache_root: str | Path, meta_hash: str) -> Optional[Dict[str, Any]]:
+def load_meta_by_hash(
+    cache_root: str | Path, meta_hash: str
+) -> Optional[Dict[str, Any]]:
     meta_path = meta_path_for_hash(cache_root, meta_hash)
     if not meta_path.exists():
         return None
@@ -161,6 +165,7 @@ def create_meta_info(
     feature_identity: Optional[Dict[str, Any]] = None,
     model_provenance: Optional[Dict[str, Any]] = None,
     config_sha256: Optional[str] = None,
+    metadata_basis: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "metadata_csv": str(Path(csv_path).resolve()),
@@ -173,4 +178,6 @@ def create_meta_info(
         payload["model_provenance"] = model_provenance
     if config_sha256:
         payload["config_sha256"] = config_sha256
+    if metadata_basis is not None:
+        payload["metadata_basis"] = metadata_basis
     return payload

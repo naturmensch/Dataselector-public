@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-import csv
 import json
 import re
 from dataclasses import dataclass
@@ -315,7 +314,9 @@ def build_symbol_lifecycle_v3(df_v2: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_symbol_retirement_summary_v3(df_symbols_v3: pd.DataFrame) -> pd.DataFrame:
-    removed = df_symbols_v3[df_symbols_v3["status_now"].astype(str).str.lower() == "removed"].copy()
+    removed = df_symbols_v3[
+        df_symbols_v3["status_now"].astype(str).str.lower() == "removed"
+    ].copy()
     if removed.empty:
         return pd.DataFrame(
             columns=[
@@ -329,7 +330,10 @@ def build_symbol_retirement_summary_v3(df_symbols_v3: pd.DataFrame) -> pd.DataFr
 
     grouped = (
         removed.groupby(["module_path", "symbol_kind", "retirement_type"], dropna=False)
-        .agg(count=("symbol_id", "count"), sample_symbols=("symbol_id", lambda s: ";".join(list(s[:3]))))
+        .agg(
+            count=("symbol_id", "count"),
+            sample_symbols=("symbol_id", lambda s: ";".join(list(s[:3]))),
+        )
         .reset_index()
     )
     return grouped
@@ -353,11 +357,17 @@ def build_claim_crosswalk_v3(df_v2: pd.DataFrame) -> pd.DataFrame:
         if not row["evidence_code"].strip():
             df.at[idx, "evidence_code"] = "dataselector/cli.py"
         if not row["evidence_tests"].strip():
-            df.at[idx, "evidence_tests"] = "tests/unit/test_feature_ownership_registry.py"
+            df.at[idx, "evidence_tests"] = (
+                "tests/unit/test_feature_ownership_registry.py"
+            )
         if not row["evidence_artifacts"].strip():
-            df.at[idx, "evidence_artifacts"] = "outputs/audits/repo_evolution_v2_p2_closure_20260224T112424Z/AUDIT_SUMMARY_V2.md"
+            df.at[idx, "evidence_artifacts"] = (
+                "outputs/audits/repo_evolution_v2_p2_closure_20260224T112424Z/AUDIT_SUMMARY_V2.md"
+            )
         if not row["evidence_history"].strip():
-            df.at[idx, "evidence_history"] = "outputs/audits/repo_evolution_v2_20260224T105720Z/REPLACEMENT_MATRIX_V2.csv"
+            df.at[idx, "evidence_history"] = (
+                "outputs/audits/repo_evolution_v2_20260224T105720Z/REPLACEMENT_MATRIX_V2.csv"
+            )
 
     df["status"] = "supported"
     df["gap_notes"] = ""
@@ -366,7 +376,12 @@ def build_claim_crosswalk_v3(df_v2: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_claim_contradictions_v3(df_claims: pd.DataFrame) -> pd.DataFrame:
-    contrad = df_claims[df_claims["status"].astype(str).str.lower().isin({"partially_supported", "contradicted", "missing_evidence"})]
+    contrad = df_claims[
+        df_claims["status"]
+        .astype(str)
+        .str.lower()
+        .isin({"partially_supported", "contradicted", "missing_evidence"})
+    ]
     if contrad.empty:
         return pd.DataFrame(columns=["claim_id", "status", "details", "proposed_fix"])
     rows = []
@@ -454,7 +469,9 @@ def build_audit_resolution_matrix(
                     "severity": str(row.get("priority", "")).strip(),
                     "original_issue": str(row.get("issue", "")).strip(),
                     "resolved_status": "closed",
-                    "resolved_in_commit": resolved_commit_by_id.get(fid, "manual_review_required"),
+                    "resolved_in_commit": resolved_commit_by_id.get(
+                        fid, "manual_review_required"
+                    ),
                     "resolved_in_audit": resolved_audit,
                     "evidence_tests": str(row.get("acceptance_test", "")).strip(),
                     "evidence_artifacts": resolved_audit,
@@ -480,7 +497,9 @@ def build_supersession_map() -> str:
     return """# Audit Supersession Map\n\n1. `repo_evolution_20260224T103507Z` established initial baseline and findings.\n2. `repo_evolution_v2_20260224T105720Z` deepened forensics and expanded evidence schema.\n3. `repo_evolution_v2_p1_closure_20260224T110937Z` closed governance/claim-traceability P1 findings.\n4. `repo_evolution_v2_p2_closure_20260224T112424Z` closed remaining P2 hardening findings.\n5. `repo_evolution_v3_final_*` provides immutable cross-audit closure proof via `AUDIT_RESOLUTION_MATRIX.csv` and stricter READY_COMPLETE gating.\n"""
 
 
-def build_method_history_timeline(workflow_v3: pd.DataFrame, replacement_v3: pd.DataFrame) -> pd.DataFrame:
+def build_method_history_timeline(
+    workflow_v3: pd.DataFrame, replacement_v3: pd.DataFrame
+) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     for _, r in replacement_v3.iterrows():
         rows.append(
@@ -509,8 +528,19 @@ def build_method_history_narrative(
     replacement_v3: pd.DataFrame,
 ) -> str:
     total_runs = len(run_timeline_v3)
-    exploratory = int((run_timeline_v3["phase_classification"].astype(str) == "exploratory_search").sum()) if "phase_classification" in run_timeline_v3.columns else 0
-    primary_workflows = workflow_v3[workflow_v3["status_v3"] == "active_primary"]["workflow"].tolist()
+    exploratory = (
+        int(
+            (
+                run_timeline_v3["phase_classification"].astype(str)
+                == "exploratory_search"
+            ).sum()
+        )
+        if "phase_classification" in run_timeline_v3.columns
+        else 0
+    )
+    primary_workflows = workflow_v3[workflow_v3["status_v3"] == "active_primary"][
+        "workflow"
+    ].tolist()
     repl_count = len(replacement_v3)
     return (
         "# Method History Narrative\n\n"
@@ -652,12 +682,7 @@ def _phase_summary(run_timeline_v3: pd.DataFrame) -> pd.DataFrame:
             )
             continue
         top_variants = ", ".join(
-            sub["workflow_variant"]
-            .astype(str)
-            .value_counts()
-            .head(3)
-            .index
-            .tolist()
+            sub["workflow_variant"].astype(str).value_counts().head(3).index.tolist()
         )
         rows.append(
             {
@@ -767,9 +792,7 @@ def build_method_history_complete_md(
         old = str(row.get("component_old", "")).strip()
         new = str(row.get("component_new", "")).strip()
         lines.append(f"### [{rid}] {old} -> {new}")
-        lines.append(
-            f"- replacement_type: `{row.get('replacement_type', '')}`"
-        )
+        lines.append(f"- replacement_type: `{row.get('replacement_type', '')}`")
         lines.append(f"- reason_category: `{row.get('reason_category', '')}`")
         lines.append(
             f"- effective_from_commit: `{row.get('effective_from_commit', '')}`"
@@ -842,9 +865,7 @@ def build_method_history_complete_md(
     lines.append(
         f"- Claims supported: `{score.get('metrics', {}).get('claim_supported_ratio', 0.0):.2%}`; unmapped findings: `{score.get('metrics', {}).get('unmapped_findings_in_resolution_matrix', 'n/a')}`."
     )
-    lines.append(
-        f"- Symbol-Retirement-Gruppen: `{len(symbol_ret_summary_v3)}`."
-    )
+    lines.append(f"- Symbol-Retirement-Gruppen: `{len(symbol_ret_summary_v3)}`.")
     lines.append("")
     return "\n".join(lines)
 
@@ -1063,9 +1084,18 @@ def build_method_history_coverage(
     unknown_run_count = int(
         run_timeline_v3["workflow_variant"].astype(str).str.lower().eq("unknown").sum()
     )
-    missing_evidence_refs_count = int(
-        evidence_index["evidence_ref"].fillna("").astype(str).str.strip().eq("").sum()
-    ) if not evidence_index.empty else 0
+    missing_evidence_refs_count = (
+        int(
+            evidence_index["evidence_ref"]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+            .eq("")
+            .sum()
+        )
+        if not evidence_index.empty
+        else 0
+    )
 
     workflow_ratio = _coverage_ratio(
         set(workflow_v3["workflow"].astype(str).tolist()),
@@ -1331,7 +1361,9 @@ def run_repo_evolution_audit_v3(inputs: AuditInputs) -> AuditResult:
     replacement_v3 = replacement_v2.copy()
     if "reason_category" not in replacement_v3.columns:
         replacement_v3["reason_category"] = ""
-    replacement_v3["reason_category"] = replacement_v3["reason_category"].fillna("").astype(str)
+    replacement_v3["reason_category"] = (
+        replacement_v3["reason_category"].fillna("").astype(str)
+    )
     replacement_v3["reason_category"] = replacement_v3["reason_category"].apply(
         lambda v: v if v in REASON_CATEGORIES else "governance"
     )
@@ -1362,7 +1394,8 @@ def run_repo_evolution_audit_v3(inputs: AuditInputs) -> AuditResult:
         else 1.0
     )
     workflow_inventory_coverage = (
-        len([w for w in current_workflows if w in workflow_in_v3]) / len(current_workflows)
+        len([w for w in current_workflows if w in workflow_in_v3])
+        / len(current_workflows)
         if current_workflows
         else 1.0
     )
@@ -1372,21 +1405,29 @@ def run_repo_evolution_audit_v3(inputs: AuditInputs) -> AuditResult:
     )
 
     claim_supported_ratio = (
-        float(
-            claim_v3["status"]
-            .astype(str)
-            .str.lower()
-            .eq("supported")
-            .mean()
-        )
+        float(claim_v3["status"].astype(str).str.lower().eq("supported").mean())
         if len(claim_v3)
         else 1.0
     )
 
     replacement_commit_run_coverage = 1.0
     if len(replacement_v3):
-        has_commit = replacement_v3.get("effective_from_commit", pd.Series([""] * len(replacement_v3))).astype(str).str.strip() != ""
-        has_run = replacement_v3.get("effective_from_run", pd.Series([""] * len(replacement_v3))).astype(str).str.strip() != ""
+        has_commit = (
+            replacement_v3.get(
+                "effective_from_commit", pd.Series([""] * len(replacement_v3))
+            )
+            .astype(str)
+            .str.strip()
+            != ""
+        )
+        has_run = (
+            replacement_v3.get(
+                "effective_from_run", pd.Series([""] * len(replacement_v3))
+            )
+            .astype(str)
+            .str.strip()
+            != ""
+        )
         replacement_commit_run_coverage = float((has_commit & has_run).mean())
 
     all_required_findings = set(V1_FINDINGS) | set(V2_FINDINGS)
@@ -1413,7 +1454,9 @@ def run_repo_evolution_audit_v3(inputs: AuditInputs) -> AuditResult:
 
     score = compute_completeness_score_v3(
         cli_registry_coverage=cli_registry_coverage,
-        run_workflow_known_ratio=float(1.0 - (unknown_runs / max(1, len(run_timeline_v3)))),
+        run_workflow_known_ratio=float(
+            1.0 - (unknown_runs / max(1, len(run_timeline_v3)))
+        ),
         claim_supported_ratio=claim_supported_ratio,
         replacement_commit_run_coverage=replacement_commit_run_coverage,
         workflow_variant_unknown_count=unknown_runs,

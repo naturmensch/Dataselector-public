@@ -7,9 +7,9 @@ from pathlib import Path
 import pandas as pd
 
 from dataselector.workflows.repo_evolution_audit_v3 import (
-    AuditInputs,
     V1_FINDINGS,
     V2_FINDINGS,
+    AuditInputs,
     _discover_cli_owners,
     _discover_workflows,
     run_repo_evolution_audit_v3,
@@ -69,9 +69,11 @@ def _build_baselines(
                 "registry_type": "native",
                 "forward_target": "",
                 "status_now": "active",
-                "thesis_relevance": "primary"
-                if cmd in {"thesis-pipeline", "thesis-orchestrate"}
-                else "supplementary",
+                "thesis_relevance": (
+                    "primary"
+                    if cmd in {"thesis-pipeline", "thesis-orchestrate"}
+                    else "supplementary"
+                ),
                 "introduced_commit": "c1",
                 "introduced_date": "2026-01-01",
                 "last_active_commit": "c2",
@@ -100,9 +102,17 @@ def _build_baselines(
                 "first_seen_as_primary": "",
                 "last_seen_as_primary": "",
                 "status_now": "active",
-                "thesis_relevance": "primary"
-                if wf in {"thesis_pipeline.py", "thesis_orchestrate.py", "generate_reports.py", "annotation_plan.py"}
-                else "supplementary",
+                "thesis_relevance": (
+                    "primary"
+                    if wf
+                    in {
+                        "thesis_pipeline.py",
+                        "thesis_orchestrate.py",
+                        "generate_reports.py",
+                        "annotation_plan.py",
+                    }
+                    else "supplementary"
+                ),
                 "successor": "",
                 "notes": "",
             }
@@ -308,8 +318,7 @@ runs:
     thesis_relevance: non-claim
     evidence_confidence: high
     notes: override
-""".strip()
-            + "\n",
+""".strip() + "\n",
             encoding="utf-8",
         )
 
@@ -322,7 +331,9 @@ runs:
             output_dir=out,
             strict_complete=True,
             resolve_github_evidence=True,
-            overrides_path=overrides_path if with_override else tmp_path / "missing.yaml",
+            overrides_path=(
+                overrides_path if with_override else tmp_path / "missing.yaml"
+            ),
         )
     )
     return out, res
@@ -438,7 +449,11 @@ def test_method_history_evidence_index_integrity(tmp_path, repo_root):
         "exists_flag",
     ]
     assert list(idx.columns) == expected_cols
-    core = idx[idx["entity_type"].isin(["workflow", "cli_command", "replacement", "claim", "finding"])]
+    core = idx[
+        idx["entity_type"].isin(
+            ["workflow", "cli_command", "replacement", "claim", "finding"]
+        )
+    ]
     assert not core["entity_id"].astype(str).str.strip().eq("").any()
     assert set(idx["exists_flag"].astype(str).str.lower().unique()).issubset(
         {"true", "false"}

@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 import sys
 import time
 from datetime import datetime, timezone
@@ -12,7 +13,11 @@ from typing import Any, Optional
 import pandas as pd
 
 from dataselector.cli_decorators import cli_command
-from dataselector.runtime import activate_repro_mode, write_run_metadata
+from dataselector.runtime import (
+    activate_repro_mode,
+    report_exception,
+    write_run_metadata,
+)
 from dataselector.runtime.parameter_snapshot import (
     build_snapshot,
     compute_file_sha256,
@@ -21,6 +26,13 @@ from dataselector.runtime.parameter_snapshot import (
     write_snapshot,
 )
 from dataselector.workflows._selection_target import resolve_selection_n_samples
+from dataselector.workflows.annotation_plan import run_thesis_build_annotation_plan
+from dataselector.workflows.handoff_bundle import (
+    prepare_patch_handoff,
+    prepare_tile_handoff,
+    verify_patch_handoff,
+    verify_tile_handoff,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +55,9 @@ def _config_first(config: dict[str, Any], paths: list[str]) -> Any:
     return None
 
 
-def _ensure_provenance_section(parameters: dict[str, Any], section: str) -> dict[str, Any]:
+def _ensure_provenance_section(
+    parameters: dict[str, Any], section: str
+) -> dict[str, Any]:
     sec = parameters.setdefault(section, {})
     if not isinstance(sec, dict):
         raise ValueError(f"Config section '{section}' must be a mapping")
@@ -189,7 +203,10 @@ def _resolve_optuna_sampler(
         return sampler, "config_policy", None
 
     artifact_candidates = [
-        output_dir / "parameter_resolution" / "sampler_resolution" / "selected_sampler.json",
+        output_dir
+        / "parameter_resolution"
+        / "sampler_resolution"
+        / "selected_sampler.json",
         output_dir / "selected_sampler.json",
         output_dir / "sampler_resolution" / "selected_sampler.json",
     ]
@@ -371,6 +388,30 @@ def _parse_case_attach_mode(value: Any) -> str:
     return mode
 
 
+def _parse_selection_authority(value: Any) -> str:
+    mode = str(value).strip().lower()
+    allowed = {"snapshot_primary", "materialized_csv_primary"}
+    if mode not in allowed:
+        raise ValueError(
+            "selection.selection_authority must be one of "
+            "snapshot_primary|materialized_csv_primary "
+            f"(got {value!r})"
+        )
+    return mode
+
+
+def _parse_objective_authority(value: Any) -> str:
+    mode = str(value).strip().lower()
+    allowed = {"unified_normalized", "legacy_lexicographic"}
+    if mode not in allowed:
+        raise ValueError(
+            "selection.objective_authority must be one of "
+            "unified_normalized|legacy_lexicographic "
+            f"(got {value!r})"
+        )
+    return mode
+
+
 def _dedupe_str_list(values: list[Any] | None) -> list[str]:
     if not values:
         return []
@@ -415,9 +456,7 @@ def _resolve_named_indices(
                     needle
                 )
             if "shortName" in metadata.columns:
-                mask = mask | (
-                    metadata["shortName"].astype(str).str.lower() == needle
-                )
+                mask = mask | (metadata["shortName"].astype(str).str.lower() == needle)
             if "city" in metadata.columns:
                 mask = mask | (metadata["city"].astype(str).str.lower() == needle)
         idxs = [int(i) for i in mask[mask].index.tolist()]
@@ -451,9 +490,7 @@ def _find_primary_selection_csv(output_dir: Path) -> tuple[Path | None, str]:
                 if exact_path.exists():
                     selected_tiles_file = exact_path
                 else:
-                    pattern = (
-                        f"selection_a{float(alpha):.6f}*_b{float(beta):.6f}*_g{float(gamma):.6f}*.csv"
-                    )
+                    pattern = f"selection_a{float(alpha):.6f}*_b{float(beta):.6f}*_g{float(gamma):.6f}*.csv"
                     candidates = sorted(tuning_weights_dir.glob(pattern))
                     if candidates:
                         selected_tiles_file = candidates[0]
@@ -473,29 +510,211 @@ def _find_primary_selection_csv(output_dir: Path) -> tuple[Path | None, str]:
     return selected_tiles_file, selected_from
 
 
+def _parse_selection_weights_from_filename(
+    path_value: str | None,
+) -> dict[str, float] | None:
+    if not path_value:
+        return None
+    match = re.search(
+        r"selection_a(?P<a>[-+0-9.eE]+?)_b(?P<b>[-+0-9.eE]+?)_g(?P<g>[-+0-9.eE]+?)(?:\.csv)?$",
+        Path(path_value).name,
+    )
+    if not match:
+        return None
+    try:
+        return {
+            "alpha_visual": float(match.group("a")),
+            "beta_spatial": float(match.group("b")),
+            "gamma_temporal": float(match.group("g")),
+        }
+    except Exception:
+        return None
+
+
+def _sanitize_export_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Return a detached DataFrame copy safe for concat/export operations."""
+
+    cleaned = df.copy()
+    if hasattr(cleaned, "attrs"):
+        cleaned.attrs = {}
+    return cleaned
+
+
+def _write_crs_provenance_audit(
+    *,
+    output_dir: Path,
+    metadata: pd.DataFrame,
+) -> dict[str, Any]:
+    from dataselector.data.crs_provenance import audit_crs_provenance
+
+    data_quality_dir = output_dir / "data_quality"
+    data_quality_dir.mkdir(parents=True, exist_ok=True)
+    audit_path = data_quality_dir / "crs_provenance_audit.csv"
+    audit_df, summary = audit_crs_provenance(metadata)
+    audit_df.to_csv(audit_path, index=False)
+    return {"crs_provenance_audit_path": str(audit_path), **summary}
+
+
+def _materialize_snapshot_primary_core_selection(
+    *,
+    output_dir: Path,
+    metadata_path: Path,
+    config_path: Path,
+    resolved_feature_config: dict[str, Any],
+    n_samples: int,
+    metric: str,
+    alpha_visual: float,
+    beta_spatial: float,
+    gamma_temporal: float,
+    min_distance_km: float,
+    spatial_constraint: bool,
+    use_multi_criteria: bool,
+    use_constraint_integration: bool,
+    random_state: int,
+    pre_selected_names: list[str] | None,
+    pre_selected_indices: list[int] | None,
+    tile_exclusion_policy: str | Path | None,
+    apply_tile_exclusion: bool,
+) -> tuple[pd.DataFrame, Path, list[str]]:
+    from dataselector.data.io import load_metadata, load_or_extract_features
+    from dataselector.selection.diversity_selector import DiversitySelector
+
+    metadata = load_metadata(
+        metadata_path,
+        resolve_images=False,
+        tile_exclusion_policy=tile_exclusion_policy,
+        apply_tile_exclusion=apply_tile_exclusion,
+    )
+    feature_cfg = {
+        str(k): v
+        for k, v in dict(resolved_feature_config or {}).items()
+        if not str(k).startswith("_")
+    }
+    resolved_batch_size = int(feature_cfg.get("batch_size", 16))
+    features = load_or_extract_features(
+        out_dir=output_dir / "parameter_resolution",
+        csv_meta=str(metadata_path),
+        batch_size=resolved_batch_size,
+        cache=True,
+        cache_mode=os.getenv("DATASELECTOR_FEATURE_CACHE_MODE", "read_write"),
+        config_path=config_path,
+        resolved_feature_config=feature_cfg,
+        tile_exclusion_policy=tile_exclusion_policy,
+        apply_tile_exclusion=apply_tile_exclusion,
+    )
+    if len(features) != len(metadata):
+        raise ValueError(
+            "Feature/metadata length mismatch for snapshot-primary selection: "
+            f"features={len(features)} metadata={len(metadata)}"
+        )
+
+    raw_pre_indices = (
+        list(dict.fromkeys(int(i) for i in (pre_selected_indices or [])))
+        if pre_selected_indices
+        else []
+    )
+    pre_name_list = _dedupe_str_list(pre_selected_names or [])
+    resolved_name_indices, _, unresolved_pre_names = _resolve_named_indices(
+        metadata,
+        pre_name_list,
+    )
+    combined_pre = list(dict.fromkeys(raw_pre_indices + resolved_name_indices))
+
+    selector = DiversitySelector(
+        n_samples=int(n_samples),
+        metric=str(metric),
+        random_state=int(random_state),
+        use_constraint_integration=bool(use_constraint_integration),
+        use_multi_criteria=bool(use_multi_criteria),
+    )
+    selected_idx = selector.select(
+        features=features,
+        metadata=metadata,
+        spatial_constraint=bool(spatial_constraint),
+        min_distance_km=float(min_distance_km),
+        alpha_visual=float(alpha_visual),
+        beta_spatial=float(beta_spatial),
+        gamma_temporal=float(gamma_temporal),
+        pre_selected=combined_pre if combined_pre else None,
+    )
+
+    if len(selected_idx) == 0:
+        core_df = metadata.iloc[[]].copy().reset_index(drop=True)
+    else:
+        core_df = metadata.iloc[list(selected_idx)].copy().reset_index(drop=True)
+    core_df = _sanitize_export_dataframe(core_df)
+    core_df["selection_rank"] = range(len(core_df))
+    if len(core_df) > 0:
+        core_df["selection_backend"] = str(
+            getattr(selector, "selection_backend", "unknown")
+        )
+
+    snapshot_core_path = output_dir / "selection_snapshot_primary.csv"
+    core_df.to_csv(snapshot_core_path, index=False)
+    return core_df, snapshot_core_path, unresolved_pre_names
+
+
 def _materialize_core_case_artifacts(
     *,
     output_dir: Path,
+    metadata_path: Path,
+    config_path: Path,
     case_names: list[str],
     case_exclude_from_core: bool,
     case_attach_mode: str,
+    selection_authority: str,
+    objective_authority: str,
+    selection_params: dict[str, Any],
+    resolved_feature_config: dict[str, Any],
+    pre_selected_names: list[str] | None = None,
+    pre_selected_indices: list[int] | None = None,
+    tile_exclusion_policy: str | Path | None = None,
+    apply_tile_exclusion: bool = False,
 ) -> dict[str, Any]:
     from dataselector.data.io import load_metadata
-    from dataselector.data.metadata_source import canonical_metadata_path
 
     metadata = load_metadata(
-        str(canonical_metadata_path(Path.cwd())),
+        metadata_path,
         resolve_images=False,
+        tile_exclusion_policy=tile_exclusion_policy,
+        apply_tile_exclusion=apply_tile_exclusion,
     )
-    # Freeze dataset claims to the recorded selection CSV rather than re-selecting
-    # from snapshot parameters during report/export stages.
-    primary_sel_path, selection_source = _find_primary_selection_csv(output_dir)
 
-    core_raw: pd.DataFrame
-    if primary_sel_path is not None and primary_sel_path.exists():
-        core_raw = pd.read_csv(primary_sel_path)
+    unresolved_pre_names: list[str] = []
+    if selection_authority == "snapshot_primary":
+        core_raw, primary_sel_path, unresolved_pre_names = (
+            _materialize_snapshot_primary_core_selection(
+                output_dir=output_dir,
+                metadata_path=metadata_path,
+                config_path=config_path,
+                resolved_feature_config=resolved_feature_config,
+                n_samples=int(selection_params["n_samples"]),
+                metric=str(selection_params["metric"]),
+                alpha_visual=float(selection_params["alpha_visual"]),
+                beta_spatial=float(selection_params["beta_spatial"]),
+                gamma_temporal=float(selection_params["gamma_temporal"]),
+                min_distance_km=float(selection_params["min_distance_km"]),
+                spatial_constraint=bool(selection_params["spatial_constraint"]),
+                use_multi_criteria=bool(selection_params["use_multi_criteria"]),
+                use_constraint_integration=bool(
+                    selection_params["use_constraint_integration"]
+                ),
+                random_state=int(selection_params["random_state"]),
+                pre_selected_names=pre_selected_names,
+                pre_selected_indices=pre_selected_indices,
+                tile_exclusion_policy=tile_exclusion_policy,
+                apply_tile_exclusion=apply_tile_exclusion,
+            )
+        )
+        selection_source = "snapshot_primary_selection"
     else:
-        core_raw = pd.DataFrame(columns=list(metadata.columns))
+        # Legacy compatibility mode: freeze dataset claims to recorded selection CSV.
+        primary_sel_path, selection_source = _find_primary_selection_csv(output_dir)
+        if primary_sel_path is not None and primary_sel_path.exists():
+            core_raw = pd.read_csv(primary_sel_path)
+        else:
+            core_raw = pd.DataFrame(columns=list(metadata.columns))
+    core_raw = _sanitize_export_dataframe(core_raw)
 
     if "selection_rank" in core_raw.columns:
         core_raw["selection_rank"] = (
@@ -512,7 +731,10 @@ def _materialize_core_case_artifacts(
         metadata,
         case_names,
     )
-    case_df = metadata.iloc[case_indices].copy() if case_indices else metadata.iloc[[]].copy()
+    case_df = (
+        metadata.iloc[case_indices].copy() if case_indices else metadata.iloc[[]].copy()
+    )
+    case_df = _sanitize_export_dataframe(case_df)
     if len(case_df) > 0:
         case_df["case_name"] = [idx_to_case_name.get(int(i), "") for i in case_df.index]
         case_df["case_reason"] = "manual_case_tile"
@@ -534,6 +756,7 @@ def _materialize_core_case_artifacts(
         core_df = core_raw.loc[keep_mask].reset_index(drop=True)
     else:
         core_df = core_raw.copy().reset_index(drop=True)
+    core_df = _sanitize_export_dataframe(core_df)
     core_df["selection_rank"] = range(len(core_df))
 
     if case_attach_mode == "append_all":
@@ -542,9 +765,12 @@ def _materialize_core_case_artifacts(
         if len(case_df) == 0:
             append_df = case_df.copy()
         else:
-            existing_keys = set(_key_series(core_df).tolist()) if len(core_df) > 0 else set()
+            existing_keys = (
+                set(_key_series(core_df).tolist()) if len(core_df) > 0 else set()
+            )
             append_mask = ~_key_series(case_df).isin(existing_keys)
             append_df = case_df.loc[append_mask].reset_index(drop=True)
+    append_df = _sanitize_export_dataframe(append_df)
 
     if len(core_df) == 0:
         final_df = append_df.copy().reset_index(drop=True)
@@ -552,6 +778,7 @@ def _materialize_core_case_artifacts(
         final_df = core_df.copy().reset_index(drop=True)
     else:
         final_df = pd.concat([core_df, append_df], ignore_index=True)
+    final_df = _sanitize_export_dataframe(final_df)
     if len(final_df) > 0:
         final_df["selection_rank"] = range(len(final_df))
 
@@ -565,10 +792,25 @@ def _materialize_core_case_artifacts(
     final_df.to_csv(final_path, index=False)
 
     contract = {
-        "contract_version": "core_case_v1",
+        "contract_version": "core_case_v2",
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+        "selection_authority": selection_authority,
+        "objective_authority": objective_authority,
         "selection_source": selection_source,
         "selection_source_file": None,
+        "selection_weights": (
+            {
+                "alpha_visual": float(selection_params["alpha_visual"]),
+                "beta_spatial": float(selection_params["beta_spatial"]),
+                "gamma_temporal": float(selection_params["gamma_temporal"]),
+            }
+            if selection_authority == "snapshot_primary"
+            else (
+                _parse_selection_weights_from_filename(str(primary_sel_path))
+                if primary_sel_path is not None
+                else None
+            )
+        ),
         "case_tile_names": case_names,
         "case_exclude_from_core": bool(case_exclude_from_core),
         "case_attach_mode": case_attach_mode,
@@ -579,10 +821,13 @@ def _materialize_core_case_artifacts(
         "case_count": int(len(case_df)),
         "final_count": int(len(final_df)),
         "unresolved_case_names": unresolved_cases,
+        "unresolved_pre_selected_names": unresolved_pre_names,
     }
     if primary_sel_path is not None and primary_sel_path.exists():
         try:
-            contract["selection_source_file"] = str(primary_sel_path.relative_to(output_dir))
+            contract["selection_source_file"] = str(
+                primary_sel_path.relative_to(output_dir)
+            )
         except Exception:
             contract["selection_source_file"] = str(primary_sel_path)
     contract_path.write_text(
@@ -596,6 +841,139 @@ def _materialize_core_case_artifacts(
         "selection_final_with_cases_path": str(final_path),
         "selection_contract_path": str(contract_path),
         **contract,
+    }
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _resolve_handoff_root(path: str | Path) -> Path:
+    candidate = Path(path)
+    if candidate.is_absolute():
+        return candidate
+    return (_repo_root() / candidate).resolve()
+
+
+def _freeze_boundary_hashes(
+    *,
+    output_dir: Path,
+    resolved_snapshot_path: Path | None,
+) -> dict[str, str]:
+    protected_paths = {
+        "selection_core.csv": output_dir / "selection_core.csv",
+        "selection_case.csv": output_dir / "selection_case.csv",
+        "selection_final_with_cases.csv": output_dir / "selection_final_with_cases.csv",
+        "selection_contract.json": output_dir / "selection_contract.json",
+    }
+    if resolved_snapshot_path is not None:
+        protected_paths["resolved_snapshot"] = resolved_snapshot_path
+
+    hashes: dict[str, str] = {}
+    missing: list[str] = []
+    for label, path in protected_paths.items():
+        if not path.exists():
+            missing.append(f"{label}: {path}")
+            continue
+        hashes[label] = compute_file_sha256(path)
+    if missing:
+        raise FileNotFoundError(
+            "Phase 5 freeze-boundary inputs missing: " + "; ".join(missing)
+        )
+    return hashes
+
+
+def _run_phase5_annotation_handoffs(
+    *,
+    output_dir: Path,
+    resolved_snapshot_path: Path | None,
+    handoff_root: str | Path,
+    patches_per_tile: int,
+    patch_include_case: bool,
+    tile_exclusion_policy: Path | None,
+) -> dict[str, Any]:
+    handoff_root_path = _resolve_handoff_root(handoff_root)
+    run_id = output_dir.name
+    patch_suffix = "final" if patch_include_case else "core"
+    tile_handoff_dir = handoff_root_path / run_id
+    patch_handoff_dir = handoff_root_path / f"{run_id}_patches_{patch_suffix}"
+
+    pre_hashes = _freeze_boundary_hashes(
+        output_dir=output_dir,
+        resolved_snapshot_path=resolved_snapshot_path,
+    )
+
+    tile_prepare = prepare_tile_handoff(
+        run_dir=output_dir,
+        out_dir=tile_handoff_dir,
+        repo_root=_repo_root(),
+        tile_exclusion_policy=tile_exclusion_policy
+        or "config/tile_exclusion_policy.yaml",
+    )
+    tile_verify = verify_tile_handoff(
+        handoff_dir=tile_handoff_dir,
+        repo_root=_repo_root(),
+        tile_exclusion_policy=tile_exclusion_policy
+        or "config/tile_exclusion_policy.yaml",
+    )
+
+    annotation_summary = run_thesis_build_annotation_plan(
+        run_dir=output_dir,
+        patches_per_tile=int(patches_per_tile),
+        include_case=bool(patch_include_case),
+    )
+    patch_prepare = prepare_patch_handoff(
+        run_dir=output_dir,
+        out_dir=patch_handoff_dir,
+        repo_root=_repo_root(),
+        tile_exclusion_policy=tile_exclusion_policy
+        or "config/tile_exclusion_policy.yaml",
+    )
+    patch_verify = verify_patch_handoff(
+        handoff_dir=patch_handoff_dir,
+        repo_root=_repo_root(),
+        tile_exclusion_policy=tile_exclusion_policy
+        or "config/tile_exclusion_policy.yaml",
+    )
+
+    post_hashes = _freeze_boundary_hashes(
+        output_dir=output_dir,
+        resolved_snapshot_path=resolved_snapshot_path,
+    )
+    if pre_hashes != post_hashes:
+        raise RuntimeError(
+            "Phase 5 freeze-boundary integrity violation: protected scientific artifacts changed."
+        )
+
+    annotation_contract_path = (
+        Path(annotation_summary["annotation_dataset_contract_json"])
+        if annotation_summary.get("annotation_dataset_contract_json")
+        else output_dir / "annotation_plan" / "annotation_dataset_contract.json"
+    )
+    return {
+        "build_handoffs": True,
+        "handoff_root": str(handoff_root_path),
+        "tile_handoff_dir": str(tile_handoff_dir),
+        "tile_handoff_manifest_path": str(tile_handoff_dir / "handoff_manifest.json"),
+        "tile_handoff_selection_count": tile_prepare.get("selection_count"),
+        "tile_handoff_verify": tile_verify,
+        "annotation_plan_dir": str(Path(annotation_summary["output_dir"])),
+        "annotation_dataset_contract_path": str(annotation_contract_path),
+        "patches_per_tile": int(patches_per_tile),
+        "patch_include_case": bool(patch_include_case),
+        "patch_selection_group": "final" if patch_include_case else "core",
+        "patches_total": annotation_summary.get("patches_total"),
+        "patches_qc_passed": annotation_summary.get("patches_qc_passed"),
+        "patches_qc_rejected": annotation_summary.get("patches_qc_rejected"),
+        "patch_handoff_dir": str(patch_handoff_dir),
+        "patch_handoff_manifest_path": str(
+            patch_handoff_dir / "patch_handoff_manifest.json"
+        ),
+        "patch_handoff_selection_count": patch_prepare.get("selection_count"),
+        "patch_handoff_verify": patch_verify,
+        "phase5_freeze_boundary_verified": True,
+        "phase5_freeze_boundary_hashes": pre_hashes,
+        "phase5_freeze_boundary_hashes_post": post_hashes,
     }
 
 
@@ -629,6 +1007,12 @@ def run_thesis_pipeline(
     validation_replicate_mode: Optional[str] = None,
     validation_n_bootstrap: Optional[int] = None,
     validation_bootstrap_sample_frac: Optional[float] = None,
+    tile_exclusion_policy: Optional[Path] = None,
+    apply_tile_exclusion: Optional[bool] = None,
+    build_handoffs: bool = False,
+    patches_per_tile: int = 2,
+    patch_include_case: bool = False,
+    handoff_root: str = "handoff",
 ) -> bool:
     """
     Run complete thesis optimization pipeline.
@@ -659,6 +1043,12 @@ def run_thesis_pipeline(
         validation_replicate_mode: Validation replicate mode (`seed_replay` or `bootstrap_candidates`)
         validation_n_bootstrap: Number of bootstrap replicates for validation
         validation_bootstrap_sample_frac: Candidate sample fraction for bootstrap replicates
+        tile_exclusion_policy: Explicit tile policy path for candidate-pool filtering/flagging
+        apply_tile_exclusion: Explicit toggle for candidate-pool exclusion policy
+        build_handoffs: Enable optional post-freeze Phase 5 handoff bundle
+        patches_per_tile: Annotation-plan patches per selected tile for Phase 5
+        patch_include_case: Include case tiles in the Phase 5 patch plan/handoff
+        handoff_root: Root directory for tile/patch handoff bundles
 
     Returns:
         True if all phases succeeded, False otherwise
@@ -679,57 +1069,242 @@ def run_thesis_pipeline(
     feature_cache_dir.mkdir(parents=True, exist_ok=True)
 
     metadata_path = Path("data/new_all_tiles.csv")
-    config_path = Path(config_path) if config_path is not None else Path("config/pipeline_config.yaml")
+    config_path = (
+        Path(config_path)
+        if config_path is not None
+        else Path("config/pipeline_config.yaml")
+    )
     os.environ["DATASELECTOR_ACTIVE_CONFIG"] = str(config_path)
     os.environ["DATASELECTOR_FEATURE_CACHE_MODE"] = str(cache_mode)
+    tile_policy_path = (
+        Path(tile_exclusion_policy)
+        if tile_exclusion_policy is not None
+        else (
+            Path(os.environ["DATASELECTOR_TILE_EXCLUSION_POLICY"])
+            if os.environ.get("DATASELECTOR_TILE_EXCLUSION_POLICY")
+            else None
+        )
+    )
+    apply_tile_exclusion_flag = (
+        _parse_bool(apply_tile_exclusion, label="apply_tile_exclusion")
+        if apply_tile_exclusion is not None
+        else os.environ.get("DATASELECTOR_APPLY_TILE_EXCLUSION", "0") == "1"
+    )
+    build_handoffs_flag = bool(build_handoffs)
+    patches_per_tile_resolved = _parse_positive_int(
+        patches_per_tile, label="patches_per_tile"
+    )
+    patch_include_case_flag = _parse_bool(
+        patch_include_case, label="patch_include_case"
+    )
+    handoff_root_resolved = str(_resolve_handoff_root(handoff_root))
+    if tile_policy_path is not None:
+        os.environ["DATASELECTOR_TILE_EXCLUSION_POLICY"] = str(tile_policy_path)
+    os.environ["DATASELECTOR_APPLY_TILE_EXCLUSION"] = (
+        "1" if apply_tile_exclusion_flag else "0"
+    )
     if execution_profile == "thesis_repro":
         os.environ["DATASELECTOR_STRICT_CRS"] = "1"
+        os.environ["DATASELECTOR_STRICT_EXPLICIT_CRS"] = "1"
+        os.environ["DATASELECTOR_ALLOW_HEURISTIC_CRS_FALLBACK"] = "0"
         os.environ["DATASELECTOR_METRIC_EPSG"] = "25832"
     else:
-        os.environ.setdefault("DATASELECTOR_STRICT_CRS", "0")
-        os.environ.setdefault("DATASELECTOR_METRIC_EPSG", "25832")
+        os.environ["DATASELECTOR_STRICT_CRS"] = "0"
+        os.environ["DATASELECTOR_STRICT_EXPLICIT_CRS"] = "0"
+        os.environ["DATASELECTOR_ALLOW_HEURISTIC_CRS_FALLBACK"] = "1"
+        os.environ["DATASELECTOR_METRIC_EPSG"] = "25832"
 
     metadata_crs_info: dict[str, Any] = {}
+    metadata_crs_audit_info: dict[str, Any] = {"crs_provenance_audit_path": None}
     metadata_tile_exclusion_info: dict[str, Any] = {
         "tile_exclusions_applied": None,
         "tile_exclusions_count": None,
         "tile_excluded_shortnames": None,
+        "tile_flagged_count": None,
+        "tile_flagged_shortnames": None,
+        "tile_flagged_classes": None,
+        "tile_flagged_caveats": None,
         "tile_exclusion_policy_sha256": None,
         "effective_tile_count": None,
     }
+    exception_records: list[dict[str, Any]] = []
+    exceptions_log_path: str | None = None
     try:
         from dataselector.data.io import load_metadata
 
-        md_preview = load_metadata(
+        md_audit = load_metadata(
             metadata_path,
             resolve_images=False,
-            strict_metric_crs=(execution_profile == "thesis_repro"),
+            strict_metric_crs=False,
+            strict_explicit_crs=False,
+            allow_heuristic_crs_fallback=True,
+            tile_exclusion_policy=tile_policy_path,
+            apply_tile_exclusion=apply_tile_exclusion_flag,
+        )
+        metadata_crs_audit_info = _write_crs_provenance_audit(
+            output_dir=output_dir,
+            metadata=md_audit,
+        )
+        if execution_profile == "thesis_repro" and not bool(
+            metadata_crs_audit_info.get("crs_strict_ready", False)
+        ):
+            raise RuntimeError(
+                "Explicit CRS audit failed for thesis_repro: "
+                f"status={metadata_crs_audit_info.get('crs_provenance_status')}, "
+                f"missing={metadata_crs_audit_info.get('crs_missing_explicit_count')}, "
+                f"heuristic={metadata_crs_audit_info.get('crs_heuristic_fallback_count')}, "
+                f"mismatches={metadata_crs_audit_info.get('crs_consistency_issue_count')}"
+            )
+        md_preview = (
+            load_metadata(
+                metadata_path,
+                resolve_images=False,
+                strict_metric_crs=True,
+                strict_explicit_crs=True,
+                allow_heuristic_crs_fallback=False,
+                tile_exclusion_policy=tile_policy_path,
+                apply_tile_exclusion=apply_tile_exclusion_flag,
+            )
+            if execution_profile == "thesis_repro"
+            else md_audit
         )
         metadata_crs_info = {
-            "source_crs": md_preview.attrs.get("source_crs") if hasattr(md_preview, "attrs") else None,
-            "metric_crs": md_preview.attrs.get("metric_crs") if hasattr(md_preview, "attrs") else None,
-            "transform_applied": bool(md_preview.attrs.get("transform_applied"))
-            if hasattr(md_preview, "attrs")
-            else False,
+            "source_crs_declared": (
+                md_preview.attrs.get("source_crs_declared")
+                if hasattr(md_preview, "attrs")
+                else None
+            ),
+            "source_crs": (
+                md_preview.attrs.get("source_crs")
+                if hasattr(md_preview, "attrs")
+                else None
+            ),
+            "metric_crs": (
+                md_preview.attrs.get("metric_crs")
+                if hasattr(md_preview, "attrs")
+                else None
+            ),
+            "crs_source": (
+                md_preview.attrs.get("crs_source")
+                if hasattr(md_preview, "attrs")
+                else None
+            ),
+            "crs_provenance": (
+                md_preview.attrs.get("crs_provenance")
+                if hasattr(md_preview, "attrs")
+                else None
+            ),
+            "crs_explicit": (
+                bool(md_preview.attrs.get("crs_explicit"))
+                if hasattr(md_preview, "attrs")
+                else False
+            ),
+            "transform_applied": (
+                bool(md_preview.attrs.get("transform_applied"))
+                if hasattr(md_preview, "attrs")
+                else False
+            ),
+            "crs_provenance_status": (
+                md_preview.attrs.get("crs_provenance_status")
+                if hasattr(md_preview, "attrs")
+                else None
+            ),
+            "crs_explicit_tile_count": (
+                int(md_preview.attrs.get("crs_explicit_tile_count", 0))
+                if hasattr(md_preview, "attrs")
+                else 0
+            ),
+            "crs_heuristic_fallback_count": (
+                int(md_preview.attrs.get("crs_heuristic_fallback_count", 0))
+                if hasattr(md_preview, "attrs")
+                else 0
+            ),
+            "crs_missing_explicit_count": (
+                int(md_preview.attrs.get("crs_missing_explicit_count", 0))
+                if hasattr(md_preview, "attrs")
+                else 0
+            ),
+            "crs_consistency_issue_count": (
+                int(md_preview.attrs.get("crs_consistency_issue_count", 0))
+                if hasattr(md_preview, "attrs")
+                else 0
+            ),
+            "crs_consistency_issue_shortnames": (
+                list(md_preview.attrs.get("crs_consistency_issue_shortnames", []))
+                if hasattr(md_preview, "attrs")
+                else []
+            ),
+            "crs_unique_explicit_source_crs": (
+                list(md_preview.attrs.get("crs_unique_explicit_source_crs", []))
+                if hasattr(md_preview, "attrs")
+                else []
+            ),
+            "crs_explicit_source_crs": (
+                md_preview.attrs.get("crs_explicit_source_crs")
+                if hasattr(md_preview, "attrs")
+                else None
+            ),
+            "crs_strict_ready": (
+                bool(md_preview.attrs.get("crs_strict_ready"))
+                if hasattr(md_preview, "attrs")
+                else False
+            ),
         }
         attrs = md_preview.attrs if hasattr(md_preview, "attrs") else {}
         metadata_tile_exclusion_info = {
-            "tile_exclusions_applied": bool(attrs.get("tile_exclusions_applied", False)),
+            "tile_exclusions_applied": bool(
+                attrs.get("tile_exclusions_applied", False)
+            ),
             "tile_exclusions_count": int(attrs.get("tile_exclusions_count", 0)),
             "tile_excluded_shortnames": list(attrs.get("tile_excluded_shortnames", [])),
+            "tile_flagged_count": int(attrs.get("tile_flagged_count", 0)),
+            "tile_flagged_shortnames": list(attrs.get("tile_flagged_shortnames", [])),
+            "tile_flagged_classes": list(attrs.get("tile_flagged_classes", [])),
+            "tile_flagged_caveats": list(attrs.get("tile_flagged_caveats", [])),
             "tile_exclusion_policy_sha256": attrs.get("tile_exclusion_policy_sha256"),
-            "effective_tile_count": int(attrs.get("effective_tile_count", len(md_preview))),
+            "effective_tile_count": int(
+                attrs.get("effective_tile_count", len(md_preview))
+            ),
         }
     except Exception as exc:
         metadata_crs_info = {
+            "source_crs_declared": None,
             "source_crs": None,
             "metric_crs": None,
+            "crs_source": None,
+            "crs_provenance": None,
+            "crs_explicit": None,
             "transform_applied": None,
+            "crs_provenance_status": None,
+            "crs_explicit_tile_count": None,
+            "crs_heuristic_fallback_count": None,
+            "crs_missing_explicit_count": None,
+            "crs_consistency_issue_count": None,
+            "crs_consistency_issue_shortnames": None,
+            "crs_unique_explicit_source_crs": None,
+            "crs_explicit_source_crs": None,
+            "crs_strict_ready": None,
             "error": str(exc),
         }
+        preview_record = report_exception(
+            exc,
+            phase="metadata_preview",
+            user_message="Could not resolve metadata CRS/tile-policy preview",
+            output_dir=output_dir,
+            logger=logger,
+            context={
+                "metadata_path": metadata_path,
+                "tile_exclusion_policy": tile_policy_path,
+                "apply_tile_exclusion": apply_tile_exclusion_flag,
+                "execution_profile": execution_profile,
+            },
+        )
+        exceptions_log_path = preview_record.get(
+            "exceptions_log_path", exceptions_log_path
+        )
+        exception_records.append(preview_record)
         if execution_profile == "thesis_repro":
             raise
-        print(f"⚠️ Could not resolve metadata CRS info: {exc}")
 
     snapshot_errors: list[str] = []
     snapshot_forced = False
@@ -771,13 +1346,18 @@ def run_thesis_pipeline(
     policy_source_path = snapshot_input_path if snapshot_input_path else config_path
     policy_source_file = str(policy_source_path)
     policy_source_hash = (
-        compute_file_sha256(policy_source_path)
-        if policy_source_path.exists()
-        else None
+        compute_file_sha256(policy_source_path) if policy_source_path.exists() else None
     )
-    policy_method = "snapshot_policy" if snapshot_input_path is not None else "config_policy"
+    policy_method = (
+        "snapshot_policy" if snapshot_input_path is not None else "config_policy"
+    )
 
-    computed_selection_values, computed_selection_method, computed_selection_source_file, computed_selection_source_hash = _resolve_computed_selection_values(
+    (
+        computed_selection_values,
+        computed_selection_method,
+        computed_selection_source_file,
+        computed_selection_source_hash,
+    ) = _resolve_computed_selection_values(
         compute_params=compute_params,
         output_dir=output_dir,
     )
@@ -901,28 +1481,32 @@ def run_thesis_pipeline(
         source_file=(
             policy_source_file
             if n_samples_source in {"config", "snapshot_config"}
-            else computed_selection_source_file
-            if n_samples_source == "computed_autoscale_artifact"
-            else None
+            else (
+                computed_selection_source_file
+                if n_samples_source == "computed_autoscale_artifact"
+                else None
+            )
         ),
         source_hash=(
             policy_source_hash
             if n_samples_source in {"config", "snapshot_config"}
-            else computed_selection_source_hash
-            if n_samples_source == "computed_autoscale_artifact"
-            else None
+            else (
+                computed_selection_source_hash
+                if n_samples_source == "computed_autoscale_artifact"
+                else None
+            )
         ),
         compute_args={"explicit_cli": n_samples is not None},
     )
 
     # Resolve and record critical policy/config parameters centrally.
-    resolve_param(
+    resolved_selection_metric = resolve_param(
         section="selection",
         key="metric",
         paths=["selection.metric"],
         parser=lambda v: str(v).strip(),
     )
-    resolve_param(
+    resolved_alpha_visual = resolve_param(
         section="selection",
         key="alpha_visual",
         paths=["selection.alpha_visual", "selection.weights.alpha"],
@@ -934,7 +1518,7 @@ def run_thesis_pipeline(
         prefer_computed_when_requested=True,
         require_computed_when_requested=True,
     )
-    resolve_param(
+    resolved_beta_spatial = resolve_param(
         section="selection",
         key="beta_spatial",
         paths=["selection.beta_spatial", "selection.weights.beta"],
@@ -946,7 +1530,7 @@ def run_thesis_pipeline(
         prefer_computed_when_requested=True,
         require_computed_when_requested=True,
     )
-    resolve_param(
+    resolved_gamma_temporal = resolve_param(
         section="selection",
         key="gamma_temporal",
         paths=["selection.gamma_temporal", "selection.weights.gamma"],
@@ -958,25 +1542,39 @@ def run_thesis_pipeline(
         prefer_computed_when_requested=True,
         require_computed_when_requested=True,
     )
-    resolve_param(
+    resolved_selection_authority = resolve_param(
+        section="selection",
+        key="selection_authority",
+        paths=["selection.selection_authority"],
+        parser=_parse_selection_authority,
+        default="materialized_csv_primary",
+    )
+    resolved_objective_authority = resolve_param(
+        section="selection",
+        key="objective_authority",
+        paths=["selection.objective_authority"],
+        parser=_parse_objective_authority,
+        default="unified_normalized",
+    )
+    resolved_spatial_constraint = resolve_param(
         section="selection",
         key="spatial_constraint",
         paths=["selection.spatial_constraint"],
         parser=lambda v: _parse_bool(v, label="selection.spatial_constraint"),
     )
-    resolve_param(
+    resolved_use_multi_criteria = resolve_param(
         section="selection",
         key="use_multi_criteria",
         paths=["selection.use_multi_criteria"],
         parser=lambda v: _parse_bool(v, label="selection.use_multi_criteria"),
     )
-    resolve_param(
+    resolved_use_constraint_integration = resolve_param(
         section="selection",
         key="use_constraint_integration",
         paths=["selection.use_constraint_integration"],
         parser=lambda v: _parse_bool(v, label="selection.use_constraint_integration"),
     )
-    resolve_param(
+    resolved_selection_random_state = resolve_param(
         section="selection",
         key="random_state",
         paths=["selection.random_state"],
@@ -1082,7 +1680,14 @@ def run_thesis_pipeline(
         section="feature_extraction",
         key="crop_size",
         paths=["feature_extraction.crop_size"],
-        parser=lambda v: [int(v[0]), int(v[1])] if isinstance(v, (list, tuple)) and len(v) == 2 else (_parse_positive_int(v, label="feature_extraction.crop_size"), _parse_positive_int(v, label="feature_extraction.crop_size")),
+        parser=lambda v: (
+            [int(v[0]), int(v[1])]
+            if isinstance(v, (list, tuple)) and len(v) == 2
+            else (
+                _parse_positive_int(v, label="feature_extraction.crop_size"),
+                _parse_positive_int(v, label="feature_extraction.crop_size"),
+            )
+        ),
     )
     if isinstance(crop_size_value, tuple):
         crop_size_value = [int(crop_size_value[0]), int(crop_size_value[1])]
@@ -1095,11 +1700,15 @@ def run_thesis_pipeline(
     )
 
     # Resolve min_distance policy from config/snapshot or compute (if requested).
-    computed_min_distance_km = computed_selection_values.get("min_distance_km", sentinel)
+    computed_min_distance_km = computed_selection_values.get(
+        "min_distance_km", sentinel
+    )
     config_min_distance_km = _config_get(parameters, "selection.min_distance_km")
     if compute_params and computed_min_distance_km is not sentinel:
         config_min_distance_km = float(computed_min_distance_km)
-        parameters.setdefault("selection", {})["min_distance_km"] = config_min_distance_km
+        parameters.setdefault("selection", {})[
+            "min_distance_km"
+        ] = config_min_distance_km
         _record_param_provenance(
             parameters,
             "selection",
@@ -1123,16 +1732,18 @@ def run_thesis_pipeline(
         from dataselector.pipeline.pipeline_utils import compute_min_distance_km
 
         config_min_distance_km = float(compute_min_distance_km(str(metadata_path)))
-        parameters.setdefault("selection", {})["min_distance_km"] = config_min_distance_km
+        parameters.setdefault("selection", {})[
+            "min_distance_km"
+        ] = config_min_distance_km
         _record_param_provenance(
             parameters,
             "selection",
             "min_distance_km",
             method="computed_from_metadata",
             source_file=str(metadata_path),
-            source_hash=compute_file_sha256(metadata_path)
-            if metadata_path.exists()
-            else None,
+            source_hash=(
+                compute_file_sha256(metadata_path) if metadata_path.exists() else None
+            ),
             compute_args={"function": "compute_min_distance_km"},
         )
     else:
@@ -1235,9 +1846,7 @@ def run_thesis_pipeline(
             parameters,
             ["validation.n_bootstrap", "selection.validation_n_bootstrap"],
         )
-        validation_n_bootstrap = (
-            int(cfg_n_boot) if cfg_n_boot is not None else 200
-        )
+        validation_n_bootstrap = int(cfg_n_boot) if cfg_n_boot is not None else 200
     else:
         validation_n_bootstrap = int(validation_n_bootstrap)
     if validation_n_bootstrap <= 0:
@@ -1261,9 +1870,9 @@ def run_thesis_pipeline(
         validation_bootstrap_sample_frac = float(validation_bootstrap_sample_frac)
     if validation_bootstrap_sample_frac <= 0.0:
         raise ValueError("validation_bootstrap_sample_frac must be > 0")
-    parameters.setdefault("selection", {})[
-        "validation_bootstrap_sample_frac"
-    ] = float(validation_bootstrap_sample_frac)
+    parameters.setdefault("selection", {})["validation_bootstrap_sample_frac"] = float(
+        validation_bootstrap_sample_frac
+    )
 
     # Core+Case contract resolution
     cfg_case_names = _config_first(
@@ -1291,9 +1900,15 @@ def run_thesis_pipeline(
         parameters,
         "selection",
         "case_tile_names",
-        method="explicit_cli"
-        if case_names is not None or hamburg
-        else policy_method if cfg_case_names is not None else "workflow_default_policy",
+        method=(
+            "explicit_cli"
+            if case_names is not None or hamburg
+            else (
+                policy_method
+                if cfg_case_names is not None
+                else "workflow_default_policy"
+            )
+        ),
         source_file=policy_source_file if cfg_case_names is not None else None,
         source_hash=policy_source_hash if cfg_case_names is not None else None,
     )
@@ -1324,7 +1939,9 @@ def run_thesis_pipeline(
         )
     else:
         case_attach_mode_resolved = _parse_case_attach_mode(case_attach_mode)
-    parameters.setdefault("selection", {})["case_attach_mode"] = case_attach_mode_resolved
+    parameters.setdefault("selection", {})[
+        "case_attach_mode"
+    ] = case_attach_mode_resolved
 
     resolved_sampler, sampler_source, sampler_artifact_path = _resolve_optuna_sampler(
         config=parameters,
@@ -1355,14 +1972,18 @@ def run_thesis_pipeline(
         "optuna_sampler",
         method=sampler_source,
         source_file=sampler_artifact_path,
-        source_hash=compute_file_sha256(Path(sampler_artifact_path))
-        if sampler_artifact_path and Path(sampler_artifact_path).exists()
-        else None,
+        source_hash=(
+            compute_file_sha256(Path(sampler_artifact_path))
+            if sampler_artifact_path and Path(sampler_artifact_path).exists()
+            else None
+        ),
     )
 
-    resolved_exploration_sampler, exploration_sampler_source = _resolve_exploration_sampler(
-        config=parameters,
-        resolved_optuna_sampler=resolved_sampler,
+    resolved_exploration_sampler, exploration_sampler_source = (
+        _resolve_exploration_sampler(
+            config=parameters,
+            resolved_optuna_sampler=resolved_sampler,
+        )
     )
     if resolved_exploration_sampler is None and not skip_exploration and not dry_run:
         raise ValueError(
@@ -1392,9 +2013,11 @@ def run_thesis_pipeline(
     )
 
     pre_names_list = _dedupe_str_list(list(pre_names) if pre_names is not None else [])
-    if not case_exclude_from_core_flag and hamburg and "Hamburg".lower() not in {
-        n.lower() for n in pre_names_list
-    }:
+    if (
+        not case_exclude_from_core_flag
+        and hamburg
+        and "Hamburg".lower() not in {n.lower() for n in pre_names_list}
+    ):
         pre_names_list.append("Hamburg")
     if case_exclude_from_core_flag and case_names_list:
         blocked = {name.lower() for name in case_names_list}
@@ -1432,10 +2055,17 @@ def run_thesis_pipeline(
         "thesis_runtime",
         "n_lhs",
         method=n_lhs_source,
-        source_file=str(metadata_path) if n_lhs_source == "computed_adaptive_from_metadata" else None,
-        source_hash=compute_file_sha256(metadata_path)
-        if n_lhs_source == "computed_adaptive_from_metadata" and metadata_path.exists()
-        else None,
+        source_file=(
+            str(metadata_path)
+            if n_lhs_source == "computed_adaptive_from_metadata"
+            else None
+        ),
+        source_hash=(
+            compute_file_sha256(metadata_path)
+            if n_lhs_source == "computed_adaptive_from_metadata"
+            and metadata_path.exists()
+            else None
+        ),
         compute_args={"seed": int(seed)},
     )
 
@@ -1457,10 +2087,7 @@ def run_thesis_pipeline(
             "path": sampler_artifact_path,
             "sha256": compute_file_sha256(Path(sampler_artifact_path)),
         }
-    if (
-        computed_selection_source_file
-        and Path(computed_selection_source_file).exists()
-    ):
+    if computed_selection_source_file and Path(computed_selection_source_file).exists():
         source_files["selection_compute_artifact"] = {
             "path": computed_selection_source_file,
             "sha256": compute_file_sha256(Path(computed_selection_source_file)),
@@ -1492,11 +2119,36 @@ def run_thesis_pipeline(
         "phase2_optimization": "pending",
         "phase3_validation": "pending",
         "phase4_summary": "pending",
+        "phase5_handoffs": "pending",
     }
     strict_block_reason: str | None = None
+    phase5_extra: dict[str, Any] = {
+        "build_handoffs": bool(build_handoffs_flag),
+        "handoff_root": handoff_root_resolved,
+        "patches_per_tile": int(patches_per_tile_resolved),
+        "patch_include_case": bool(patch_include_case_flag),
+        "patch_selection_group": "final" if patch_include_case_flag else "core",
+        "annotation_plan_dir": None,
+        "annotation_dataset_contract_path": None,
+        "tile_handoff_dir": None,
+        "tile_handoff_manifest_path": None,
+        "tile_handoff_selection_count": None,
+        "tile_handoff_verify": None,
+        "patch_handoff_dir": None,
+        "patch_handoff_manifest_path": None,
+        "patch_handoff_selection_count": None,
+        "patch_handoff_verify": None,
+        "patches_total": None,
+        "patches_qc_passed": None,
+        "patches_qc_rejected": None,
+        "phase5_freeze_boundary_verified": False,
+        "phase5_freeze_boundary_hashes": None,
+        "phase5_freeze_boundary_hashes_post": None,
+    }
 
     if no_auto_continue:
         print("⏹️  Resolution finished; stopping due to --no-auto-continue.")
+        phase_status["phase5_handoffs"] = "skipped_resolution_only"
         resolved_snapshot_sha256 = (
             compute_file_sha256(resolved_snapshot_path)
             if resolved_snapshot_path and resolved_snapshot_path.exists()
@@ -1520,12 +2172,14 @@ def run_thesis_pipeline(
                     "sampler_artifact_path": sampler_artifact_path,
                     "resolved_exploration_sampler": resolved_exploration_sampler,
                     "resolved_exploration_sampler_source": exploration_sampler_source,
-                    "resolved_snapshot_path": str(resolved_snapshot_path)
-                    if resolved_snapshot_path
-                    else None,
-                    "stable_snapshot_path": str(stable_snapshot_path)
-                    if stable_snapshot_path
-                    else None,
+                    "selection_authority": resolved_selection_authority,
+                    "objective_authority": resolved_objective_authority,
+                    "resolved_snapshot_path": (
+                        str(resolved_snapshot_path) if resolved_snapshot_path else None
+                    ),
+                    "stable_snapshot_path": (
+                        str(stable_snapshot_path) if stable_snapshot_path else None
+                    ),
                     "resolved_snapshot_sha256": resolved_snapshot_sha256,
                     "snapshot_validation_errors": snapshot_errors,
                     "snapshot_forced": snapshot_forced,
@@ -1556,17 +2210,34 @@ def run_thesis_pipeline(
                     "validation_n_bootstrap": validation_n_bootstrap,
                     "validation_bootstrap_sample_frac": validation_bootstrap_sample_frac,
                     "pre_selected_names": pre_names_list if pre_names_list else None,
-                    "pre_selected_indices": pre_indices_list if pre_indices_list else None,
+                    "pre_selected_indices": (
+                        pre_indices_list if pre_indices_list else None
+                    ),
                     "hamburg_shortcut": bool(hamburg),
                     "case_tile_names": case_names_list if case_names_list else None,
                     "case_exclude_from_core": bool(case_exclude_from_core_flag),
                     "case_attach_mode": case_attach_mode_resolved,
+                    "tile_exclusion_policy_path": (
+                        str(tile_policy_path) if tile_policy_path else None
+                    ),
+                    "apply_tile_exclusion": bool(apply_tile_exclusion_flag),
+                    **phase5_extra,
+                    "exceptions_log_path": exceptions_log_path,
+                    "exception_records": exception_records,
                     "metadata_crs": metadata_crs_info,
+                    **metadata_crs_audit_info,
                     **metadata_tile_exclusion_info,
                 },
             )
         except Exception as exc:
-            print(f"⚠️ Could not write run metadata: {exc}")
+            report_exception(
+                exc,
+                phase="run_metadata_write_resolution_only",
+                user_message="Could not write run metadata",
+                output_dir=output_dir,
+                logger=logger,
+                context={"mode": "resolution_only"},
+            )
         return True
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1597,9 +2268,11 @@ def run_thesis_pipeline(
     )
     print(
         "exploration sampler: {} ({})".format(
-            resolved_exploration_sampler
-            if resolved_exploration_sampler is not None
-            else "<unresolved>",
+            (
+                resolved_exploration_sampler
+                if resolved_exploration_sampler is not None
+                else "<unresolved>"
+            ),
             exploration_sampler_source,
         )
     )
@@ -1614,6 +2287,12 @@ def run_thesis_pipeline(
             case_names_list if case_names_list else None,
             bool(case_exclude_from_core_flag),
             case_attach_mode_resolved,
+        )
+    )
+    print(
+        "Selection authority: {} | Objective authority: {}".format(
+            resolved_selection_authority,
+            resolved_objective_authority,
         )
     )
     print("=" * 80)
@@ -1638,6 +2317,7 @@ def run_thesis_pipeline(
                     n_samples=n_lhs,
                     selection_n_samples=resolved_n_samples,
                     sampler=resolved_exploration_sampler,
+                    objective_authority=resolved_objective_authority,
                     seed=seed,
                     metadata_path=metadata_path,
                     min_distance_km=config_min_distance_km,
@@ -1651,13 +2331,28 @@ def run_thesis_pipeline(
                 print(f"✅ Phase 1 erfolgreich (Dauer: {elapsed:.1f}s)")
                 phase_status["phase1_exploration"] = "success"
             except Exception as e:
-                print(f"❌ FEHLER in Phase 1: {e}")
+                record = report_exception(
+                    e,
+                    phase="phase1_exploration",
+                    user_message="FEHLER in Phase 1",
+                    output_dir=output_dir,
+                    logger=logger,
+                    context={
+                        "n_lhs": n_lhs,
+                        "resolved_n_samples": resolved_n_samples,
+                        "metadata_path": metadata_path,
+                        "pre_selected_names": pre_names_list,
+                        "pre_selected_indices": pre_indices_list,
+                    },
+                )
+                exceptions_log_path = record.get(
+                    "exceptions_log_path", exceptions_log_path
+                )
+                exception_records.append(record)
                 all_success = False
                 phase_status["phase1_exploration"] = "failed"
                 if strict_scientific:
-                    strict_block_reason = (
-                        "strict_scientific=true and Phase 1 failed; subsequent phases blocked"
-                    )
+                    strict_block_reason = "strict_scientific=true and Phase 1 failed; subsequent phases blocked"
                 elif not skip_optimization and not skip_validation:
                     print("⚠️ Nachfolgende Phasen könnten fehlschlagen")
     else:
@@ -1699,13 +2394,27 @@ def run_thesis_pipeline(
                 print(f"✅ Phase 2 erfolgreich (Dauer: {elapsed:.1f}s)")
                 phase_status["phase2_optimization"] = "success"
             except Exception as e:
-                print(f"❌ FEHLER in Phase 2: {e}")
+                record = report_exception(
+                    e,
+                    phase="phase2_optimization",
+                    user_message="FEHLER in Phase 2",
+                    output_dir=output_dir,
+                    logger=logger,
+                    context={
+                        "n_trials": n_trials,
+                        "resolved_n_samples": resolved_n_samples,
+                        "metadata_path": metadata_path,
+                        "resolved_sampler": resolved_sampler,
+                    },
+                )
+                exceptions_log_path = record.get(
+                    "exceptions_log_path", exceptions_log_path
+                )
+                exception_records.append(record)
                 all_success = False
                 phase_status["phase2_optimization"] = "failed"
                 if strict_scientific:
-                    strict_block_reason = (
-                        "strict_scientific=true and Phase 2 failed; subsequent phases blocked"
-                    )
+                    strict_block_reason = "strict_scientific=true and Phase 2 failed; subsequent phases blocked"
                 elif not skip_validation:
                     print("⚠️ Validation könnte fehlschlagen")
     else:
@@ -1765,7 +2474,23 @@ def run_thesis_pipeline(
                 print(f"✅ Phase 3 erfolgreich (Dauer: {elapsed:.1f}s)")
                 phase_status["phase3_validation"] = "success"
             except Exception as e:
-                print(f"❌ FEHLER in Phase 3: {e}")
+                record = report_exception(
+                    e,
+                    phase="phase3_validation",
+                    user_message="FEHLER in Phase 3",
+                    output_dir=output_dir,
+                    logger=logger,
+                    context={
+                        "validation_min_distances": validation_min_distances,
+                        "validation_seeds": validation_seeds,
+                        "validation_replicate_mode": validation_replicate_mode,
+                        "resolved_n_samples": resolved_n_samples,
+                    },
+                )
+                exceptions_log_path = record.get(
+                    "exceptions_log_path", exceptions_log_path
+                )
+                exception_records.append(record)
                 all_success = False
                 phase_status["phase3_validation"] = "failed"
     else:
@@ -1777,9 +2502,32 @@ def run_thesis_pipeline(
         try:
             selection_contract_extra = _materialize_core_case_artifacts(
                 output_dir=output_dir,
+                metadata_path=metadata_path,
+                config_path=config_path,
                 case_names=case_names_list,
                 case_exclude_from_core=bool(case_exclude_from_core_flag),
                 case_attach_mode=case_attach_mode_resolved,
+                selection_authority=resolved_selection_authority,
+                objective_authority=resolved_objective_authority,
+                selection_params={
+                    "n_samples": int(resolved_n_samples),
+                    "metric": str(resolved_selection_metric),
+                    "alpha_visual": float(resolved_alpha_visual),
+                    "beta_spatial": float(resolved_beta_spatial),
+                    "gamma_temporal": float(resolved_gamma_temporal),
+                    "min_distance_km": float(config_min_distance_km),
+                    "spatial_constraint": bool(resolved_spatial_constraint),
+                    "use_multi_criteria": bool(resolved_use_multi_criteria),
+                    "use_constraint_integration": bool(
+                        resolved_use_constraint_integration
+                    ),
+                    "random_state": int(resolved_selection_random_state),
+                },
+                resolved_feature_config=parameters.get("feature_extraction", {}),
+                pre_selected_names=pre_names_list if pre_names_list else None,
+                pre_selected_indices=pre_indices_list if pre_indices_list else None,
+                tile_exclusion_policy=tile_policy_path,
+                apply_tile_exclusion=apply_tile_exclusion_flag,
             )
             print(
                 "✅ Core+Case artifacts written: core={}, case={}, final={}".format(
@@ -1789,7 +2537,24 @@ def run_thesis_pipeline(
                 )
             )
         except Exception as e:
-            print(f"❌ FEHLER beim Core+Case-Artifact-Export: {e}")
+            record = report_exception(
+                e,
+                phase="core_case_artifact_export",
+                user_message="FEHLER beim Core+Case-Artifact-Export",
+                output_dir=output_dir,
+                logger=logger,
+                context={
+                    "selection_authority": resolved_selection_authority,
+                    "objective_authority": resolved_objective_authority,
+                    "case_tile_names": case_names_list,
+                    "case_exclude_from_core": bool(case_exclude_from_core_flag),
+                    "case_attach_mode": case_attach_mode_resolved,
+                    "tile_exclusion_policy": tile_policy_path,
+                    "apply_tile_exclusion": apply_tile_exclusion_flag,
+                },
+            )
+            exceptions_log_path = record.get("exceptions_log_path", exceptions_log_path)
+            exception_records.append(record)
             all_success = False
 
         print("\n" + "=" * 80)
@@ -1807,20 +2572,76 @@ def run_thesis_pipeline(
             print(f"✅ Phase 4 erfolgreich (Dauer: {elapsed:.1f}s)")
             phase_status["phase4_summary"] = "success"
         except Exception as e:
-            print(f"❌ FEHLER in Phase 4: {e}")
+            record = report_exception(
+                e,
+                phase="phase4_summary",
+                user_message="FEHLER in Phase 4",
+                output_dir=output_dir,
+                logger=logger,
+                context={
+                    "output_dir": output_dir,
+                },
+            )
+            exceptions_log_path = record.get("exceptions_log_path", exceptions_log_path)
+            exception_records.append(record)
             all_success = False
             phase_status["phase4_summary"] = "failed"
     else:
         phase_status["phase4_summary"] = "skipped_dry_run"
 
-    # Final summary
-    print("\n" + "=" * 80)
-    if all_success:
-        print("✅ PIPELINE ERFOLGREICH ABGESCHLOSSEN")
+    # Phase 5: Post-freeze annotation plan + handoff packaging
+    if build_handoffs_flag:
+        if dry_run:
+            phase_status["phase5_handoffs"] = "skipped_dry_run"
+        elif not all_success:
+            print(
+                "\n⏭️  ÜBERSPRINGE Phase 5: Annotation & Handoff "
+                "(prior scientific phases did not complete successfully)"
+            )
+            phase_status["phase5_handoffs"] = "skipped_due_to_prior_failure"
+        else:
+            print("\n" + "=" * 80)
+            print("PHASE 5: ANNOTATION & HANDOFF")
+            print("=" * 80)
+            t0 = time.time()
+            try:
+                phase5_extra.update(
+                    _run_phase5_annotation_handoffs(
+                        output_dir=output_dir,
+                        resolved_snapshot_path=resolved_snapshot_path,
+                        handoff_root=handoff_root_resolved,
+                        patches_per_tile=patches_per_tile_resolved,
+                        patch_include_case=patch_include_case_flag,
+                        tile_exclusion_policy=tile_policy_path,
+                    )
+                )
+                elapsed = time.time() - t0
+                print(f"✅ Phase 5 erfolgreich (Dauer: {elapsed:.1f}s)")
+                phase_status["phase5_handoffs"] = "success"
+            except Exception as e:
+                record = report_exception(
+                    e,
+                    phase="phase5_handoffs",
+                    user_message="FEHLER in Phase 5",
+                    output_dir=output_dir,
+                    logger=logger,
+                    context={
+                        "handoff_root": handoff_root_resolved,
+                        "patches_per_tile": int(patches_per_tile_resolved),
+                        "patch_include_case": bool(patch_include_case_flag),
+                        "tile_exclusion_policy": tile_policy_path,
+                    },
+                )
+                exceptions_log_path = record.get(
+                    "exceptions_log_path", exceptions_log_path
+                )
+                exception_records.append(record)
+                all_success = False
+                phase_status["phase5_handoffs"] = "failed"
     else:
-        print("❌ PIPELINE MIT FEHLERN ABGESCHLOSSEN")
-    print("=" * 80)
+        phase_status["phase5_handoffs"] = "skipped"
 
+    metadata_written = False
     try:
         resolved_snapshot_sha256 = (
             compute_file_sha256(resolved_snapshot_path)
@@ -1845,12 +2666,14 @@ def run_thesis_pipeline(
                 "sampler_artifact_path": sampler_artifact_path,
                 "resolved_exploration_sampler": resolved_exploration_sampler,
                 "resolved_exploration_sampler_source": exploration_sampler_source,
-                "resolved_snapshot_path": str(resolved_snapshot_path)
-                if resolved_snapshot_path
-                else None,
-                "stable_snapshot_path": str(stable_snapshot_path)
-                if stable_snapshot_path
-                else None,
+                "selection_authority": resolved_selection_authority,
+                "objective_authority": resolved_objective_authority,
+                "resolved_snapshot_path": (
+                    str(resolved_snapshot_path) if resolved_snapshot_path else None
+                ),
+                "stable_snapshot_path": (
+                    str(stable_snapshot_path) if stable_snapshot_path else None
+                ),
                 "resolved_snapshot_sha256": resolved_snapshot_sha256,
                 "snapshot_validation_errors": snapshot_errors,
                 "snapshot_forced": snapshot_forced,
@@ -1892,20 +2715,159 @@ def run_thesis_pipeline(
                 "case_tile_names": case_names_list if case_names_list else None,
                 "case_exclude_from_core": bool(case_exclude_from_core_flag),
                 "case_attach_mode": case_attach_mode_resolved,
+                "tile_exclusion_policy_path": (
+                    str(tile_policy_path) if tile_policy_path else None
+                ),
+                "apply_tile_exclusion": bool(apply_tile_exclusion_flag),
+                **phase5_extra,
+                "exceptions_log_path": exceptions_log_path,
+                "exception_records": exception_records,
                 "metadata_crs": metadata_crs_info,
+                **metadata_crs_audit_info,
                 **metadata_tile_exclusion_info,
                 **selection_contract_extra,
             },
         )
+        metadata_written = True
     except Exception as exc:
-        print(f"⚠️ Could not write run metadata: {exc}")
+        report_exception(
+            exc,
+            phase="run_metadata_write_final",
+            user_message="Could not write run metadata",
+            output_dir=output_dir,
+            logger=logger,
+            context={"mode": "final"},
+        )
+
+    if not dry_run and metadata_written:
+        try:
+            generate_thesis_final_report(
+                output_dir=output_dir,
+                timestamp=timestamp,
+            )
+        except Exception as exc:
+            record = report_exception(
+                exc,
+                phase="final_report_refresh",
+                user_message="Could not refresh final thesis report after Phase 5",
+                output_dir=output_dir,
+                logger=logger,
+                context={"output_dir": output_dir},
+            )
+            exceptions_log_path = record.get("exceptions_log_path", exceptions_log_path)
+            exception_records.append(record)
+            all_success = False
+            phase_status["phase4_summary"] = "failed_post_phase5_refresh"
+            try:
+                write_run_metadata(
+                    output_dir=output_dir,
+                    execution_profile=execution_profile,
+                    seed=seed,
+                    command=sys.argv,
+                    config_path=config_path,
+                    runtime_state=runtime_state,
+                    extra={
+                        "n_lhs": n_lhs,
+                        "n_samples": resolved_n_samples,
+                        "n_samples_source": n_samples_source,
+                        "parameter_source": parameter_source,
+                        "compute_params": bool(compute_params),
+                        "resolved_sampler": resolved_sampler,
+                        "resolved_sampler_source": sampler_source,
+                        "sampler_artifact_path": sampler_artifact_path,
+                        "resolved_exploration_sampler": resolved_exploration_sampler,
+                        "resolved_exploration_sampler_source": exploration_sampler_source,
+                        "selection_authority": resolved_selection_authority,
+                        "objective_authority": resolved_objective_authority,
+                        "resolved_snapshot_path": (
+                            str(resolved_snapshot_path)
+                            if resolved_snapshot_path
+                            else None
+                        ),
+                        "stable_snapshot_path": (
+                            str(stable_snapshot_path) if stable_snapshot_path else None
+                        ),
+                        "resolved_snapshot_sha256": resolved_snapshot_sha256,
+                        "snapshot_validation_errors": snapshot_errors,
+                        "snapshot_forced": snapshot_forced,
+                        "force_override_used": bool(force),
+                        "strict_scientific": bool(strict_scientific),
+                        "phase_status": phase_status,
+                        "strict_block_reason": strict_block_reason,
+                        "n_trials": n_trials,
+                        "resolved_n_clusters": resolved_n_clusters,
+                        "resolved_batch_size": resolved_batch_size,
+                        "resolved_feature_model": resolved_feature_model,
+                        "resolved_feature_model_variant": resolved_feature_model_variant,
+                        "resolved_feature_pooling": resolved_feature_pooling,
+                        "resolved_feature_input_size": resolved_feature_input_size,
+                        "resolved_feature_resnet_input_size": resolved_feature_resnet_input_size,
+                        "resolved_feature_dinov2_repo": resolved_feature_dinov2_repo,
+                        "resolved_feature_dinov2_ref": resolved_feature_dinov2_ref,
+                        "resolved_umap_components": resolved_umap_components,
+                        "resolved_umap_n_neighbors": resolved_umap_n_neighbors,
+                        "resolved_umap_min_dist": resolved_umap_min_dist,
+                        "resolved_umap_random_state": resolved_umap_random_state,
+                        "resolved_umap_n_jobs": resolved_umap_n_jobs,
+                        "computed_selection_method": computed_selection_method,
+                        "computed_selection_source_file": computed_selection_source_file,
+                        "computed_selection_source_hash": computed_selection_source_hash,
+                        "skip_exploration": skip_exploration,
+                        "skip_optimization": skip_optimization,
+                        "skip_validation": skip_validation,
+                        "dry_run": dry_run,
+                        "cache_mode": str(cache_mode),
+                        "validation_seeds": validation_seeds,
+                        "validation_min_distances": validation_min_distances,
+                        "validation_replicate_mode": validation_replicate_mode,
+                        "validation_n_bootstrap": validation_n_bootstrap,
+                        "validation_bootstrap_sample_frac": validation_bootstrap_sample_frac,
+                        "pre_selected_names": (
+                            pre_names_list if pre_names_list else None
+                        ),
+                        "pre_selected_indices": (
+                            pre_indices_list if pre_indices_list else None
+                        ),
+                        "hamburg_shortcut": bool(hamburg),
+                        "case_tile_names": case_names_list if case_names_list else None,
+                        "case_exclude_from_core": bool(case_exclude_from_core_flag),
+                        "case_attach_mode": case_attach_mode_resolved,
+                        "tile_exclusion_policy_path": (
+                            str(tile_policy_path) if tile_policy_path else None
+                        ),
+                        "apply_tile_exclusion": bool(apply_tile_exclusion_flag),
+                        **phase5_extra,
+                        "exceptions_log_path": exceptions_log_path,
+                        "exception_records": exception_records,
+                        "metadata_crs": metadata_crs_info,
+                        **metadata_crs_audit_info,
+                        **metadata_tile_exclusion_info,
+                        **selection_contract_extra,
+                    },
+                )
+            except Exception as metadata_exc:
+                report_exception(
+                    metadata_exc,
+                    phase="run_metadata_write_after_report_refresh_failure",
+                    user_message="Could not update run metadata after report refresh failure",
+                    output_dir=output_dir,
+                    logger=logger,
+                    context={"mode": "post_phase5_refresh_failure"},
+                )
+
+    print("\n" + "=" * 80)
+    if all_success:
+        print("✅ PIPELINE ERFOLGREICH ABGESCHLOSSEN")
+    else:
+        print("❌ PIPELINE MIT FEHLERN ABGESCHLOSSEN")
+    print("=" * 80)
 
     return all_success
 
 
 @cli_command(
     "thesis-pipeline",
-    help="Run complete thesis optimization pipeline (4 phases)",
+    help="Run complete thesis optimization pipeline (4 scientific phases + optional Phase 5 handoff bundle)",
     args={
         "n_lhs": {
             "type": int,
@@ -2062,6 +3024,38 @@ def run_thesis_pipeline(
             "default": None,
             "help": "Bootstrap candidate sampling fraction",
         },
+        "tile_exclusion_policy": {
+            "type": str,
+            "default": None,
+            "help": "Explicit tile exclusion/flagging policy path",
+        },
+        "apply_tile_exclusion": {
+            "type": str,
+            "default": None,
+            "choices": ["true", "false"],
+            "help": "Explicitly enable or disable tile exclusion policy application",
+        },
+        "build_handoffs": {
+            "type": bool,
+            "action": "store_true",
+            "help": "Run optional post-freeze Phase 5 tile/patch handoff bundle",
+        },
+        "patches_per_tile": {
+            "type": int,
+            "default": 2,
+            "help": "Patches per tile for integrated annotation-plan build",
+        },
+        "patch_include_case": {
+            "type": str,
+            "default": "false",
+            "choices": ["true", "false"],
+            "help": "Include case tiles in the integrated patch plan/handoff",
+        },
+        "handoff_root": {
+            "type": str,
+            "default": "handoff",
+            "help": "Root directory for integrated tile/patch handoff bundles",
+        },
     },
 )
 def main(
@@ -2094,6 +3088,12 @@ def main(
     validation_replicate_mode: Optional[str] = None,
     validation_n_bootstrap: Optional[int] = None,
     validation_bootstrap_sample_frac: Optional[float] = None,
+    tile_exclusion_policy: Optional[str] = None,
+    apply_tile_exclusion: Optional[str] = None,
+    build_handoffs: bool = False,
+    patches_per_tile: int = 2,
+    patch_include_case: str = "false",
+    handoff_root: str = "handoff",
 ) -> int:
     """CLI entry point for thesis pipeline."""
     # Convert str path to Path object
@@ -2134,6 +3134,24 @@ def main(
         validation_replicate_mode=validation_replicate_mode,
         validation_n_bootstrap=validation_n_bootstrap,
         validation_bootstrap_sample_frac=validation_bootstrap_sample_frac,
+        tile_exclusion_policy=(
+            Path(tile_exclusion_policy) if tile_exclusion_policy else None
+        ),
+        apply_tile_exclusion=(
+            _parse_bool(
+                apply_tile_exclusion,
+                label="apply_tile_exclusion",
+            )
+            if apply_tile_exclusion is not None
+            else None
+        ),
+        build_handoffs=bool(build_handoffs),
+        patches_per_tile=patches_per_tile,
+        patch_include_case=_parse_bool(
+            patch_include_case,
+            label="patch_include_case",
+        ),
+        handoff_root=handoff_root,
     )
     return 0 if success else 1
 

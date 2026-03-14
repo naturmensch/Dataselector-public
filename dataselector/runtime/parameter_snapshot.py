@@ -152,9 +152,7 @@ def validate_snapshot(snapshot: Dict[str, Any]) -> list[str]:
 
                 if not source_file:
                     if source_hash:
-                        errors.append(
-                            f"{key} has source_hash but missing source_file."
-                        )
+                        errors.append(f"{key} has source_hash but missing source_file.")
                     continue
 
                 p = Path(str(source_file))

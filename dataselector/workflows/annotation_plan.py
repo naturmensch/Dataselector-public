@@ -73,9 +73,7 @@ def _parse_anchor_string(raw: str) -> list[tuple[float, float]]:
         x = float(bits[0])
         y = float(bits[1])
         if not (0.0 <= x <= 1.0 and 0.0 <= y <= 1.0):
-            raise ValueError(
-                f"Anchor {token!r} outside normalized range [0, 1]."
-            )
+            raise ValueError(f"Anchor {token!r} outside normalized range [0, 1].")
         anchors.append((x, y))
     if not anchors:
         raise ValueError("Fallback anchors must not be empty.")
@@ -134,13 +132,17 @@ def _required_file(path: Path, label: str) -> Path:
     return path
 
 
-def _select_input_rows(*, run_dir: Path, include_case: bool) -> tuple[pd.DataFrame, dict[str, Path]]:
+def _select_input_rows(
+    *, run_dir: Path, include_case: bool
+) -> tuple[pd.DataFrame, dict[str, Path]]:
     core_path = _required_file(run_dir / "selection_core.csv", "selection_core.csv")
     case_path = _required_file(run_dir / "selection_case.csv", "selection_case.csv")
     final_path = _required_file(
         run_dir / "selection_final_with_cases.csv", "selection_final_with_cases.csv"
     )
-    contract_path = _required_file(run_dir / "selection_contract.json", "selection_contract.json")
+    contract_path = _required_file(
+        run_dir / "selection_contract.json", "selection_contract.json"
+    )
     metadata_path = _required_file(run_dir / "run_metadata.json", "run_metadata.json")
 
     core_df = pd.read_csv(core_path)
@@ -373,7 +375,9 @@ def _write_patch_manifest_json(
         "fallback_anchors": [list(anchor) for anchor in fallback_anchors],
         "records": records,
     }
-    out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+    out_path.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8"
+    )
 
 
 def _build_split_manifest(
@@ -402,7 +406,9 @@ def _build_split_manifest(
     gkf = GroupKFold(n_splits=n_splits)
     fold_by_patch: dict[str, int] = {}
     dummy_x = np.zeros(len(passed_df), dtype=int)
-    for fold_idx, (_, test_idx) in enumerate(gkf.split(dummy_x, groups=groups), start=1):
+    for fold_idx, (_, test_idx) in enumerate(
+        gkf.split(dummy_x, groups=groups), start=1
+    ):
         for row_idx in test_idx.tolist():
             patch_id = str(passed_df.iloc[row_idx]["patch_id"])
             fold_by_patch[patch_id] = int(fold_idx)
@@ -410,14 +416,18 @@ def _build_split_manifest(
     # Leakage guard: all patches of one tile must share one fold.
     tile_to_folds: dict[str, set[int]] = {}
     for patch_id, fold_id in fold_by_patch.items():
-        tile_name = str(passed_df.loc[passed_df["patch_id"] == patch_id, "tile_shortname"].iloc[0])
+        tile_name = str(
+            passed_df.loc[passed_df["patch_id"] == patch_id, "tile_shortname"].iloc[0]
+        )
         tile_to_folds.setdefault(tile_name, set()).add(int(fold_id))
     leakage = {tile: folds for tile, folds in tile_to_folds.items() if len(folds) > 1}
     if leakage:
         raise RuntimeError(f"Tile leakage detected in GroupKFold assignment: {leakage}")
 
     manifest_df = manifest_df.copy()
-    manifest_df["split_fold"] = manifest_df["patch_id"].map(fold_by_patch).astype("Int64")
+    manifest_df["split_fold"] = (
+        manifest_df["patch_id"].map(fold_by_patch).astype("Int64")
+    )
 
     fold_entries: list[dict[str, Any]] = []
     for fold_id in range(1, n_splits + 1):
@@ -454,10 +464,14 @@ def _build_split_manifest(
         },
     }
 
-    output_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+    output_path.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8"
+    )
     split_sha = compute_file_sha256(output_path)
     payload["split_manifest_sha256"] = split_sha
-    output_path.write_text(json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8")
+    output_path.write_text(
+        json.dumps(payload, indent=2, ensure_ascii=True), encoding="utf-8"
+    )
     return manifest_df, split_sha
 
 
@@ -542,7 +556,9 @@ def run_thesis_build_annotation_plan(
     if split_n_splits < 2:
         raise ValueError("split_n_splits must be >= 2")
 
-    selection_df, source_files = _select_input_rows(run_dir=run_path, include_case=include_case)
+    selection_df, source_files = _select_input_rows(
+        run_dir=run_path, include_case=include_case
+    )
     fallback_anchor_list = _parse_anchor_string(fallback_anchors)
     primary_anchors = _default_primary_anchors(patches_per_tile)
 
@@ -552,8 +568,7 @@ def run_thesis_build_annotation_plan(
     quicklook_dir.mkdir(parents=True, exist_ok=True)
 
     source_hashes = {
-        key: compute_file_sha256(path)
-        for key, path in source_files.items()
+        key: compute_file_sha256(path) for key, path in source_files.items()
     }
 
     records: list[dict[str, Any]] = []
@@ -581,8 +596,8 @@ def run_thesis_build_annotation_plan(
                 f"Image file for {short_name} not found: {image_path}"
             )
 
-        source_crs, source_transform, source_width, source_height = _load_source_georeference(
-            source_image_path=image_path
+        source_crs, source_transform, source_width, source_height = (
+            _load_source_georeference(source_image_path=image_path)
         )
 
         with Image.open(image_path) as im:
@@ -637,7 +652,12 @@ def run_thesis_build_annotation_plan(
                 final_anchor = anchor
                 final_qc = qc
 
-            if final_img is None or final_window is None or final_anchor is None or final_qc is None:
+            if (
+                final_img is None
+                or final_window is None
+                or final_anchor is None
+                or final_qc is None
+            ):
                 raise RuntimeError(f"Failed to build patch candidates for {patch_id}")
 
             qc_status = "qc_passed" if final_qc.passed else "qc_rejected"
@@ -761,8 +781,7 @@ def run_thesis_build_annotation_plan(
             "split_n_splits": int(split_n_splits),
         },
         "source_files": {
-            key: _rel_to(run_path, path)
-            for key, path in source_files.items()
+            key: _rel_to(run_path, path) for key, path in source_files.items()
         },
         "source_hashes": source_hashes,
         "artifacts": {
@@ -774,7 +793,9 @@ def run_thesis_build_annotation_plan(
             "annotation_progress_csv": _rel_to(
                 run_path, scaffolding_paths["annotation_progress"]
             ),
-            "annotation_qa_log_csv": _rel_to(run_path, scaffolding_paths["annotation_qa_log"]),
+            "annotation_qa_log_csv": _rel_to(
+                run_path, scaffolding_paths["annotation_qa_log"]
+            ),
         },
         "counts": {
             "tiles_total": int(manifest_df["tile_shortname"].nunique()),

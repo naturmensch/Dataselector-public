@@ -42,7 +42,8 @@ def _select_best_production_trial(study):
     production_trials = [
         t
         for t in study.trials
-        if t.value is not None and not bool(t.user_attrs.get("full_coverage_mode", False))
+        if t.value is not None
+        and not bool(t.user_attrs.get("full_coverage_mode", False))
     ]
     if production_trials:
         return max(production_trials, key=lambda t: float(t.value)), True
@@ -121,7 +122,9 @@ def _load_n_samples_policy(config_path: str | None) -> dict[str, object]:
         payload = yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
         selection = payload.get("selection", {}) if isinstance(payload, dict) else {}
 
-        mode_raw = str(selection.get("autoscale_n_samples_mode", "corridor")).strip().lower()
+        mode_raw = (
+            str(selection.get("autoscale_n_samples_mode", "corridor")).strip().lower()
+        )
         mode = mode_raw if mode_raw in {"corridor", "fixed"} else "corridor"
 
         fixed_raw = selection.get("autoscale_n_samples_fixed")
@@ -129,18 +132,62 @@ def _load_n_samples_policy(config_path: str | None) -> dict[str, object]:
         if fixed_raw is not None:
             fixed_value = max(1, int(round(float(fixed_raw))))
 
-        min_pct = float(selection.get("autoscale_n_samples_corridor_min_pct", policy["corridor_min_pct"]))
-        target_pct = float(
-            selection.get("autoscale_n_samples_corridor_target_pct", policy["corridor_target_pct"])
+        min_pct = float(
+            selection.get(
+                "autoscale_n_samples_corridor_min_pct", policy["corridor_min_pct"]
+            )
         )
-        max_pct = float(selection.get("autoscale_n_samples_corridor_max_pct", policy["corridor_max_pct"]))
-        step = max(1, int(round(float(selection.get("autoscale_n_samples_step", policy["corridor_step"])))))
-        min_abs = max(1, int(round(float(selection.get("autoscale_n_samples_corridor_min_abs", policy["corridor_min_abs"])))))
+        target_pct = float(
+            selection.get(
+                "autoscale_n_samples_corridor_target_pct", policy["corridor_target_pct"]
+            )
+        )
+        max_pct = float(
+            selection.get(
+                "autoscale_n_samples_corridor_max_pct", policy["corridor_max_pct"]
+            )
+        )
+        step = max(
+            1,
+            int(
+                round(
+                    float(
+                        selection.get(
+                            "autoscale_n_samples_step", policy["corridor_step"]
+                        )
+                    )
+                )
+            ),
+        )
+        min_abs = max(
+            1,
+            int(
+                round(
+                    float(
+                        selection.get(
+                            "autoscale_n_samples_corridor_min_abs",
+                            policy["corridor_min_abs"],
+                        )
+                    )
+                )
+            ),
+        )
         max_abs = max(
             min_abs,
-            int(round(float(selection.get("autoscale_n_samples_corridor_max_abs", policy["corridor_max_abs"])))),
+            int(
+                round(
+                    float(
+                        selection.get(
+                            "autoscale_n_samples_corridor_max_abs",
+                            policy["corridor_max_abs"],
+                        )
+                    )
+                )
+            ),
         )
-        plateau_delta = float(selection.get("autoscale_n_samples_plateau_delta", policy["plateau_delta"]))
+        plateau_delta = float(
+            selection.get("autoscale_n_samples_plateau_delta", policy["plateau_delta"])
+        )
 
         if not (0 < min_pct <= target_pct <= max_pct):
             min_pct = float(policy["corridor_min_pct"])
@@ -235,7 +282,9 @@ def _select_plateau_feasible_trial(
         t
         for t in getattr(study, "trials", [])
         if getattr(t, "value", None) is not None
-        and not bool((getattr(t, "user_attrs", {}) or {}).get("full_coverage_mode", False))
+        and not bool(
+            (getattr(t, "user_attrs", {}) or {}).get("full_coverage_mode", False)
+        )
     ]
     feasible_trials = [t for t in production_trials if _is_feasible_trial(t)]
 
@@ -246,7 +295,9 @@ def _select_plateau_feasible_trial(
                 "(all trials were infeasible or diagnostic-only)."
             )
         fallback, from_production = _select_best_production_trial(study)
-        fallback_n = int((getattr(fallback, "user_attrs", {}) or {}).get("n_samples", 0) or 0)
+        fallback_n = int(
+            (getattr(fallback, "user_attrs", {}) or {}).get("n_samples", 0) or 0
+        )
         meta = {
             "rule": "fallback_best_production",
             "selected_n_samples": fallback_n if fallback_n > 0 else None,
@@ -262,9 +313,13 @@ def _select_plateau_feasible_trial(
     best_feasible_value = float(best_feasible.value)
     threshold = best_feasible_value * (1.0 - float(plateau_delta))
     plateau_trials = [t for t in feasible_trials if float(t.value) >= threshold]
-    selected_n = min(int((t.user_attrs or {}).get("n_samples", 0)) for t in plateau_trials)
+    selected_n = min(
+        int((t.user_attrs or {}).get("n_samples", 0)) for t in plateau_trials
+    )
     plateau_same_n = [
-        t for t in plateau_trials if int((t.user_attrs or {}).get("n_samples", 0)) == int(selected_n)
+        t
+        for t in plateau_trials
+        if int((t.user_attrs or {}).get("n_samples", 0)) == int(selected_n)
     ]
     selected = max(plateau_same_n, key=lambda t: float(t.value))
 
@@ -451,7 +506,9 @@ def make_objective(
         trial.set_user_attr("spatial_spread_norm", float(objective_score.spread_norm))
         trial.set_user_attr("objective_score_raw", float(objective_score.raw_score))
         trial.set_user_attr("infeasible", bool(objective_score.infeasible))
-        trial.set_user_attr("feasibility_ratio", float(objective_score.feasibility_ratio))
+        trial.set_user_attr(
+            "feasibility_ratio", float(objective_score.feasibility_ratio)
+        )
         trial.set_user_attr("n_samples", int(n_samples))
         trial.set_user_attr("full_coverage_mode", bool(full_coverage_mode))
         trial.set_user_attr("diagnostic_only", bool(full_coverage_mode))
@@ -652,7 +709,9 @@ def run_autoscale(
             "stage": stage_idx,
             "n_samples": n_samples,
             "trials": n_trials_per_stage[stage_idx],
-            "stage_best_value": float(stage_best_trial.value) if stage_best_trial else None,
+            "stage_best_value": (
+                float(stage_best_trial.value) if stage_best_trial else None
+            ),
             "stage_feasible": bool(stage_best_feasible is not None),
             "stage_best_feasible_value": (
                 float(stage_best_feasible.value) if stage_best_feasible else None
@@ -750,10 +809,12 @@ def run_autoscale(
     report_md.write_text("\n".join(lines))
     print("Report written to", report_md)
 
-    selected_trial, best_from_production, selection_meta = _select_plateau_feasible_trial(
-        study=study,
-        plateau_delta=float(plateau_delta),
-        strict_feasible_selection=bool(strict_feasible_selection),
+    selected_trial, best_from_production, selection_meta = (
+        _select_plateau_feasible_trial(
+            study=study,
+            plateau_delta=float(plateau_delta),
+            strict_feasible_selection=bool(strict_feasible_selection),
+        )
     )
 
     out_best = out_dir / f"optuna_autoscale_best_{date}.json"
@@ -1036,7 +1097,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--patience", type=int, default=2)
     parser.add_argument("--output-dir", type=str, default="outputs")
-    parser.add_argument("--config-path", type=str, default="config/pipeline_config.yaml")
+    parser.add_argument(
+        "--config-path", type=str, default="config/pipeline_config.yaml"
+    )
     parser.add_argument(
         "--cache-mode",
         type=str,

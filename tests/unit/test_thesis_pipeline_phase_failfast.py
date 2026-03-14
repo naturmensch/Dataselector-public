@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pandas as pd
+import pytest
 
 
 def _config_text() -> str:
@@ -53,7 +55,13 @@ def test_strict_scientific_blocks_later_phases_after_phase1_error(
         _config_text(),
         encoding="utf-8",
     )
+    (tmp_path / "config" / "tile_exclusion_policy.yaml").write_text(
+        "rules: []\n",
+        encoding="utf-8",
+    )
     monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("DATASELECTOR_TILE_EXCLUSION_POLICY", raising=False)
+    monkeypatch.delenv("DATASELECTOR_APPLY_TILE_EXCLUSION", raising=False)
 
     calls = {"optuna": 0, "validation": 0}
 
@@ -67,8 +75,12 @@ def test_strict_scientific_blocks_later_phases_after_phase1_error(
     def _fake_validation(**_kwargs):
         calls["validation"] += 1
 
-    monkeypatch.setattr("dataselector.workflows.tune_weights.run_exploration", _boom_exploration)
-    monkeypatch.setattr("dataselector.workflows.optuna_optimize.run_optuna", _fake_optuna)
+    monkeypatch.setattr(
+        "dataselector.workflows.tune_weights.run_exploration", _boom_exploration
+    )
+    monkeypatch.setattr(
+        "dataselector.workflows.optuna_optimize.run_optuna", _fake_optuna
+    )
     monkeypatch.setattr(
         "dataselector.workflows.validation.validate_pareto_candidates",
         _fake_validation,
@@ -99,3 +111,62 @@ def test_strict_scientific_blocks_later_phases_after_phase1_error(
     assert phase_status["phase1_exploration"] == "failed"
     assert phase_status["phase2_optimization"] == "skipped_due_to_prior_failure"
     assert phase_status["phase3_validation"] == "skipped_due_to_prior_failure"
+    assert meta["extra"]["exceptions_log_path"]
+    assert (out_dir / "diagnostics" / "exceptions.log").exists()
+    assert meta["extra"]["exception_records"][0]["phase"] == "phase1_exploration"
+
+
+def test_thesis_repro_writes_crs_audit_before_failing_on_missing_explicit_crs(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    from dataselector.workflows import thesis_pipeline as mod
+
+    (tmp_path / "data").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "config").mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        [
+            {
+                "shortName": "KDR_001",
+                "ul_x": 1.0,
+                "ul_y": 2.0,
+                "lr_x": 3.0,
+                "lr_y": 4.0,
+                "year": 1900,
+            }
+        ]
+    ).to_csv(tmp_path / "data" / "new_all_tiles.csv", index=False)
+    (tmp_path / "config" / "pipeline_config.yaml").write_text(
+        _config_text(),
+        encoding="utf-8",
+    )
+    (tmp_path / "config" / "tile_exclusion_policy.yaml").write_text(
+        "rules: []\n",
+        encoding="utf-8",
+    )
+    monkeypatch.chdir(tmp_path)
+
+    out_dir = tmp_path / "outputs"
+    with pytest.raises(
+        RuntimeError, match="Explicit CRS audit failed for thesis_repro"
+    ):
+        mod.run_thesis_pipeline(
+            n_lhs=4,
+            n_trials=2,
+            skip_exploration=True,
+            skip_optimization=True,
+            skip_validation=True,
+            dry_run=True,
+            output_dir=out_dir,
+            execution_profile="thesis_repro",
+            seed=42,
+        )
+
+    audit_path = out_dir / "data_quality" / "crs_provenance_audit.csv"
+    assert audit_path.exists()
+    audit_df = pd.read_csv(audit_path)
+    assert list(audit_df["status"]) == ["heuristic_fallback"]
+    assert (out_dir / "diagnostics" / "exceptions.log").exists()
+    log_text = (out_dir / "diagnostics" / "exceptions.log").read_text("utf-8")
+    assert "phase: metadata_preview" in log_text
+    assert "Explicit CRS audit failed for thesis_repro" in log_text

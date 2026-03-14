@@ -22,6 +22,7 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 from dataselector.cli_decorators import cli_command
+from dataselector.data.crs_provenance import normalize_crs_identifier
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg"}
 SIDECAR_SUFFIXES = [".aux.xml", ".xml"]
@@ -349,8 +350,8 @@ def build_dataframe(
         if side is not None:
             meta = extract_from_xml(side)
         geo_transform_raw = meta.pop("GeoTransform", None)
-        # Keep CSV compact; raw CRS WKT is not required for downstream loaders.
-        meta.pop("SRS", None)
+        raw_srs = meta.pop("SRS", None)
+        explicit_source_crs = normalize_crs_identifier(raw_srs)
 
         width_px = None
         height_px = None
@@ -398,6 +399,12 @@ def build_dataframe(
                 "pixel_width": pixel_width,
                 "pixel_height": pixel_height,
                 "data_quality": data_quality,
+                "source_crs": explicit_source_crs,
+                "crs_source": "sidecar_xml" if explicit_source_crs else None,
+                "crs_provenance": (
+                    "explicit_sidecar_xml" if explicit_source_crs else None
+                ),
+                "crs_explicit": bool(explicit_source_crs),
                 **meta,
             }
         )
@@ -420,6 +427,10 @@ def build_dataframe(
         "pixel_width": None,
         "pixel_height": None,
         "data_quality": "unknown",
+        "source_crs": None,
+        "crs_source": None,
+        "crs_provenance": None,
+        "crs_explicit": False,
     }
     for col, default in required_columns.items():
         if col not in df.columns:

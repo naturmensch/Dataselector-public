@@ -18,7 +18,9 @@ def _write_minimal_inputs(root: Path) -> None:
     )
 
 
-def test_orchestrator_passes_no_stage_trial_defaults(tmp_path: Path, monkeypatch) -> None:
+def test_orchestrator_passes_no_stage_trial_defaults(
+    tmp_path: Path, monkeypatch
+) -> None:
     _write_minimal_inputs(tmp_path)
     monkeypatch.chdir(tmp_path)
 

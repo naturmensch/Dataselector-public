@@ -18,8 +18,8 @@ import dataselector.tools.clean
 import dataselector.tools.docs_link
 import dataselector.workflows.adaptive_auto
 import dataselector.workflows.adaptive_pipeline
-import dataselector.workflows.apply_optuna_best
 import dataselector.workflows.annotation_plan
+import dataselector.workflows.apply_optuna_best
 
 # Import ALL workflow modules to trigger @cli_command decorator execution
 import dataselector.workflows.autoscale
@@ -37,8 +37,8 @@ import dataselector.workflows.repo_evolution_audit_v4
 import dataselector.workflows.sampler_suite
 import dataselector.workflows.scientific_tools
 import dataselector.workflows.script_convergence_tools
-import dataselector.workflows.thesis_pipeline
 import dataselector.workflows.thesis_orchestrate
+import dataselector.workflows.thesis_pipeline
 import dataselector.workflows.thesis_sampler_suite
 import dataselector.workflows.tune_weights
 import dataselector.workflows.validation

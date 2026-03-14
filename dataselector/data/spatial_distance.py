@@ -54,7 +54,9 @@ def tile_bounds_to_metric(
     source_epsg = _infer_source_epsg(work)
     if source_epsg is None:
         if strict:
-            raise RuntimeError("Unable to infer source CRS for metric distance conversion.")
+            raise RuntimeError(
+                "Unable to infer source CRS for metric distance conversion."
+            )
         # Fallback: treat as already metric.
         source_epsg = target_epsg
 

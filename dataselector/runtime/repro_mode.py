@@ -128,7 +128,9 @@ def activate_repro_mode(profile: str = "default", seed: int = 42) -> dict[str, A
                         )
                 else:
                     result["repro_degraded"] = True
-                    result["repro_warnings"].append(f"set_num_interop_threads_failed:{exc}")
+                    result["repro_warnings"].append(
+                        f"set_num_interop_threads_failed:{exc}"
+                    )
 
             try:
                 if hasattr(torch.backends, "cudnn"):
@@ -151,17 +153,21 @@ def activate_repro_mode(profile: str = "default", seed: int = 42) -> dict[str, A
             "seed": int(seed),
             "cuda_available": bool(torch.cuda.is_available()),
             "num_threads": int(torch.get_num_threads()),
-            "deterministic_algorithms": bool(
-                torch.are_deterministic_algorithms_enabled()
-            )
-            if hasattr(torch, "are_deterministic_algorithms_enabled")
-            else None,
-            "cudnn_deterministic": bool(getattr(torch.backends.cudnn, "deterministic", False))
-            if hasattr(torch.backends, "cudnn")
-            else None,
-            "cudnn_benchmark": bool(getattr(torch.backends.cudnn, "benchmark", False))
-            if hasattr(torch.backends, "cudnn")
-            else None,
+            "deterministic_algorithms": (
+                bool(torch.are_deterministic_algorithms_enabled())
+                if hasattr(torch, "are_deterministic_algorithms_enabled")
+                else None
+            ),
+            "cudnn_deterministic": (
+                bool(getattr(torch.backends.cudnn, "deterministic", False))
+                if hasattr(torch.backends, "cudnn")
+                else None
+            ),
+            "cudnn_benchmark": (
+                bool(getattr(torch.backends.cudnn, "benchmark", False))
+                if hasattr(torch.backends, "cudnn")
+                else None
+            ),
         }
     except Exception as exc:  # pragma: no cover - torch may be optional in some envs
         result["torch"] = {"available": False, "error": str(exc)}

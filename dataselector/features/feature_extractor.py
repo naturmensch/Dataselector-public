@@ -319,5 +319,8 @@ class FeatureExtractor:
         """Return deterministic model-loading metadata for run provenance."""
         provenance = dict(self._model_provenance)
         provenance["device"] = str(self.device)
-        provenance["crop_size"] = [int(self.default_crop_size[0]), int(self.default_crop_size[1])]
+        provenance["crop_size"] = [
+            int(self.default_crop_size[0]),
+            int(self.default_crop_size[1]),
+        ]
         return provenance

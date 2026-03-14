@@ -151,3 +151,24 @@ def test_build_tiles_applies_manual_city_overrides(tmp_path: Path):
     assert row["shortName"] == "KDR_046"
     assert row["city"] == "Karthaus"
     assert row["city_source"] == "manual_override"
+
+
+def test_build_tiles_persists_explicit_sidecar_crs(tmp_path: Path):
+    images = tmp_path / "images"
+    images.mkdir()
+    (images / "KDR_010_Test_1901.png").write_bytes(b"png")
+    (images / "KDR_010_Test_1901.png.aux.xml").write_text(
+        "<PAMDataset><SRS>EPSG:3857</SRS><GeoTransform>0,1,0,0,0,-1</GeoTransform></PAMDataset>",
+        encoding="utf-8",
+    )
+
+    out_csv = tmp_path / "new_all_tiles.csv"
+    rc = build_tiles(image_dir=images, out=out_csv)
+    assert rc == 0
+
+    df = pd.read_csv(out_csv)
+    row = df.iloc[0]
+    assert row["source_crs"] == "EPSG:3857"
+    assert row["crs_source"] == "sidecar_xml"
+    assert row["crs_provenance"] == "explicit_sidecar_xml"
+    assert bool(row["crs_explicit"]) is True

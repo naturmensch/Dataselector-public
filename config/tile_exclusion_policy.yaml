@@ -3,6 +3,11 @@ description: >
   Tile exclusion policy for thesis_repro candidate pool construction.
   Rules in this file are applied before feature extraction and split construction.
 
+constants:
+  kdr_core_publication_frame:
+    year_min: 1878
+    year_max: 1945
+
 rules:
   - id: exclude_kdr_155b_duplicate_variant
     class: representation_duplicate_variant
@@ -14,21 +19,23 @@ rules:
     match:
       shortName:
         - KDR_155b
-  - id: exclude_kdr_039_out_of_temporal_scope
+  - id: flag_pre_kdr_series_temporal_outliers
     class: temporal_scope_outlier
-    action: exclude_from_candidate_pool
+    action: flag_for_reporting
     rationale: >
-      KDR_039 (1980) lies outside the historical core analysis window used for
-      thesis-level temporal metrics and is excluded to avoid temporal skew.
+      Tiles dated before the core KDR publication frame remain
+      reportable if they are otherwise usable, but must be marked critically as
+      retained temporal outliers because they fall outside the thesis core
+      temporal frame.
     match:
-      shortName:
-        - KDR_039
-  - id: exclude_kdr_521_out_of_temporal_scope
+      year_lt_ref: kdr_core_publication_frame.year_min
+  - id: flag_post_kdr_series_temporal_outliers
     class: temporal_scope_outlier
-    action: exclude_from_candidate_pool
+    action: flag_for_reporting
     rationale: >
-      KDR_521 (1985) lies outside the historical core analysis window used for
-      thesis-level temporal metrics and is excluded to avoid temporal skew.
+      Tiles dated after the core KDR publication frame remain
+      reportable if they are otherwise usable, but must be marked critically as
+      retained temporal outliers because they fall outside the thesis core
+      temporal frame.
     match:
-      shortName:
-        - KDR_521
+      year_gt_ref: kdr_core_publication_frame.year_max

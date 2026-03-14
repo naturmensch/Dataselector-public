@@ -8,8 +8,7 @@ from dataselector.workflows.optuna_autoscale import _load_min_distance_policy
 def test_load_min_distance_policy_uses_selection_defaults(tmp_path: Path) -> None:
     cfg = tmp_path / "pipeline_config.yaml"
     cfg.write_text(
-        "selection:\n"
-        "  min_distance_km: 28.5\n",
+        "selection:\n" "  min_distance_km: 28.5\n",
         encoding="utf-8",
     )
     floor, ceiling, global_search = _load_min_distance_policy(str(cfg))

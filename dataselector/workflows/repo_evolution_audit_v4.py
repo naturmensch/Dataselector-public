@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 import subprocess
 from collections import defaultdict
@@ -13,9 +14,9 @@ import pandas as pd
 
 from dataselector.cli_decorators import cli_command
 
-
 DEFAULT_BASELINE_V1 = Path("outputs/audits/repo_evolution_20260224T103507Z")
 DEFAULT_BASELINE_V2 = Path("outputs/audits/repo_evolution_v2_20260224T105720Z")
+logger = logging.getLogger(__name__)
 
 
 def _utc_now_iso() -> str:
@@ -107,7 +108,10 @@ def _top_level_area(path: str) -> str:
 
 def _phase_from_subject(subject: str) -> str:
     s = subject.lower()
-    if any(k in s for k in ("script", "legacy", "bootstrap", "optuna", "autoscale", "adaptive")):
+    if any(
+        k in s
+        for k in ("script", "legacy", "bootstrap", "optuna", "autoscale", "adaptive")
+    ):
         return "Exploration"
     if any(k in s for k in ("migrate", "migration", "transition", "phase3", "phase4")):
         return "Hybrid migration"
@@ -167,7 +171,11 @@ def _parse_ref_snapshot(repo_root: Path) -> pd.DataFrame:
 def _collect_commits_for_refs(repo_root: Path, refs: list[str]) -> list[str]:
     if not refs:
         return []
-    out = _run_git(repo_root, ["rev-list", "--topo-order", "--date-order", "--stdin"], stdin="\n".join(refs) + "\n")
+    out = _run_git(
+        repo_root,
+        ["rev-list", "--topo-order", "--date-order", "--stdin"],
+        stdin="\n".join(refs) + "\n",
+    )
     commits = [ln.strip() for ln in out.splitlines() if ln.strip()]
     # keep order from rev-list
     seen: set[str] = set()
@@ -179,7 +187,9 @@ def _collect_commits_for_refs(repo_root: Path, refs: list[str]) -> list[str]:
     return uniq
 
 
-def _collect_reachable_refs_map(repo_root: Path, refs: list[str]) -> dict[str, list[str]]:
+def _collect_reachable_refs_map(
+    repo_root: Path, refs: list[str]
+) -> dict[str, list[str]]:
     commit_to_refs: dict[str, set[str]] = defaultdict(set)
     for ref in refs:
         out = _run_git(repo_root, ["rev-list", ref])
@@ -273,8 +283,12 @@ def _collect_commit_data(
             body,
         ) = parts[:10]
 
-        ns = _run_git(repo_root, ["diff-tree", "--no-commit-id", "-r", "-M", "--name-status", sha])
-        num = _run_git(repo_root, ["diff-tree", "--no-commit-id", "-r", "-M", "--numstat", sha])
+        ns = _run_git(
+            repo_root, ["diff-tree", "--no-commit-id", "-r", "-M", "--name-status", sha]
+        )
+        num = _run_git(
+            repo_root, ["diff-tree", "--no-commit-id", "-r", "-M", "--numstat", sha]
+        )
         ns_rows = _parse_name_status(ns)
         num_map = _parse_numstat(num)
 
@@ -282,7 +296,9 @@ def _collect_commit_data(
         del_sum = 0
         for r in ns_rows:
             p = r["path"]
-            num_item = num_map.get(p, {"insertions": None, "deletions": None, "is_binary": False})
+            num_item = num_map.get(
+                p, {"insertions": None, "deletions": None, "is_binary": False}
+            )
             ins = num_item["insertions"]
             dele = num_item["deletions"]
             is_bin = bool(num_item["is_binary"])
@@ -332,9 +348,13 @@ def _collect_commit_data(
     commit_df = pd.DataFrame(commit_rows)
     file_df = pd.DataFrame(file_rows)
     if not commit_df.empty:
-        commit_df["commit_date"] = pd.to_datetime(commit_df["commit_date"], errors="coerce")
+        commit_df["commit_date"] = pd.to_datetime(
+            commit_df["commit_date"], errors="coerce"
+        )
         commit_df = commit_df.sort_values("commit_date").reset_index(drop=True)
-        commit_df["commit_date"] = commit_df["commit_date"].dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+        commit_df["commit_date"] = commit_df["commit_date"].dt.strftime(
+            "%Y-%m-%dT%H:%M:%S%z"
+        )
     return commit_df, file_df
 
 
@@ -360,7 +380,11 @@ def _build_file_history(
         )
     order = {sha: i for i, sha in enumerate(commit_df["commit_sha"].tolist())}
     first_ref_by_commit = {
-        row["commit_sha"]: (str(row.get("reachable_from_refs", "")).split(";")[0] if str(row.get("reachable_from_refs", "")) else "")
+        row["commit_sha"]: (
+            str(row.get("reachable_from_refs", "")).split(";")[0]
+            if str(row.get("reachable_from_refs", ""))
+            else ""
+        )
         for _, row in commit_df.iterrows()
     }
     class_by_commit = {
@@ -375,7 +399,9 @@ def _build_file_history(
         first_commit = str(g.iloc[0]["commit_sha"])
         last_commit = str(g.iloc[-1]["commit_sha"])
         ren = g[g["old_path"].astype(str).str.strip() != ""]
-        ren_line = ";".join(f"{r.old_path}->{r.path}" for r in ren.itertuples(index=False))
+        ren_line = ";".join(
+            f"{r.old_path}->{r.path}" for r in ren.itertuples(index=False)
+        )
         p = Path(str(path))
         rows.append(
             {
@@ -388,9 +414,11 @@ def _build_file_history(
                 "total_touches": int(len(g)),
                 "rename_lineage": ren_line,
                 "introduced_in_phase": class_by_commit.get(first_commit, "unknown"),
-                "retired_in_phase": ""
-                if (repo_root / p).exists()
-                else class_by_commit.get(last_commit, "unknown"),
+                "retired_in_phase": (
+                    ""
+                    if (repo_root / p).exists()
+                    else class_by_commit.get(last_commit, "unknown")
+                ),
             }
         )
     return pd.DataFrame(rows).sort_values("path").reset_index(drop=True)
@@ -409,7 +437,15 @@ def _build_component_inventory(
         ):
             continue
         area = _top_level_area(path)
-        if area not in {"dataselector", "scripts", "docs", "config", "tests", "archive", "archive_local"}:
+        if area not in {
+            "dataselector",
+            "scripts",
+            "docs",
+            "config",
+            "tests",
+            "archive",
+            "archive_local",
+        }:
             continue
 
         component_type = "file"
@@ -418,13 +454,18 @@ def _build_component_inventory(
         if path.startswith("dataselector/workflows/") and path.endswith(".py"):
             component_type = "workflow_module"
             component_id = Path(path).stem
-            thesis_rel = "primary" if component_id in {
-                "thesis_pipeline",
-                "thesis_orchestrate",
-                "generate_reports",
-                "annotation_plan",
-                "validation",
-            } else "supplementary"
+            thesis_rel = (
+                "primary"
+                if component_id
+                in {
+                    "thesis_pipeline",
+                    "thesis_orchestrate",
+                    "generate_reports",
+                    "annotation_plan",
+                    "validation",
+                }
+                else "supplementary"
+            )
         elif path.startswith("scripts/"):
             component_type = "script"
             component_id = Path(path).name
@@ -436,7 +477,9 @@ def _build_component_inventory(
         elif path.startswith("config/"):
             component_type = "config_file"
             component_id = path
-            thesis_rel = "primary" if path.endswith("pipeline_config.yaml") else "supplementary"
+            thesis_rel = (
+                "primary" if path.endswith("pipeline_config.yaml") else "supplementary"
+            )
 
         rows.append(
             {
@@ -458,25 +501,26 @@ def _build_component_inventory(
                 "path": owner,
                 "current_status": "active",
                 "area": "dataselector",
-                "thesis_relevance": "primary"
-                if cmd in {"thesis-pipeline", "thesis-orchestrate"}
-                else "supplementary",
+                "thesis_relevance": (
+                    "primary"
+                    if cmd in {"thesis-pipeline", "thesis-orchestrate"}
+                    else "supplementary"
+                ),
             }
         )
     df = pd.DataFrame(rows).drop_duplicates(
         subset=["component_id", "component_type", "path"]
     )
-    return df.sort_values(["component_type", "component_id", "path"]).reset_index(drop=True)
+    return df.sort_values(["component_type", "component_id", "path"]).reset_index(
+        drop=True
+    )
 
 
 def _build_component_lifecycle(
     inventory_df: pd.DataFrame,
     file_history_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    fh = {
-        str(r["path"]): r
-        for _, r in file_history_df.iterrows()
-    }
+    fh = {str(r["path"]): r for _, r in file_history_df.iterrows()}
     supersede_map = {
         "xxl": "thesis_orchestrate",
         "autoscale": "optuna_autoscale",
@@ -508,7 +552,10 @@ def _build_component_lifecycle(
             if status_now == "superseded"
             else ("governance" if status_now == "retired" else "")
         )
-        refs = [f"git:{introduced}" if introduced else "", f"git:{last_active}" if last_active else ""]
+        refs = [
+            f"git:{introduced}" if introduced else "",
+            f"git:{last_active}" if last_active else "",
+        ]
         rows.append(
             {
                 "component_id": comp_id,
@@ -523,9 +570,11 @@ def _build_component_lifecycle(
                 "confidence": "high" if introduced and last_active else "medium",
             }
         )
-    return pd.DataFrame(rows).sort_values(
-        ["component_type", "component_id"]
-    ).reset_index(drop=True)
+    return (
+        pd.DataFrame(rows)
+        .sort_values(["component_type", "component_id"])
+        .reset_index(drop=True)
+    )
 
 
 def _build_script_to_cli_transitions(
@@ -580,8 +629,7 @@ def _build_era_milestones(
     file_history_df: pd.DataFrame,
 ) -> pd.DataFrame:
     commit_date = {
-        str(r["commit_sha"]): str(r["commit_date"])
-        for _, r in commit_df.iterrows()
+        str(r["commit_sha"]): str(r["commit_date"]) for _, r in commit_df.iterrows()
     }
     root_commit = str(commit_df.iloc[0]["commit_sha"]) if not commit_df.empty else ""
     cli_intro = ""
@@ -642,7 +690,9 @@ def _build_era_milestones(
 def _load_v3_baseline(baseline_v3: Path) -> dict[str, pd.DataFrame]:
     return {
         "replacement": _read_csv(baseline_v3 / "REPLACEMENT_MATRIX_V3.csv"),
-        "replacement_chain": _read_csv(baseline_v3 / "REPLACEMENT_EVIDENCE_CHAIN_V3.csv"),
+        "replacement_chain": _read_csv(
+            baseline_v3 / "REPLACEMENT_EVIDENCE_CHAIN_V3.csv"
+        ),
         "claims": _read_csv(baseline_v3 / "DOC_CLAIM_CROSSWALK_V3.csv"),
         "findings": _read_csv(baseline_v3 / "AUDIT_RESOLUTION_MATRIX.csv"),
     }
@@ -766,7 +816,13 @@ def _build_finding_resolution_v4(
             }
         )
     # include V3 summary state marker
-    v3_findings = repo_root / "outputs" / "audits" / "repo_evolution_v3_final_20260224T122459Z" / "AUDIT_FINDINGS_V3.md"
+    v3_findings = (
+        repo_root
+        / "outputs"
+        / "audits"
+        / "repo_evolution_v3_final_20260224T122459Z"
+        / "AUDIT_FINDINGS_V3.md"
+    )
     rows.append(
         {
             "source_audit": "outputs/audits/repo_evolution_v3_final_*",
@@ -816,7 +872,11 @@ def _reference_exists(repo_root: Path, ref: str) -> bool:
             return False
     if r.endswith("data_quality/year_scope_audit.csv"):
         try:
-            return any((repo_root / "outputs" / "runs").glob("**/data_quality/year_scope_audit.csv"))
+            return any(
+                (repo_root / "outputs" / "runs").glob(
+                    "**/data_quality/year_scope_audit.csv"
+                )
+            )
         except Exception:
             return False
     if "*" in r or "?" in r or "[" in r:
@@ -837,7 +897,9 @@ def _build_evidence_index_v4(
 ) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
 
-    def add(section: str, entity_type: str, entity_id: str, e_type: str, ref: str, src: str) -> None:
+    def add(
+        section: str, entity_type: str, entity_id: str, e_type: str, ref: str, src: str
+    ) -> None:
         ref_s = str(ref).strip()
         if not ref_s:
             return
@@ -854,23 +916,72 @@ def _build_evidence_index_v4(
         )
 
     for _, r in era_df.iterrows():
-        add("Phasenmodell und Milestones", "milestone", str(r["milestone_id"]), "commit", f"git:{r['commit_sha']}", "ERA_MILESTONES.csv")
+        add(
+            "Phasenmodell und Milestones",
+            "milestone",
+            str(r["milestone_id"]),
+            "commit",
+            f"git:{r['commit_sha']}",
+            "ERA_MILESTONES.csv",
+        )
 
     for _, r in transitions_df.iterrows():
         tid = str(r["transition_id"])
-        add("Script-to-CLI Transition", "transition", tid, "commit", f"git:{r['first_transition_commit']}", "SCRIPT_TO_CLI_TRANSITION.csv")
+        add(
+            "Script-to-CLI Transition",
+            "transition",
+            tid,
+            "commit",
+            f"git:{r['first_transition_commit']}",
+            "SCRIPT_TO_CLI_TRANSITION.csv",
+        )
         if str(r["first_transition_run"]).strip():
-            add("Script-to-CLI Transition", "transition", tid, "run", f"run:{r['first_transition_run']}", "SCRIPT_TO_CLI_TRANSITION.csv")
-        add("Script-to-CLI Transition", "transition", tid, "path", str(r["old_component"]), "SCRIPT_TO_CLI_TRANSITION.csv")
+            add(
+                "Script-to-CLI Transition",
+                "transition",
+                tid,
+                "run",
+                f"run:{r['first_transition_run']}",
+                "SCRIPT_TO_CLI_TRANSITION.csv",
+            )
+        add(
+            "Script-to-CLI Transition",
+            "transition",
+            tid,
+            "path",
+            str(r["old_component"]),
+            "SCRIPT_TO_CLI_TRANSITION.csv",
+        )
 
     for i, r in replacement_v4.reset_index(drop=True).iterrows():
         rid = f"REPL_{i+1:03d}"
-        add("Ersetzungsmatrix", "replacement", rid, "commit", f"git:{r['effective_commit']}", "REPLACEMENT_MATRIX_V4.csv")
+        add(
+            "Ersetzungsmatrix",
+            "replacement",
+            rid,
+            "commit",
+            f"git:{r['effective_commit']}",
+            "REPLACEMENT_MATRIX_V4.csv",
+        )
         if str(r["effective_run"]).strip():
-            add("Ersetzungsmatrix", "replacement", rid, "run", f"run:{r['effective_run']}", "REPLACEMENT_MATRIX_V4.csv")
+            add(
+                "Ersetzungsmatrix",
+                "replacement",
+                rid,
+                "run",
+                f"run:{r['effective_run']}",
+                "REPLACEMENT_MATRIX_V4.csv",
+            )
         for ref in str(r.get("evidence_refs", "")).split(";"):
             if ref.strip():
-                add("Ersetzungsmatrix", "replacement", rid, "evidence_ref", ref.strip(), "REPLACEMENT_MATRIX_V4.csv")
+                add(
+                    "Ersetzungsmatrix",
+                    "replacement",
+                    rid,
+                    "evidence_ref",
+                    ref.strip(),
+                    "REPLACEMENT_MATRIX_V4.csv",
+                )
 
     for _, r in claim_v4.iterrows():
         cid = str(r["claim_id"])
@@ -882,27 +993,58 @@ def _build_evidence_index_v4(
         ]:
             for part in str(r.get(col, "")).split(";"):
                 if part.strip():
-                    add("Claim-Traceability", "claim", cid, et, part.strip(), "CLAIM_CROSSWALK_V4.csv")
+                    add(
+                        "Claim-Traceability",
+                        "claim",
+                        cid,
+                        et,
+                        part.strip(),
+                        "CLAIM_CROSSWALK_V4.csv",
+                    )
 
     for _, r in finding_v4.iterrows():
         fid = str(r["finding_id"])
         if str(r.get("resolved_commit", "")).strip():
-            add("Finding-Auflösung", "finding", fid, "commit", f"git:{r['resolved_commit']}", "FINDING_RESOLUTION_V4.csv")
+            add(
+                "Finding-Auflösung",
+                "finding",
+                fid,
+                "commit",
+                f"git:{r['resolved_commit']}",
+                "FINDING_RESOLUTION_V4.csv",
+            )
         if str(r.get("resolved_artifacts", "")).strip():
-            add("Finding-Auflösung", "finding", fid, "artifact", str(r["resolved_artifacts"]), "FINDING_RESOLUTION_V4.csv")
+            add(
+                "Finding-Auflösung",
+                "finding",
+                fid,
+                "artifact",
+                str(r["resolved_artifacts"]),
+                "FINDING_RESOLUTION_V4.csv",
+            )
         for test_ref in str(r.get("evidence_tests", "")).split(";"):
             if test_ref.strip():
-                add("Finding-Auflösung", "finding", fid, "tests", test_ref.strip(), "FINDING_RESOLUTION_V4.csv")
+                add(
+                    "Finding-Auflösung",
+                    "finding",
+                    fid,
+                    "tests",
+                    test_ref.strip(),
+                    "FINDING_RESOLUTION_V4.csv",
+                )
 
-    df = pd.DataFrame(rows, columns=[
-        "section",
-        "entity_type",
-        "entity_id",
-        "evidence_type",
-        "evidence_ref",
-        "source_artifact",
-        "exists_flag",
-    ])
+    df = pd.DataFrame(
+        rows,
+        columns=[
+            "section",
+            "entity_type",
+            "entity_id",
+            "evidence_type",
+            "evidence_ref",
+            "source_artifact",
+            "exists_flag",
+        ],
+    )
     if df.empty:
         return df
     return df.sort_values(
@@ -910,7 +1052,9 @@ def _build_evidence_index_v4(
     ).reset_index(drop=True)
 
 
-def _build_open_questions_v4(ref_df: pd.DataFrame, evidence_index: pd.DataFrame) -> pd.DataFrame:
+def _build_open_questions_v4(
+    ref_df: pd.DataFrame, evidence_index: pd.DataFrame
+) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     if ref_df.empty:
         rows.append(
@@ -923,7 +1067,11 @@ def _build_open_questions_v4(ref_df: pd.DataFrame, evidence_index: pd.DataFrame)
                 "status": "open",
             }
         )
-    missing = evidence_index[~evidence_index["exists_flag"]] if not evidence_index.empty else pd.DataFrame()
+    missing = (
+        evidence_index[~evidence_index["exists_flag"]]
+        if not evidence_index.empty
+        else pd.DataFrame()
+    )
     if not missing.empty:
         rows.append(
             {
@@ -984,10 +1132,18 @@ def _history_coverage(
         len(finding_v4),
     )
 
-    missing_evidence_count = int((~evidence_df["exists_flag"]).sum()) if not evidence_df.empty else 0
-    open_question_count = int(
-        open_questions_df[open_questions_df["status"].astype(str).str.lower() == "open"].shape[0]
-    ) if not open_questions_df.empty else 0
+    missing_evidence_count = (
+        int((~evidence_df["exists_flag"]).sum()) if not evidence_df.empty else 0
+    )
+    open_question_count = (
+        int(
+            open_questions_df[
+                open_questions_df["status"].astype(str).str.lower() == "open"
+            ].shape[0]
+        )
+        if not open_questions_df.empty
+        else 0
+    )
 
     complete = (
         ref_ratio == 1.0
@@ -1027,33 +1183,43 @@ def _build_masterdoc(
     coverage: dict[str, Any],
 ) -> str:
     ref_summary = (
-        ref_df.groupby("ref_type", dropna=False).size().reset_index(name="count").sort_values("ref_type")
+        ref_df.groupby("ref_type", dropna=False)
+        .size()
+        .reset_index(name="count")
+        .sort_values("ref_type")
         if not ref_df.empty
         else pd.DataFrame(columns=["ref_type", "count"])
     )
     commit_summary = (
-        commit_df.groupby("commit_class", dropna=False).size().reset_index(name="count").sort_values("commit_class")
+        commit_df.groupby("commit_class", dropna=False)
+        .size()
+        .reset_index(name="count")
+        .sort_values("commit_class")
         if not commit_df.empty
         else pd.DataFrame(columns=["commit_class", "count"])
     )
-    transition_view = transitions_df[
-        [
-            "transition_id",
-            "old_component",
-            "new_component",
-            "first_transition_commit",
-            "transition_type",
-            "reason",
+    transition_view = (
+        transitions_df[
+            [
+                "transition_id",
+                "old_component",
+                "new_component",
+                "first_transition_commit",
+                "transition_type",
+                "reason",
+            ]
         ]
-    ] if not transitions_df.empty else pd.DataFrame(
-        columns=[
-            "transition_id",
-            "old_component",
-            "new_component",
-            "first_transition_commit",
-            "transition_type",
-            "reason",
-        ]
+        if not transitions_df.empty
+        else pd.DataFrame(
+            columns=[
+                "transition_id",
+                "old_component",
+                "new_component",
+                "first_transition_commit",
+                "transition_type",
+                "reason",
+            ]
+        )
     )
     lifecycle_view = lifecycle_df[
         [
@@ -1131,17 +1297,19 @@ def _build_masterdoc(
     lines.append(_markdown_table(finding_v4))
     lines.append("")
     lines.append("## 10. Limitationen")
-    lines.append("- Der Audit nutzt lokal verfügbare Git-Refs zum Ausführungszeitpunkt.")
-    lines.append("- Externe Systeme außerhalb des Repos sind nicht Bestandteil des Vollabzugs.")
+    lines.append(
+        "- Der Audit nutzt lokal verfügbare Git-Refs zum Ausführungszeitpunkt."
+    )
+    lines.append(
+        "- Externe Systeme außerhalb des Repos sind nicht Bestandteil des Vollabzugs."
+    )
     lines.append("")
     lines.append("## 11. Reproduzierbarkeit (Command-Log, Hashes)")
     lines.append("- Vollständiger Laufkontext in `COMMAND_LOG.txt`.")
     lines.append("- Coverage-/Status-Gate in `HISTORY_COVERAGE_V4.json`.")
     lines.append("")
     lines.append("## 12. Fazit")
-    lines.append(
-        f"- Overall history status: `{coverage['overall_status']}`."
-    )
+    lines.append(f"- Overall history status: `{coverage['overall_status']}`.")
     lines.append(
         f"- Coverage: refs={coverage['ref_coverage_ratio']:.2%}, commits={coverage['commit_coverage_ratio']:.2%}, files={coverage['file_coverage_ratio']:.2%}, components={coverage['component_coverage_ratio']:.2%}."
     )
@@ -1199,18 +1367,23 @@ def run_repo_evolution_audit_v4(inputs: V4AuditInputs) -> V4AuditResult:
     commits = _collect_commits_for_refs(repo_root, refs)
     reachable_map = _collect_reachable_refs_map(repo_root, refs)
     ref_type_by_name = {
-        str(r["ref_name"]): str(r["ref_type"])
-        for _, r in ref_df.iterrows()
+        str(r["ref_name"]): str(r["ref_type"]) for _, r in ref_df.iterrows()
     }
 
-    commit_df, file_df = _collect_commit_data(repo_root, commits, reachable_map, ref_type_by_name)
+    commit_df, file_df = _collect_commit_data(
+        repo_root, commits, reachable_map, ref_type_by_name
+    )
     file_history_df = _build_file_history(repo_root, commit_df, file_df)
-    inv_df = _build_component_inventory(repo_root, file_history_df, inputs.include_archives)
+    inv_df = _build_component_inventory(
+        repo_root, file_history_df, inputs.include_archives
+    )
     lifecycle_df = _build_component_lifecycle(inv_df, file_history_df)
     v3 = _load_v3_baseline(inputs.baseline_v3)
 
     run_candidates = v3["replacement"]["effective_from_run"].astype(str).tolist()
-    transitions_df = _build_script_to_cli_transitions(repo_root, file_history_df, run_candidates)
+    transitions_df = _build_script_to_cli_transitions(
+        repo_root, file_history_df, run_candidates
+    )
     era_df = _build_era_milestones(ref_df, commit_df, file_history_df)
 
     replacement_v4 = _build_replacement_v4(v3["replacement"], transitions_df)
@@ -1243,7 +1416,9 @@ def run_repo_evolution_audit_v4(inputs: V4AuditInputs) -> V4AuditResult:
     )
     if inputs.strict_complete and coverage["overall_status"] != "COMPLETE":
         # status remains INCOMPLETE; strictness is encoded via output gate semantics
-        pass
+        logger.info(
+            "Strict completeness requested; retaining INCOMPLETE coverage state."
+        )
 
     masterdoc = _build_masterdoc(
         ref_df=ref_df,
@@ -1298,7 +1473,9 @@ def _find_latest_v3_audit(repo_root: Path) -> Path:
     root = repo_root / "outputs" / "audits"
     candidates = sorted(root.glob("repo_evolution_v3_final_*"))
     if not candidates:
-        raise FileNotFoundError("No repo_evolution_v3_final_* directory found under outputs/audits")
+        raise FileNotFoundError(
+            "No repo_evolution_v3_final_* directory found under outputs/audits"
+        )
     return candidates[-1]
 
 
