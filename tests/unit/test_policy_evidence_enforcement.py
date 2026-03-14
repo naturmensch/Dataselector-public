@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 
 
-
 def _config_text_without_computed_artifact() -> str:
     return (
         "feature_extraction:\n"

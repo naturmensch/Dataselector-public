@@ -97,14 +97,24 @@ Interpretation target:
 
 1. Geometric reference from canonical metadata (`median_nn`) is currently `45.0 km`.
 2. Operational thesis policy is currently `min_distance_km = 28.5`.
-3. Rationale: decision-gate comparison (`28.5/40.0/45.0`) showed equivalent quality
+3. `40.0 km` was the explicit intermediate comparison candidate in the
+   pre-registered decision panel.
+4. Rationale: decision-gate comparison (`28.5/40.0/45.0`) showed equivalent quality
    for `28.5` and `40.0`; tie-break prefers the smaller distance to keep more
    downstream combination space while preserving hardcut feasibility.
+5. Free optimization into the very small-distance regime was deliberately not
+   adopted as thesis production policy: supplementary historical full runs under
+   otherwise fixed profile resolved to `5 km` and `8 km`, indicating that the
+   objective can drift into a permissive low-distance region without an
+   immediate feasibility penalty.
+6. Interpretation: the spatial objective remains active, but the hard floor is
+   kept as a conservative production admissibility guard.
 
 Evidence:
 
 - `reports_2026-02-09/MIN_DISTANCE_DECISION_2026-02-09.md`
 - `reports_2026-02-09/min_distance_policy_summary_20260209T233849Z.md`
+- `docs/MIN_DISTANCE_EVIDENCE_ADDENDUM.md`
 
 ## 4) End-to-End Thesis Flow (Copy/Paste)
 
@@ -153,6 +163,30 @@ Flag semantics:
 9. autoscale `min_distance_km` bounds are policy-driven via
    `selection.autoscale_min_distance_floor_km|ceiling_km|global_search` in
    `config/pipeline_config.yaml`.
+10. `--build-handoffs` runs the optional post-freeze packaging bundle (tile handoff, annotation plan, patch handoff). Default: `false`.
+11. `--patches-per-tile` controls integrated patch-plan density when `--build-handoffs` is enabled.
+12. `--patch-include-case true|false` controls whether patch packaging uses the final core+case set or only the core set. Default: `false` (`core-only`).
+13. `--handoff-root` changes the root output directory for integrated handoff bundles (default: `handoff`).
+
+### 4.0.1.0 Optional Phase 5: Annotation Plan + Handoff Bundle
+
+If you want one canonical run directory plus packaging artifacts in one flow, add:
+
+```bash
+micromamba run -n dataselector python -m dataselector thesis-orchestrate \
+  --config config/pipeline_config.yaml \
+  --output-dir outputs/runs/thesis_orchestrated_$(date -u +%Y%m%dT%H%M%SZ) \
+  --build-handoffs \
+  --patches-per-tile 2 \
+  --patch-include-case false
+```
+
+Scientific boundary:
+
+1. Phase 5 is **post-freeze operational packaging**, not reselection.
+2. Default integrated patch scope is `core-only`.
+3. Snapshot and `selection_*` artifacts remain the authoritative frozen dataset.
+4. If Phase 5 fails, the run fails operationally, but the scientific freeze boundary must remain unchanged.
 
 ### 4.0.1.2 Global n_samples Corridor Policy (Core)
 
@@ -190,12 +224,21 @@ Methodological interpretation:
    blindly maximizing score at larger `n`.
 5. this is a selection contract, not an evaluation split contract; if splitting
    is done by a downstream training tool, keep `--build-splits false`.
+6. supplementary downstream-model evidence is consistent with this policy:
+   foundation-model-based approaches such as MapSAM and historical-map few-shot
+   segmentation make the `~5%` center look plausible rather than implausibly
+   small, while UNet++ acts as the conservative anchor that justifies keeping
+   the upper side of the corridor.
+7. this architecture-specific evidence is supplementary only; the Dataselector
+   policy remains model-agnostic and is not directly derived from
+   SegFormer/MapSAM/UNet++ result papers.
 
 Artifacts:
 
 1. `parameter_resolution/optuna_autoscale_stage_policy.json`
 2. `parameter_resolution/optuna_autoscale_best_latest.json`
 3. `parameter_resolution/optuna_autoscale_selected_n_samples.txt`
+4. `docs/N_SAMPLES_EVIDENCE_ADDENDUM.md`
 
 ### 4.0.1.1 Leakage-Safe Split Artifacts
 
@@ -260,12 +303,25 @@ definieren den aufgelösten Parameterkontext.
 1. `selection_contract.json` muss `selection_source` und
    `selection_source_file` enthalten, damit die materialisierte Auswahlquelle
    explizit nachvollziehbar bleibt.
-2. Wenn Snapshot-Parameter und materialisierte Auswahl-Artefakte divergieren,
-   binden Datensatz-Claims an die materialisierten Auswahl-Artefakte;
-   Parameter-Claims binden an Snapshot-/Resolver-Artefakte.
-3. Verwende in Thesis-Texten keine Formulierung, dass Snapshot-Gewichte allein
-   die finale Auswahl erzeugt haetten, solange keine materialisierte
-   Alignment-Evidenz vorliegt.
+2. Thesis-Default ist `selection.selection_authority: snapshot_primary`.
+   Die Core-Auswahl wird direkt aus den validierten Snapshot-Parametern
+   materialisiert.
+3. Legacy-Kompatibilität bleibt über
+   `selection.selection_authority: materialized_csv_primary` erhalten.
+   Dieser Modus ist nur für historische Runs gedacht.
+4. `selection.objective_authority: unified_normalized` ist der Thesis-Default.
+   Exploration und Autoscale nutzen damit dieselbe Objective-Definition.
+5. Für neue kanonische v2-Runs ist `Selection Reconciliation = aligned`
+   der erwartete Status.
+6. `documented_difference` ist nur in Legacy-/Historienkontexten zulässig und
+   muss explizit im Report begründet sein.
+7. Die Freeze-Selektion ist architektur-neutral / model-agnostic.
+8. Der Freeze ist ein `frozen dataset`; Modellvergleiche erfolgen danach.
+9. No direct model-metric optimization (SegFormer/MapSAM/UNet++).
+10. `alpha_visual` ist ein optimierter Parameter, aber keine harte
+    Dominanzbedingung.
+11. Visual-biased oder model-aware Selektion ist ein separater
+    Ablationspfad und erfordert einen neuen Freeze.
 
 ### 4.0.1.6 Validation/UQ Contract
 
@@ -391,9 +447,13 @@ selection in hardening profile.
 In `thesis_repro` profile, metric distance context is enforced:
 
 1. target metric CRS defaults to `EPSG:25832`
-2. unknown/unresolved CRS is treated as hard error
-3. run metadata must include: `source_crs`, `metric_crs`, `transform_applied`
-4. geometric min-distance references (`compute_min_distance_km`) are computed
+2. `thesis_repro` requires explicit source CRS provenance from sidecars/raster
+   metadata; heuristic inference is fallback-only outside strict thesis mode
+3. unknown/unresolved or only-heuristic CRS is treated as hard error
+4. run metadata must include: `source_crs`, `metric_crs`, `transform_applied`,
+   `crs_provenance_status`, `crs_provenance_audit_path`
+5. thesis runs emit `data_quality/crs_provenance_audit.csv`
+6. geometric min-distance references (`compute_min_distance_km`) are computed
    from metric projected coordinates, not from raw Web-Mercator display units
 
 ### 4.1 Build metadata from local images
