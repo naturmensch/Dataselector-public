@@ -266,50 +266,10 @@ def load_city_overrides(path: Path):
     return out[["short_norm", "city", "source", "note"]]
 
 
-def choose_best_city_backup(
-    data_dir: Path, expected_rows: int, keys: list[str]
-) -> Optional[Path]:
-    """Pick backup CSV with highest usable city coverage for current keys."""
-    import pandas as pd
-
-    candidates = sorted(data_dir.glob("new_all_tiles.backup_*.csv"))
-    best_path = None
-    best_score = (-1, "")
-
-    key_df = pd.DataFrame({"short_norm": keys})
-    for p in candidates:
-        try:
-            b = pd.read_csv(p)
-        except Exception:
-            continue
-        if (
-            len(b) != expected_rows
-            or "shortName" not in b.columns
-            or "city" not in b.columns
-        ):
-            continue
-        bmap = pd.DataFrame(
-            {
-                "short_norm": b["shortName"].astype(str).apply(normalize_shortname),
-                "city": b["city"].fillna("").astype(str).str.strip(),
-            }
-        )
-        bmap = bmap.drop_duplicates(subset=["short_norm"], keep="first")
-        merged = key_df.merge(bmap, on="short_norm", how="left")
-        score = int((merged["city"].fillna("").astype(str).str.strip() != "").sum())
-        # Deterministic tie-breaker: lexical filename (later backup usually bigger timestamp).
-        marker = p.name
-        if (score, marker) > best_score:
-            best_score = (score, marker)
-            best_path = p
-    return best_path
-
-
 def build_dataframe(
     image_dir: Path,
     enrichment_source: Path | None = None,
     city_overrides_path: Path | None = None,
-    backup_dir: Path | None = None,
 ):
     """Scan image directory and build DataFrame with metadata."""
     import pandas as pd
@@ -597,37 +557,6 @@ def build_dataframe(
             if "filename" not in df.columns:
                 df["filename"] = df["image_filename"]
 
-    # Backup CSV fallback for unresolved city keys.
-    missing_city_mask = df["city"].fillna("").astype(str).str.strip() == ""
-    if missing_city_mask.any():
-        candidate_dir = backup_dir if backup_dir is not None else image_dir.parent
-        backup_path = choose_best_city_backup(
-            candidate_dir, expected_rows=len(df), keys=df["short_norm"].tolist()
-        )
-        if backup_path is not None:
-            backup_df = pd.read_csv(backup_path)
-            backup_map = pd.DataFrame(
-                {
-                    "short_norm": backup_df["shortName"]
-                    .astype(str)
-                    .apply(normalize_shortname),
-                    "city_backup": backup_df["city"]
-                    .fillna("")
-                    .astype(str)
-                    .str.strip()
-                    .replace({"nan": "", "None": ""}),
-                }
-            )
-            backup_map = backup_map.drop_duplicates(subset=["short_norm"], keep="first")
-            df = df.merge(backup_map, on="short_norm", how="left")
-            base = df["city"].fillna("").astype(str).str.strip()
-            src = df["city_backup"].fillna("").astype(str).str.strip()
-            fill_mask = (base == "") & (src != "")
-            df.loc[fill_mask, "city"] = src[fill_mask]
-            df.loc[fill_mask, "city_source"] = "backup_fill"
-            if "city_backup" in df.columns:
-                df.drop(columns=["city_backup"], inplace=True)
-
     # Manual override for truly unresolved IDs.
     if city_overrides_path is not None:
         overrides = load_city_overrides(city_overrides_path)
@@ -769,7 +698,6 @@ def build_tiles(
         image_dir,
         enrichment_source=enrichment_source,
         city_overrides_path=city_overrides_path,
-        backup_dir=out.parent,
     )
 
     # Canonical contract: city, source-trace and metric schema must be complete.

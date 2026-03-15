@@ -26,3 +26,15 @@ def test_canonical_city_contract_complete():
     assert (
         source_missing == 0
     ), f"Canonical city_source contract violated: {source_missing} rows unresolved"
+
+
+def test_canonical_city_contract_excludes_backup_fill():
+    """Canonical metadata must not depend on historical backup-fill provenance."""
+    csv_path = Path("data/new_all_tiles.csv")
+    assert csv_path.exists(), "Canonical metadata CSV missing"
+
+    df = pd.read_csv(csv_path)
+    sources = set(df["city_source"].fillna("").astype(str).str.strip())
+    assert (
+        "backup_fill" not in sources
+    ), "Canonical city_source contract still exposes deprecated backup_fill"

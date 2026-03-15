@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from dataselector.data.build_tiles import build_tiles
 
@@ -172,3 +173,18 @@ def test_build_tiles_persists_explicit_sidecar_crs(tmp_path: Path):
     assert row["crs_source"] == "sidecar_xml"
     assert row["crs_provenance"] == "explicit_sidecar_xml"
     assert bool(row["crs_explicit"]) is True
+
+
+def test_build_tiles_canonical_output_fails_fast_for_unresolved_city(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.chdir(tmp_path)
+
+    data_dir = tmp_path / "data"
+    images = data_dir / "images"
+    images.mkdir(parents=True)
+    (images / "KDR_999.png").write_bytes(b"png")
+
+    out_csv = data_dir / "new_all_tiles.csv"
+    with pytest.raises(SystemExit, match="data/city_overrides.csv"):
+        build_tiles(image_dir=images, out=out_csv)

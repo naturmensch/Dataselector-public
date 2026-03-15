@@ -562,11 +562,12 @@ Data provenance for `city`:
    not already present in the source.
 3. Key variants are normalized (`KDR_079a` vs `KDR_079A`, optional letter
    suffixes like `KDR_155b -> KDR_155`) before matching source rows.
-4. If still unresolved, deterministic backup fill is applied from the best
-   matching `new_all_tiles.backup_*.csv` in `data/`.
-5. Final unresolved rest cases are filled from `data/city_overrides.csv`
+4. Final unresolved rest cases are filled from `data/city_overrides.csv`
    (`manual_override`), and every row gets a trace in `city_source`
-   (`longname_parse`, `variant_base`, `backup_fill`, `manual_override`).
+   (`longname_parse`, `variant_base`, `manual_override`).
+5. If canonical output still contains unresolved city rows after parsing and
+   overrides, `build-tiles` fails fast instead of consulting historical backup
+   CSVs.
 6. Stable alias fallback remains: `Hamburg -> KDR_146`.
 
 This guarantees that `--hamburg` and `--pre-names Hamburg` resolve to the
