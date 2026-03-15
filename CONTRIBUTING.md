@@ -42,7 +42,7 @@ python scripts/clean_workspace.py --delete-outputs --delete-venvs
 ### Developer Quick Workflow
 - **Debug:** `pytest --lf` (fast feedback loop for last failed tests)
 - **Before commit:** `pytest` (run the full test suite)
-- **CI Simulation:** `pytest --junitxml=test-results/junit.xml`
+- **CI Simulation:** `pytest --junitxml=test-results/junit.xml` (generated local artifact, not a repo fixture)
 
 ## CI Parity Local Run (Authoritative)
 
@@ -58,12 +58,14 @@ git ls-files '*.py' | xargs micromamba run -n dataselector black --check
 git ls-files '*.py' | xargs micromamba run -n dataselector isort --check-only
 ```
 
-### Local-only artifacts
+### Historical/generated repo artifacts
 
-Some local analysis helpers and reports are intentionally not pushed. Current examples:
+Some repo-tracked paths are preserved for historical or generated reporting only.
+Current examples:
 - `docs/reports/`
 - `scripts/summarize_md.py`
 
-Treat these as workstation-local unless a dedicated PR explicitly promotes them.
+Treat these as non-canonical helper/archive material, not part of the active
+thesis-v2 workflow surface.
 
 If you're unsure, open a draft PR and ask for a quick review before deleting anything important.
