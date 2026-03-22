@@ -112,12 +112,12 @@ def test_autoscale_help(run_dataselector_cli):
 
 
 @pytest.mark.integration
-def test_xxl_help(run_dataselector_cli):
-    """Test xxl --help still works as a secondary-active CLI path."""
-    result = run_dataselector_cli(["xxl", "--help"])
+def test_thesis_orchestrate_help(run_dataselector_cli):
+    """Test thesis-orchestrate --help works for the canonical orchestration path."""
+    result = run_dataselector_cli(["thesis-orchestrate", "--help"])
     assert result.returncode == 0
     out = result.stdout.decode().lower()
-    assert "--phase" in out
+    assert "--config" in out
 
 
 @pytest.mark.integration

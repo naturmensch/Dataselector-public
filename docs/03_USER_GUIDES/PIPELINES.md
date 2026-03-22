@@ -1,6 +1,6 @@
 # Pipelines Overview (Authoritative)
 
-This page summarizes the current thesis-relevant pipelines.
+This page summarizes the retained thesis-relevant pipelines.
 
 Primary runbook:
 
@@ -8,45 +8,47 @@ Primary runbook:
 
 ## Pipeline Map
 
-1. `benchmark-sampling`
-   - Compare exploration methods and persist exploration plan.
-2. `thesis-sampler-suite`
-   - Multi-seed sampler comparison and best-sampler selection.
-3. `thesis-pipeline`
-   - Exploration -> Optuna -> validation in one workflow.
-4. `xxl`
-   - Phase-based long-run orchestration with monitoring artifacts.
+1. `thesis-orchestrate`
+   - Canonical end-to-end thesis orchestration with snapshotting and run metadata.
+2. `thesis-pipeline`
+   - Canonical direct pipeline execution from validated parameters.
+3. `thesis-sampler-suite`
+   - Supplementary sampler comparison workflow.
+4. `benchmark-sampling`
+   - Supplementary exploration benchmark workflow.
 5. `adaptive-auto`
-   - Thin orchestrator: autoscale handoff + adaptive pipeline.
+   - Supplementary orchestrator for autoscale handoff + adaptive pipeline.
 
 ## Canonical Commands
 
 ```bash
-python -m dataselector benchmark-sampling --help
-python -m dataselector thesis-sampler-suite --help
+python -m dataselector thesis-orchestrate --help
 python -m dataselector thesis-pipeline --help
-python -m dataselector xxl --help
-python -m dataselector adaptive-auto --help
+python -m dataselector thesis-sampler-suite --help
+python -m dataselector generate-monitor --help
 ```
 
 ## Typical Thesis Sequence
 
 ```bash
-python -m dataselector thesis-sampler-suite --autoscale
-python -m dataselector xxl
+python -m dataselector thesis-orchestrate \
+  --config config/pipeline_config.yaml \
+  --output-dir outputs/runs/<run_id>
+
+python -m dataselector thesis-pipeline \
+  --use-params outputs/runs/<run_id>/final_config.yaml
 ```
 
 For deterministic annotation qualification use:
 
 ```bash
-python -m dataselector thesis-pipeline --execution-profile thesis_repro --seed 42 --dry-run --output-dir outputs/thesis_preflight
-python -m dataselector thesis-pipeline --execution-profile thesis_repro --seed 42 --output-dir outputs/thesis_run_A
-python -m dataselector thesis-pipeline --execution-profile thesis_repro --seed 42 --output-dir outputs/thesis_run_B
+python -m dataselector thesis-pipeline --execution-profile thesis_repro --seed 42 --dry-run --output-dir outputs/runs/thesis_preflight
+python -m dataselector thesis-pipeline --execution-profile thesis_repro --seed 42 --output-dir outputs/runs/thesis_run_A
+python -m dataselector thesis-pipeline --execution-profile thesis_repro --seed 42 --output-dir outputs/runs/thesis_run_B
 ```
 
 ## Notes
 
 1. `real_images` stays local-only and requires `DATASELECTOR_IMAGE_DIR`.
-2. Full E2E remains opt-in via `RUN_FULL_INTEGRATION=1`.
-3. Legacy script-era command examples are intentionally excluded from this page.
-
+2. `generate-monitor` summarizes canonical thesis run artifacts under `outputs/runs/`.
+3. The former `xxl` / `xxl-monitor` surface is archived and not part of the active pipeline contract.

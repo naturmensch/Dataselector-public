@@ -15,7 +15,6 @@ AUTHORITATIVE_DOCS = [
     ROOT / "docs" / "03_USER_GUIDES" / "THESIS_PIPELINE_HOWTO.md",
     ROOT / "docs" / "ENV_SETUP.md",
     ROOT / "docs" / "DEVELOPER.md",
-    ROOT / "docs" / "OPERATIONS.md",
 ]
 
 HISTORICAL_CONFIG = "config/pipeline_config.best_trial_70.yaml"

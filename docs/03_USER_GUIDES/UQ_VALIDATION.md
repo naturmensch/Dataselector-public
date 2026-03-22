@@ -35,19 +35,22 @@ Berechne 95% Confidence Interval [Q2.5, Q97.5]
 ### Ausführung
 
 ```bash
-# Phase 4: Bootstrap Validierung aus Thesis Pipeline
-python scripts/run_thesis_pipeline.py --n-boot 200
-
-# Oder standalone
-python scripts/validate_pareto_candidates.py \
+# Phase 4: Bootstrap-Validierung für einen vorhandenen Thesis-Run
+micromamba run -n dataselector python -m dataselector bootstrap-final \
+  --run-dir outputs/runs/<run_id> \
   --n-boot 200 \
-  --seeds 42 43 44 45 46 \
-  --input outputs/optuna_autoscale_best_*.json
+  --seed 42
+
+# Oder standalone für Pareto-Kandidaten
+micromamba run -n dataselector python -m dataselector bootstrap-pareto \
+  --pareto-csv outputs/runs/<run_id>/tuning_weights/pareto/pareto_solutions.csv \
+  --n-boot 200 \
+  --output-csv outputs/runs/<run_id>/validation/validation_results.csv
 ```
 
 ### Output Interpretation
 
-**File:** `outputs/validation_results.csv`
+**File:** `outputs/runs/<run_id>/validation/validation_results.csv`
 
 ```
 Metric,Value,CI_Lower,CI_Upper,Interpretation
@@ -80,7 +83,7 @@ Seed_Consistency,0.97,0.96,0.98,Sehr hoch → Reproducible
 
 ```bash
 # Vergleiche alle 3 Sampler über 10 Seeds
-python scripts/run_thesis_sampler_suite.py \
+micromamba run -n dataselector python -m dataselector thesis-sampler-suite \
   --n-seeds 10 \
   --n-trials 1000 \
   --output outputs/sampler_comparison.csv
@@ -121,9 +124,16 @@ python scripts/run_thesis_sampler_suite.py \
 ### Multi-Seed Konsistenz-Test
 
 ```bash
-# Phase 2: Reproducibility Tests (XXL Pipeline)
-python scripts/run_xxl_pipeline.py --phases 2 \
-  --seeds 42 43 44 45 46
+# Deterministischer Vergleich zweier kanonischer Thesis-Runs
+micromamba run -n dataselector python -m dataselector thesis-pipeline \
+  --execution-profile thesis_repro \
+  --seed 42 \
+  --output-dir outputs/runs/thesis_repro_A
+
+micromamba run -n dataselector python -m dataselector thesis-pipeline \
+  --execution-profile thesis_repro \
+  --seed 42 \
+  --output-dir outputs/runs/thesis_repro_B
 ```
 
 **Was wird getestet:**
@@ -131,15 +141,15 @@ python scripts/run_xxl_pipeline.py --phases 2 \
 2. Identische Inputdaten
 3. Erwartung: Identische Outputs (deterministisch)
 
-**Output:** `outputs/xxl/phase2_reproducibility/`
+**Output:** `outputs/runs/thesis_repro_A/validation/` und
+`outputs/runs/thesis_repro_B/validation/`
 
 ```
-results_seed_42.csv
-results_seed_43.csv
-results_seed_44.csv
-results_seed_45.csv
-results_seed_46.csv
-consistency_report.md
+validation_results.csv
+selection_core.csv
+selection_final_with_cases.csv
+selection_contract.json
+THESIS_PIPELINE_REPORT.md
 ```
 
 **Konsistenz-Report:**
@@ -197,9 +207,9 @@ Sensitivity: Moderat (±3% um Optimum)
 □ 95% CI Width < 3% (Stabilität)
 □ Seed-Konsistenz > 0.95 (Reproducibility)
 □ Sampler-Vergleich zeigt TPE oder QMC empfohlen
-□ Reproducibility-Tests alle Phasen 2 bestanden
+□ Reproducibility-Check über zwei `thesis-pipeline`-Runs bestanden
 □ Sensitivitätsanalyse zeigt moderate Abhängigkeit
-□ Alle Reports in outputs/ vorhanden
+□ Alle Reports in `outputs/runs/<run_id>/` vorhanden
 □ Confidence Intervals in Thesis-Kapitel dokumentiert
 ```
 

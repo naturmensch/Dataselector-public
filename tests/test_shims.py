@@ -6,11 +6,11 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_xxl_help_via_canonical_cli():
+def test_thesis_orchestrate_help_via_canonical_cli():
     env = os.environ.copy()
     env["PYTHONPATH"] = str(REPO_ROOT)
     proc = subprocess.run(
-        [sys.executable, "-m", "dataselector", "xxl", "--help"],
+        [sys.executable, "-m", "dataselector", "thesis-orchestrate", "--help"],
         env=env,
         capture_output=True,
         text=True,

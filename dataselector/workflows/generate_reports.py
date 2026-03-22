@@ -2142,84 +2142,206 @@ def generate_thesis_final_report(
     return report_file
 
 
-def generate_monitor_report() -> Path:
-    ROOT = _get_repo_root()
-    LOG_DIR = ROOT / "outputs"
-    logs = sorted(LOG_DIR.glob("XXL_FULL_RUN_*.log"))
-    LOG_FILE = logs[-1] if logs else (LOG_DIR / "XXL_FULL_RUN.log")
+def _command_text_from_run_metadata(metadata: dict) -> str:
+    command = metadata.get("command")
+    if isinstance(command, list):
+        return " ".join(str(part) for part in command)
+    if isinstance(command, str):
+        return command
+    return ""
 
-    runs_root = ROOT / "outputs" / "runs"
-    xxl_dirs = (
-        sorted(
-            [
-                p
-                for p in runs_root.iterdir()
-                if p.is_dir()
-                and "hamburg" in p.name.lower()
-                and "xxl" in p.name.lower()
-            ]
-        )
-        if runs_root.exists()
-        else []
-    )
-    latest_xxl = xxl_dirs[-1] if xxl_dirs else None
 
-    final_selection_file = ROOT / "outputs" / "THESIS_FINAL_SELECTION_XXL.json"
-    final_selection = None
-    if final_selection_file.exists():
-        final_selection = json.load(open(final_selection_file))
+def _run_extra_from_metadata(metadata: dict) -> dict:
+    extra = metadata.get("extra")
+    return extra if isinstance(extra, dict) else {}
 
-    phase_events = []
-    if LOG_FILE.exists():
-        log_text = LOG_FILE.read_text()
-        if "Phase 1 ABGESCHLOSSEN" in log_text or "PHASE 1 COMPLETE" in log_text:
-            phase_events.append("PHASE 1 COMPLETE")
-        if "Phase 2 COMPLETE" in log_text:
-            phase_events.append("PHASE 2 COMPLETE")
-        if "Phase 3 COMPLETE" in log_text:
-            phase_events.append("PHASE 3 COMPLETE")
-        if "Phase 4 COMPLETE" in log_text:
-            phase_events.append("PHASE 4 COMPLETE")
 
-    report_lines = []
-    report_lines.append("# Monitor Bericht — XXL Full Run\n")
-    report_lines.append(f"**Generated**: {datetime.now(timezone.utc).isoformat()}Z")
-    report_lines.append("\n## Observed phase events")
-    for e in phase_events:
-        report_lines.append(f"- {e}")
+def _is_canonical_thesis_command(command_text: str) -> bool:
+    return "thesis-orchestrate" in command_text or "thesis-pipeline" in command_text
 
-    report_lines.append("\n## Artifacts")
-    if latest_xxl:
-        report_lines.append(f"- XXL run dir: {latest_xxl}")
-        if (latest_xxl / "results" / "trials.csv").exists():
-            report_lines.append(
-                f"  - trials.csv: {(latest_xxl / 'results' / 'trials.csv')} (size: {(latest_xxl / 'results' / 'trials.csv').stat().st_size} bytes)"
+
+def _run_metadata_timestamp(run_dir: Path, metadata: dict) -> datetime:
+    raw_timestamp = metadata.get("timestamp_utc")
+    if isinstance(raw_timestamp, str):
+        try:
+            return datetime.fromisoformat(raw_timestamp)
+        except ValueError:
+            pass
+    return datetime.fromtimestamp(run_dir.stat().st_mtime, tz=timezone.utc)
+
+
+def _iter_canonical_thesis_runs(runs_root: Path) -> list[tuple[Path, dict]]:
+    candidates: list[tuple[Path, dict]] = []
+    if not runs_root.exists():
+        return candidates
+
+    for run_dir in sorted(runs_root.iterdir()):
+        if not run_dir.is_dir():
+            continue
+        metadata = _safe_read_json_dict(run_dir / "run_metadata.json")
+        if not metadata:
+            continue
+        command_text = _command_text_from_run_metadata(metadata)
+        extra = _run_extra_from_metadata(metadata)
+        if not _is_canonical_thesis_command(command_text):
+            continue
+        if bool(extra.get("resolution_only")) or bool(extra.get("dry_run")):
+            continue
+        candidates.append((run_dir, metadata))
+    return candidates
+
+
+def _select_canonical_thesis_run(
+    run_dir: str | Path | None = None,
+) -> tuple[Path, dict]:
+    root = _get_repo_root()
+    if run_dir is not None:
+        selected_run = Path(run_dir).expanduser().resolve()
+        metadata = _safe_read_json_dict(selected_run / "run_metadata.json")
+        if not metadata:
+            raise FileNotFoundError(
+                f"Run directory does not contain a readable run_metadata.json: {selected_run}"
             )
-    else:
-        report_lines.append("- XXL run dir: Not found")
+        command_text = _command_text_from_run_metadata(metadata)
+        extra = _run_extra_from_metadata(metadata)
+        if not _is_canonical_thesis_command(command_text):
+            raise ValueError(
+                f"Run directory is not a canonical thesis run: {selected_run}"
+            )
+        if bool(extra.get("resolution_only")) or bool(extra.get("dry_run")):
+            raise ValueError(
+                "Run directory is resolution-only or dry-run and is not eligible for generate-monitor"
+            )
+        return selected_run, metadata
 
-    if final_selection:
-        report_lines.append(f"- Final selection JSON: {final_selection_file}")
-        report_lines.append(
-            f"  - Best value: {final_selection.get('best_value')} @ trial #{final_selection.get('best_trial')}"
+    runs_root = root / "outputs" / "runs"
+    candidates = _iter_canonical_thesis_runs(runs_root)
+    if not candidates:
+        raise FileNotFoundError(
+            "No canonical thesis run found under outputs/runs/ for generate-monitor"
         )
-        report_lines.append(f"  - n_trials recorded: {final_selection.get('n_trials')}")
-    else:
-        report_lines.append("- Final selection JSON: Not found")
 
-    report_lines.append("\n## Log excerpt (last 500 lines)")
-    if LOG_FILE.exists():
-        lines = LOG_FILE.read_text().splitlines()
-        excerpt = "\n".join(lines[-500:])
-        report_lines.append("```\n" + excerpt + "\n```")
-    else:
-        report_lines.append("Log file not found")
+    # Prefer runs with thesis reports; then take the newest candidate.
+    return max(
+        candidates,
+        key=lambda item: (
+            1 if (item[0] / "THESIS_PIPELINE_REPORT.md").exists() else 0,
+            _run_metadata_timestamp(item[0], item[1]),
+            item[0].name,
+        ),
+    )
 
-    report_ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    if latest_xxl:
-        reports_dir = latest_xxl / "monitor_reports"
+
+def _summarize_report_head(path: Path, *, max_lines: int = 80) -> list[str]:
+    if not path.exists():
+        return ["- Report artifact missing"]
+    lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    if not lines:
+        return ["- Report artifact is empty"]
+    excerpt = lines[:max_lines]
+    if len(lines) > max_lines:
+        excerpt.append("...")
+    return ["```markdown", *excerpt, "```"]
+
+
+def _tail_text_file(path: Path, *, max_lines: int = 80) -> list[str]:
+    if not path.exists():
+        return ["- Status log missing"]
+    lines = path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    if not lines:
+        return ["- Status log is empty"]
+    excerpt = lines[-max_lines:]
+    return ["```text", *excerpt, "```"]
+
+
+def generate_monitor_report(run_dir: str | Path | None = None) -> Path:
+    selected_run, metadata = _select_canonical_thesis_run(run_dir)
+    extra = _run_extra_from_metadata(metadata)
+    command_text = _command_text_from_run_metadata(metadata)
+
+    report_path = selected_run / "THESIS_PIPELINE_REPORT.md"
+    manifest_root = selected_run / "manifest"
+    manifest_files = sorted(manifest_root.glob("*.json")) if manifest_root.exists() else []
+    status_log = selected_run / "logs" / "status.log"
+    summary_json = selected_run / "monitor" / "summary.json"
+    manifest_json = selected_run / "manifest.json"
+    handoff_paths = sorted(
+        path
+        for pattern in ("handoff*", "*handoff*")
+        for path in selected_run.glob(pattern)
+    )
+    exception_paths = sorted(selected_run.rglob("*exception*"))[:20]
+
+    generated_at = datetime.now(timezone.utc)
+    report_lines = [
+        "# Monitor Report - Thesis Run",
+        "",
+        f"**Generated**: {generated_at.isoformat()}",
+        f"**Run Directory**: `{selected_run}`",
+        f"**Execution Profile**: `{metadata.get('execution_profile', 'unknown')}`",
+        f"**Command**: `{command_text or 'unknown'}`",
+        "",
+        "## Eligibility",
+        "- Source class: canonical thesis run",
+        f"- resolution_only: `{bool(extra.get('resolution_only', False))}`",
+        f"- dry_run: `{bool(extra.get('dry_run', False))}`",
+        "",
+        "## Phase Status",
+    ]
+
+    phase_status = extra.get("phase_status")
+    if isinstance(phase_status, dict) and phase_status:
+        for phase_name, phase_value in phase_status.items():
+            report_lines.append(f"- `{phase_name}`: `{phase_value}`")
     else:
-        reports_dir = ROOT / "outputs" / "monitor_reports"
+        report_lines.append("- No phase_status information recorded")
+
+    report_lines.extend(
+        [
+            "",
+            "## Core Artifacts",
+            f"- `run_metadata.json`: {'present' if (selected_run / 'run_metadata.json').exists() else 'missing'}",
+            f"- `THESIS_PIPELINE_REPORT.md`: {'present' if report_path.exists() else 'missing'}",
+            f"- `manifest.json`: {'present' if manifest_json.exists() else 'missing'}",
+            f"- `manifest/*.json`: `{len(manifest_files)}` file(s)",
+            f"- `monitor/summary.json`: {'present' if summary_json.exists() else 'missing'}",
+            f"- `logs/status.log`: {'present' if status_log.exists() else 'missing'}",
+            "",
+            "## Selected Thesis Run Signals",
+            f"- n_samples: `{extra.get('n_samples', 'unknown')}`",
+            f"- n_trials: `{extra.get('n_trials', 'unknown')}`",
+            f"- parameter_source: `{extra.get('parameter_source', 'unknown')}`",
+            f"- cache_mode: `{extra.get('cache_mode', 'unknown')}`",
+            "",
+            "## Optional Artifacts",
+            f"- Handoff-related paths: `{len(handoff_paths)}`",
+            f"- Exception-related paths: `{len(exception_paths)}`",
+        ]
+    )
+
+    if handoff_paths:
+        for path in handoff_paths[:10]:
+            report_lines.append(f"  - `{_rel_or_abs(selected_run, path)}`")
+    if exception_paths:
+        for path in exception_paths[:10]:
+            report_lines.append(f"  - `{_rel_or_abs(selected_run, path)}`")
+
+    report_lines.extend(["", "## Thesis Report Excerpt"])
+    report_lines.extend(_summarize_report_head(report_path))
+
+    if summary_json.exists():
+        summary_payload = _safe_read_json_dict(summary_json)
+        report_lines.extend(["", "## monitor/summary.json", "```json"])
+        report_lines.extend(
+            json.dumps(summary_payload, indent=2, sort_keys=True).splitlines()
+        )
+        report_lines.append("```")
+
+    report_lines.extend(["", "## status.log (tail)"])
+    report_lines.extend(_tail_text_file(status_log))
+
+    report_ts = generated_at.strftime("%Y%m%dT%H%M%SZ")
+    reports_dir = selected_run / "monitor_reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
 
     report_md = reports_dir / f"monitor_report_{report_ts}.md"
@@ -2227,40 +2349,39 @@ def generate_monitor_report() -> Path:
     report_latest_md = reports_dir / "monitor_report.md"
     report_latest_meta = reports_dir / "monitor_meta.json"
 
-    report_md.write_text("\n".join(report_lines))
-    try:
-        report_meta.write_text(
-            json.dumps(
-                {
-                    "generated_at": datetime.now(timezone.utc).isoformat(),
-                    "observed_phase_events": phase_events,
-                    "xxl_run_dir": str(latest_xxl) if latest_xxl else None,
-                },
-                indent=2,
-            )
-        )
-    except Exception:
-        pass
+    report_text = "\n".join(report_lines) + "\n"
+    report_md.write_text(report_text, encoding="utf-8")
+    report_latest_md.write_text(report_text, encoding="utf-8")
 
-    report_latest_md.write_text("\n".join(report_lines))
-    try:
-        report_latest_meta.write_text(
-            json.dumps(
-                {
-                    "generated_at": datetime.now(timezone.utc).isoformat(),
-                    "observed_phase_events": phase_events,
-                    "xxl_run_dir": str(latest_xxl) if latest_xxl else None,
-                },
-                indent=2,
-            )
-        )
-    except Exception:
-        pass
+    report_meta_payload = {
+        "generated_at": generated_at.isoformat(),
+        "run_dir": str(selected_run),
+        "command": metadata.get("command"),
+        "execution_profile": metadata.get("execution_profile"),
+        "phase_status": phase_status if isinstance(phase_status, dict) else {},
+        "source_artifacts": {
+            "run_metadata": str(selected_run / "run_metadata.json"),
+            "thesis_report": str(report_path) if report_path.exists() else None,
+            "manifest_json": str(manifest_json) if manifest_json.exists() else None,
+            "manifest_dir_files": [str(path) for path in manifest_files],
+            "monitor_summary": str(summary_json) if summary_json.exists() else None,
+            "status_log": str(status_log) if status_log.exists() else None,
+        },
+        "handoff_paths": [str(path) for path in handoff_paths],
+        "exception_paths": [str(path) for path in exception_paths],
+    }
+    report_meta.write_text(
+        json.dumps(report_meta_payload, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    report_latest_meta.write_text(
+        json.dumps(report_meta_payload, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
 
     print(
         f"Wrote report to: {report_md} (latest copies: {report_latest_md}, {report_latest_meta})"
     )
-
     return report_md
 
 
@@ -2283,13 +2404,23 @@ def generate_experiment_cli(run_dir: str) -> int:
 
 @cli_command(
     "generate-monitor",
-    help="Generate report from existing monitor log",
-    args={},
+    help="Generate report from canonical thesis run artifacts",
+    args={
+        "run_dir": {
+            "type": str,
+            "default": None,
+            "help": "Optional thesis run directory; otherwise the latest canonical thesis run is selected automatically",
+        },
+    },
 )
-def generate_monitor_cli() -> int:
+def generate_monitor_cli(run_dir: Optional[str] = None) -> int:
     """CLI entry point for monitor report generation."""
-    generate_monitor_report()
-    return 0
+    try:
+        generate_monitor_report(run_dir=run_dir)
+        return 0
+    except (FileNotFoundError, ValueError) as exc:
+        print(f"generate-monitor: {exc}")
+        return 2
 
 
 @cli_command(
@@ -2351,7 +2482,7 @@ def generate_thesis_final_cli(
 if __name__ == "__main__":
     # Use CLI commands instead:
     #   dataselector generate-experiment --run-dir X
-    #   dataselector generate-monitor
+    #   dataselector generate-monitor [--run-dir X]
     #   dataselector generate-thesis
     #   dataselector generate-thesis-final
     raise SystemExit(1)

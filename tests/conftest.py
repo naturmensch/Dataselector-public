@@ -46,7 +46,6 @@ def _register_all_cli_commands():
             "dataselector.workflows.sampler_suite",
             "dataselector.workflows.thesis_pipeline",
             "dataselector.workflows.thesis_sampler_suite",
-            "dataselector.workflows.xxl",
         ]
         for module_name in modules:
             importlib.import_module(module_name)

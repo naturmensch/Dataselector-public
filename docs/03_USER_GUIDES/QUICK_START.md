@@ -34,8 +34,9 @@ micromamba create -f environment.yml -n dataselector
 ## 4) Run modern thesis flow
 
 ```bash
-./scripts/exec_in_env.sh --env dataselector -- python -m dataselector thesis-sampler-suite --autoscale
-./scripts/exec_in_env.sh --env dataselector -- python -m dataselector xxl
+./scripts/exec_in_env.sh --env dataselector -- python -m dataselector thesis-orchestrate \
+  --config config/pipeline_config.yaml \
+  --output-dir outputs/runs/<run_id>
 ```
 
 For a single end-to-end thesis run with reproducibility controls, see:
@@ -48,4 +49,3 @@ For a single end-to-end thesis run with reproducibility controls, see:
 ./scripts/exec_in_env.sh --env dataselector -- python -m dataselector align-audit --csv data/new_all_tiles.csv --base-dir data/images
 ./scripts/exec_in_env.sh --env dataselector -- python -m pytest -q tests/unit/test_no_legacy_script_references.py
 ```
-

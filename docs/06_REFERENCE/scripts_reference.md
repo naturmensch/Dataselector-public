@@ -23,6 +23,9 @@ micromamba run -n dataselector python -m dataselector thesis-orchestrate \
 micromamba run -n dataselector python -m dataselector thesis-pipeline \
   --use-params outputs/runs/<run_id>/final_config.yaml
 
+micromamba run -n dataselector python -m dataselector generate-monitor \
+  --run-dir outputs/runs/<run_id>
+
 micromamba run -n dataselector python -m dataselector check-runtime-readiness
 micromamba run -n dataselector python -m dataselector check-script-wrappers --strict
 micromamba run -n dataselector python -m dataselector thesis-build-annotation-plan \
@@ -50,9 +53,8 @@ These remain useful and align with the current repo story:
 These scripts still support live work, but they should be documented as
 optional, evidence-facing, or advanced:
 
-- retained advanced workflow interfaces such as `dataselector xxl`,
-  `dataselector xxl-monitor`, `scripts/recovery.py`, and
-  `scripts/monitor_state.py`
+- retained reporting/inspection helpers such as `dataselector generate-monitor`
+  and `scripts/monitor_state.py`
 - decision/evidence reruns such as `compare_min_distance_policies.py`,
   `compare_seed_vs_unseed.py`, `seed_benchmark.py`
 - reproducibility helpers such as `reproduce_min_distance_decision.sh`,
@@ -67,7 +69,8 @@ These paths remain useful for traceability or deep-dive debugging, but they are
 not part of the default release story:
 
 - `scripts/phase4h/` closeout automation
-- monitor/watch/start shell helpers around XXL-era long-running orchestration
+- archived XXL/monitor/recovery helpers now bundled under
+  `docs/07_ARCHIVE/legacy_xxl_ops/`
 - older runner scripts such as `run_complete_thesis_pipeline.sh`,
   `phase4_runner.sh`, `run_full_experiment.sh`
 - legacy shell-oriented monitoring wrappers that no longer define the active

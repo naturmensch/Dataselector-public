@@ -176,29 +176,6 @@ def test_multicriteria_fit_guard_raises_on_mismatch(monkeypatch):
     with pytest.raises(ValueError, match=r"Feature rows .* != metadata rows .*"):
         mc.fit(X)
 
-
-def test_xxl_monitor_delegates_to_cli(monkeypatch):
-    """Package monitor wrapper should delegate to canonical CLI command."""
-    from dataselector.workflows import xxl_monitor
-
-    called = {}
-
-    class DummyProc:
-        def __init__(self, returncode):
-            self.returncode = returncode
-
-    def fake_run(cmd):
-        called["cmd"] = cmd
-        return DummyProc(returncode=0)
-
-    monkeypatch.setattr(xxl_monitor.subprocess, "run", fake_run)
-    rc = xxl_monitor.main(["--help"])
-
-    assert rc == 0
-    assert called["cmd"][:4] == [sys.executable, "-m", "dataselector", "xxl"]
-    assert called["cmd"][-1] == "--help"
-
-
 if __name__ == "__main__":
     # run tests locally for debugging convenience
     import pytest

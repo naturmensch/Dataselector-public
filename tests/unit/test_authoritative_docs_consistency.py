@@ -14,7 +14,6 @@ AUTHORITATIVE_DOCS = [
     ROOT / "docs" / "03_USER_GUIDES" / "THESIS_PIPELINE_HOWTO.md",
     ROOT / "docs" / "ENV_SETUP.md",
     ROOT / "docs" / "DEVELOPER.md",
-    ROOT / "docs" / "OPERATIONS.md",
 ]
 
 

@@ -364,7 +364,7 @@ print(f'GPU Memory: {torch.cuda.max_memory_allocated() / 1e9:.2f} GB')
 ## 📚 Weiterführende Ressourcen
 
 - **UQ & Validation:** [../03_USER_GUIDES/UQ_VALIDATION.md](../03_USER_GUIDES/UQ_VALIDATION.md)
-- **Monitoring:** [MONITORING_OPS.md](MONITORING_OPS.md)
+- **Historical monitoring context:** [../07_ARCHIVE/legacy_xxl_ops/](../07_ARCHIVE/legacy_xxl_ops/)
 - **Optuna Docs:** https://optuna.readthedocs.io/
 - **DINOv2 Paper:** https://arxiv.org/abs/2304.07193
 

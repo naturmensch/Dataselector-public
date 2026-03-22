@@ -16,7 +16,6 @@ import pytest
         ("dataselector.workflows.optuna_optimize", "run_optuna"),
         ("dataselector.workflows.tune_weights", "generate_weights"),
         ("dataselector.workflows.autoscale", "main"),
-        ("dataselector.workflows.xxl", "main"),
         ("dataselector.workflows.validation", "validate_pareto_candidates"),
         ("dataselector.workflows.generate_reports", "generate_monitor_report"),
         ("dataselector.workflows.generate_reports", "generate_thesis_final_report"),

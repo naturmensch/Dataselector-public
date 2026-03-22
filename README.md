@@ -151,8 +151,7 @@ Dataselector/
 
 ## Advanced / historical workflows
 
-`thesis-sampler-suite`, `xxl`, `xxl-monitor` und ausgewaehlte Monitor-/
-Recovery-Helfer bleiben fuer supplementary oder advanced operational work im
-Repo. Sie sind **nicht** mehr der kanonische Thesis-Release-Pfad; im README-
-Surface gelten sie als secondary-active bis historical und sollen die
-Standardausfuehrung nicht dominieren.
+`thesis-sampler-suite`, `generate-monitor` und ausgewaehlte Analyse-/Export-
+Helfer bleiben fuer supplementary oder advanced work im Repo. Die fruehere
+`xxl`-/`xxl-monitor`-/Resume-Welt ist archiviert und **kein** aktiver Teil des
+Release-Surface mehr.
