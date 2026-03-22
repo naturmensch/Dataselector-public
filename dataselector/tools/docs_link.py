@@ -13,11 +13,30 @@ ROOT = (
 )  # dataselector/tools/docs_link.py -> repo root
 
 
-def find_broken_links(docs_dir: Path = None) -> List[Tuple[Path, str, str]]:
+def _should_skip_historical_doc(
+    md_file: Path, *, docs_dir: Path, include_historical: bool
+) -> bool:
+    """Return True when a markdown file belongs to the default historical skip set."""
+    if include_historical:
+        return False
+
+    root_docs = (ROOT / "docs").resolve()
+    if docs_dir.resolve() != root_docs:
+        return False
+
+    reports_dir = (root_docs / "reports").resolve()
+    return md_file.resolve().is_relative_to(reports_dir)
+
+
+def find_broken_links(
+    docs_dir: Path | None = None, *, include_historical: bool = False
+) -> List[Tuple[Path, str, str]]:
     """Find broken relative links in markdown files.
 
     Args:
         docs_dir: Directory to scan (defaults to ROOT/docs)
+        include_historical: If True, include historical/generated docs like
+            docs/reports/ in the default repo-wide scan.
 
     Returns:
         List of (source_file, link_target, link_text) tuples for broken links
@@ -30,6 +49,11 @@ def find_broken_links(docs_dir: Path = None) -> List[Tuple[Path, str, str]]:
     broken = []
 
     for md_file in docs_dir.rglob("*.md"):
+        if _should_skip_historical_doc(
+            md_file, docs_dir=docs_dir, include_historical=include_historical
+        ):
+            continue
+
         text = md_file.read_text(encoding="utf-8", errors="ignore")
         for match in link_pattern.finditer(text):
             link_text = match.group(1)
@@ -61,21 +85,32 @@ def find_broken_links(docs_dir: Path = None) -> List[Tuple[Path, str, str]]:
             "action": "store_true",
             "help": "Don't backup original files",
         },
+        "include_historical": {
+            "type": bool,
+            "action": "store_true",
+            "help": "Also scan historical/generated docs like docs/reports/",
+        },
     },
 )
-def autofix_links(yes: bool = False, no_backup: bool = False) -> int:
+def autofix_links(
+    yes: bool = False,
+    no_backup: bool = False,
+    include_historical: bool = False,
+) -> int:
     """Attempt to auto-fix broken relative links.
 
     Args:
         yes: If True, actually fix (default is dry-run)
         no_backup: If True, don't backup original files
+        include_historical: If True, include historical/generated docs like
+            docs/reports/ in the repo-wide scan
 
     Returns:
         0 on success
     """
     dry_run = not yes  # Invert: --yes means NOT dry-run
     backup = not no_backup  # Invert: --no-backup means NO backup
-    broken = find_broken_links()
+    broken = find_broken_links(include_historical=include_historical)
 
     if not broken:
         print("No broken links found.")
@@ -140,15 +175,21 @@ def autofix_links(yes: bool = False, no_backup: bool = False) -> int:
 @cli_command(
     "docs-link-check",
     help="Check for broken documentation links",
-    args={},
+    args={
+        "include_historical": {
+            "type": bool,
+            "action": "store_true",
+            "help": "Also scan historical/generated docs like docs/reports/",
+        },
+    },
 )
-def check_links() -> int:
+def check_links(include_historical: bool = False) -> int:
     """Check for broken links in documentation.
 
     Returns:
         0 if no broken links, 1 if broken links found
     """
-    broken = find_broken_links()
+    broken = find_broken_links(include_historical=include_historical)
 
     if not broken:
         print("✓ No broken links found")

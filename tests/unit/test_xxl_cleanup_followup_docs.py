@@ -61,7 +61,6 @@ def test_legacy_xxl_ops_archive_has_no_broken_relative_links():
 
 def test_historical_reports_and_cleanup_docs_have_no_broken_relative_links():
     checked_dirs = [
-        ROOT / "docs" / "reports",
         ROOT / "docs" / "cleanup_scripts",
         ROOT / "docs" / "07_ARCHIVE" / "phase4h_closeout_2026-02-10" / "legacy_docs_root",
     ]

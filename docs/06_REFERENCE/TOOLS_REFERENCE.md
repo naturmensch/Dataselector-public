@@ -192,35 +192,34 @@ Total space to reclaim: 791 MB
 
 ---
 
-### `dataselector tools docs-check`
+### `python -m dataselector docs-link-check`
 
-**Purpose:** Validate all documentation links and references.
+**Purpose:** Validate relative documentation links on the active docs surface.
 
 **Description:**  
-Scans documentation for broken links, missing references, and outdated information.
-- Internal links (file references)
-- External links (URLs, GitHub references)
-- Code examples (existence of referenced functions/files)
+Scans Markdown documentation for broken relative file links.
+- Default gate: the active/authoritative `docs/` surface
+- Historical/generated `docs/reports/` is excluded by default
+- Use `--include-historical` for an optional full scan including historical docs
+- When you pass a concrete docs subdirectory in code, that subtree is scanned fully
 
 **Usage:**
 ```bash
-# Check all documentation
-dataselector tools docs-check
+# Check the active docs surface
+micromamba run -n dataselector -- python -m dataselector docs-link-check
 
-# Check specific file
-dataselector tools docs-check docs/REPRODUCIBILITY.md
-
-# Generate report
-dataselector tools docs-check --output docs/link_check_report.txt
+# Optional deep diagnosis including historical/generated docs
+micromamba run -n dataselector -- \
+  python -m dataselector docs-link-check --include-historical
 ```
 
 **Output:**
 ```
-✓ docs/REPRODUCIBILITY.md: 45 links checked, all valid
-✓ docs/ARCHITECTURE.md: 32 links checked, all valid
-❌ README.md:
-   Line 45: Broken link to "docs/old_feature_reference.md" (file moved to docs/06_REFERENCE/)
-   Line 67: Dead external link "https://github.com/old-repo/..."
+✓ No broken links found
+
+✗ Found 2 broken links:
+  - docs/INDEX.md: Legacy note -> 07_ARCHIVE/missing_note.md
+  - docs/03_USER_GUIDES/THESIS_PIPELINE_HOWTO.md: Policy -> ../missing.md
 ```
 
 **Exit Code:**
@@ -229,37 +228,37 @@ dataselector tools docs-check --output docs/link_check_report.txt
 
 ---
 
-### `dataselector tools docs-fix`
+### `python -m dataselector docs-link-autofix`
 
-**Purpose:** Automatically fix common documentation issues.
+**Purpose:** Attempt to auto-fix broken relative documentation links.
 
 **Description:**  
-Attempts to auto-correct broken links and update references. Handles:
-- File moves/renames
-- URL changes
-- Obsolete script references → CLI commands
+Attempts basename-based fixes for broken relative links in Markdown docs.
+- Default scope matches `docs-link-check`
+- Use `--include-historical` to also consider `docs/reports/`
+- Dry-run by default; apply changes only with `--yes`
+- Optional backups are written unless `--no-backup` is set
 
 **Usage:**
 ```bash
-# Preview changes (dry-run)
-dataselector tools docs-fix --dry-run
+# Preview candidate fixes on the active docs surface
+micromamba run -n dataselector -- python -m dataselector docs-link-autofix
 
-# Apply fixes
-dataselector tools docs-fix --apply
+# Apply fixes and keep backups
+micromamba run -n dataselector -- python -m dataselector docs-link-autofix --yes
 
-# Fix specific type only
-dataselector tools docs-fix --apply --fix-type "script-to-cli"
+# Include historical/generated docs in the scan
+micromamba run -n dataselector -- \
+  python -m dataselector docs-link-autofix --include-historical
 ```
 
 **Output:**
 ```
-Fixed: README.md
-  scripts/run_thesis_pipeline.py → dataselector thesis-pipeline
-  
-Fixed: docs/REPRODUCIBILITY.md
-  docs/old_feature_reference.md → docs/06_REFERENCE/FEATURES.md
+Would fix: docs/INDEX.md
+  ../old_reference.md -> ../06_REFERENCE/new_reference.md
 
-Summary: 2 files fixed, 5 references updated
+[DRY RUN] Would fix 1 links automatically
+Would require manual fix: 2 links
 ```
 
 ---
@@ -307,7 +306,7 @@ GIS Stack:
 ### Verify workspace before committing
 ```bash
 dataselector tools protect-paths && \
-dataselector tools docs-check && \
+python -m dataselector docs-link-check && \
 dataselector tools deps-check
 ```
 
@@ -326,8 +325,8 @@ dataselector tools check-geo
 
 ### Post-migration validation
 ```bash
-dataselector tools docs-fix --dry-run
-dataselector tools docs-check
+python -m dataselector docs-link-autofix
+python -m dataselector docs-link-check
 dataselector tools deps-check --verbose
 ```
 
@@ -360,7 +359,7 @@ Fix: Remove these files from git staging
 ## Performance Notes
 
 - `align-audit`: 2-5 minutes for full KDR100 dataset (depends on image count)
-- `docs-check`: <1 second for small documentation sets, ~10 seconds for full docs
+- `docs-link-check`: <1 second for small documentation sets, ~10 seconds for full docs
 - `cleanup`: 1-5 minutes depending on cleanup scope
 - `audit-files`: ~30 seconds for comprehensive check
 
