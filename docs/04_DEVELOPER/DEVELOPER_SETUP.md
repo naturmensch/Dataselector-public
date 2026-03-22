@@ -82,10 +82,10 @@ dataselector/
 │   ├── __init__.py
 │   ├── manager.py             # ExperimentManager (provenance)
 │   └── manifests.py           # JSON manifest handling
-├── pipelines/
+├── workflows/
 │   ├── __init__.py
-│   ├── thesis_pipeline.py     # 4-Phase pipeline
-│   └── xxl_pipeline.py        # 6-Phase pipeline
+│   ├── thesis_pipeline.py     # canonical thesis workflow
+│   └── thesis_orchestrate.py  # orchestration + snapshots
 ├── utils/
 │   ├── __init__.py
 │   ├── config.py              # YAML loading
@@ -349,7 +349,7 @@ pytest -v --tb=short --timeout=30
 
 ## 📚 Weiterführende Ressourcen
 
-- **Testing Guide:** [../TEST_RUNNER.md](../TEST_RUNNER.md)
+- **Testing Guide:** [../TEST_SUITE_CURATION.md](../TEST_SUITE_CURATION.md)
 - **CI/CD Setup:** [../.github/workflows/]
 - **Architecture Deep Dive:** [../02_THEORY/architecture.md](../02_THEORY/architecture.md)
 - **Module Reference:** [../06_REFERENCE/api_reference.md](../06_REFERENCE/api_reference.md)
