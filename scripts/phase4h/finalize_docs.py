@@ -29,9 +29,11 @@ def update_howto(howto: Path, latest_distance_summary: Path | None) -> bool:
     original = text
 
     if latest_distance_summary is not None:
-        repl = f"reports_2026-02-09/{latest_distance_summary.name}"
+        repl = (
+            f"docs/06_REFERENCE/thesis_decision_evidence/{latest_distance_summary.name}"
+        )
         text = re.sub(
-            r"reports_2026-02-09/min_distance_policy_summary_[0-9TZ]+\.md",
+            r"docs/06_REFERENCE/thesis_decision_evidence/min_distance_policy_summary_[0-9TZ]+\.md",
             repl,
             text,
         )
@@ -102,7 +104,9 @@ def update_closeout(
 
 def collect_missing_doc_refs(paths: list[Path], root: Path) -> list[tuple[Path, str]]:
     missing: list[tuple[Path, str]] = []
-    pattern = re.compile(r"(reports_2026-02-09/[A-Za-z0-9_./-]+\.md)")
+    pattern = re.compile(
+        r"(docs/06_REFERENCE/thesis_decision_evidence/[A-Za-z0-9_./-]+\.md)"
+    )
     for p in paths:
         text = p.read_text(encoding="utf-8")
         for rel in pattern.findall(text):
@@ -116,7 +120,7 @@ def main() -> int:
     args = parse_args()
     root = args.repo_root.resolve()
 
-    reports = root / "reports_2026-02-09"
+    reports = root / "docs/06_REFERENCE/thesis_decision_evidence"
     docs = root / "docs"
     status = docs / "status"
     howto = docs / "03_USER_GUIDES" / "THESIS_PIPELINE_HOWTO.md"

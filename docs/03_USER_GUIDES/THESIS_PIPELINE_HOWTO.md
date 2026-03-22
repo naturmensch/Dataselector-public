@@ -112,8 +112,8 @@ Interpretation target:
 
 Evidence:
 
-- `reports_2026-02-09/MIN_DISTANCE_DECISION_2026-02-09.md`
-- `reports_2026-02-09/min_distance_policy_summary_20260209T233849Z.md`
+- `docs/06_REFERENCE/thesis_decision_evidence/MIN_DISTANCE_DECISION_2026-02-09.md`
+- `docs/06_REFERENCE/thesis_decision_evidence/min_distance_policy_summary_20260209T233849Z.md`
 - `docs/MIN_DISTANCE_EVIDENCE_ADDENDUM.md`
 
 ## 4) End-to-End Thesis Flow (Copy/Paste)
@@ -430,7 +430,7 @@ CLI commands.
 
 For thesis runs, pass `--n-samples` explicitly in commands below.
 Current thesis policy baseline is `24` (minimum-sufficient decision):
-`reports_2026-02-09/N_SAMPLES_DECISION_2026-02-09.md`.
+`docs/06_REFERENCE/thesis_decision_evidence/N_SAMPLES_DECISION_2026-02-09.md`.
 
 Note on autoscale `full` stage:
 When a stage uses full candidate coverage (`n_samples == total candidates`), the

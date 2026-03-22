@@ -149,7 +149,8 @@ Dataselector/
 
 ## Advanced / historical workflows
 
-`thesis-sampler-suite`, `xxl`, and related research workflows remain in the
-repository for supplementary or historical analysis. They are **not** the
-canonical thesis release path anymore and should not dominate the README-level
-entry story.
+`thesis-sampler-suite`, `xxl`, `xxl-monitor`, and selected monitor/recovery
+helpers remain in the repository for supplementary or advanced operational
+work. They are **not** the canonical thesis release path anymore; in the
+README-level surface they are secondary-active to historical and should not
+dominate the default entry story.

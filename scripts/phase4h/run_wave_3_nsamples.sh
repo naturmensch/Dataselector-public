@@ -25,7 +25,7 @@ SEEDS=(${N_SAMPLES_SEEDS:-42 43 44 45 46})
   echo "[${WAVE}] seeds=${SEEDS[*]}"
   cd "${REPO_ROOT}"
 
-  mkdir -p reports_2026-02-09/n_samples
+  mkdir -p docs/06_REFERENCE/thesis_decision_evidence/n_samples
 
   for n in "${CANDIDATES[@]}"; do
     echo "[${WAVE}] evaluating n_samples=${n}"
@@ -34,7 +34,7 @@ SEEDS=(${N_SAMPLES_SEEDS:-42 43 44 45 46})
       --distances "${DISTANCE}" \
       --seeds "${SEEDS[@]}" \
       --n-samples "${n}" \
-      --output-dir "reports_2026-02-09/n_samples/n_${n}"
+      --output-dir "docs/06_REFERENCE/thesis_decision_evidence/n_samples/n_${n}"
   done
 
   echo "[${WAVE}] finished $(ts_utc)"

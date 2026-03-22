@@ -17,7 +17,7 @@ RUN_TAG="$(date -u +%Y%m%dT%H%M%SZ)"
 A_DIR="outputs/thesis_run_A_policy24_${RUN_TAG}"
 B_DIR="outputs/thesis_run_B_policy24_${RUN_TAG}"
 H_DIR="outputs/thesis_run_hamburg_policy24_${RUN_TAG}"
-EVIDENCE_MD="reports_2026-02-09/GO_LIVE_EVIDENCE_POLICY24_${RUN_TAG}.md"
+EVIDENCE_MD="docs/06_REFERENCE/thesis_decision_evidence/GO_LIVE_EVIDENCE_POLICY24_${RUN_TAG}.md"
 
 {
   echo "[${WAVE}] started $(ts_utc)"
@@ -66,7 +66,7 @@ EVIDENCE_MD="reports_2026-02-09/GO_LIVE_EVIDENCE_POLICY24_${RUN_TAG}.md"
     --min-distance 28.5 \
     --run-tag "${RUN_TAG}" \
     --output-md "${EVIDENCE_MD}" \
-    --append-to "reports_2026-02-09/GO_LIVE_EVIDENCE_2026-02-09.md"
+    --append-to "docs/06_REFERENCE/thesis_decision_evidence/GO_LIVE_EVIDENCE_2026-02-09.md"
 
   echo "[${WAVE}] evidence_report=${EVIDENCE_MD}"
   echo "[${WAVE}] finished $(ts_utc)"

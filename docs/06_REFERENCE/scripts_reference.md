@@ -50,6 +50,9 @@ These remain useful and align with the current repo story:
 These scripts still support live work, but they should be documented as
 optional, evidence-facing, or advanced:
 
+- retained advanced workflow interfaces such as `dataselector xxl`,
+  `dataselector xxl-monitor`, `scripts/recovery.py`, and
+  `scripts/monitor_state.py`
 - decision/evidence reruns such as `compare_min_distance_policies.py`,
   `compare_seed_vs_unseed.py`, `seed_benchmark.py`
 - reproducibility helpers such as `reproduce_min_distance_decision.sh`,
@@ -64,10 +67,11 @@ These paths remain useful for traceability or deep-dive debugging, but they are
 not part of the default release story:
 
 - `scripts/phase4h/` closeout automation
-- monitor/watch/start shell helpers
+- monitor/watch/start shell helpers around XXL-era long-running orchestration
 - older runner scripts such as `run_complete_thesis_pipeline.sh`,
   `phase4_runner.sh`, `run_full_experiment.sh`
-- legacy monitoring and recovery helpers tied to XXL-era workflows
+- legacy shell-oriented monitoring wrappers that no longer define the active
+  thesis workflow
 
 ## 3. Rules for keeping scripts
 
@@ -84,6 +88,8 @@ not part of the default release story:
 
 - Repo-facing historical documentation belongs under `docs/07_ARCHIVE/`.
 - Historical tests belong under `tests/archive/`.
+- `docs/06_REFERENCE/thesis_decision_evidence/` is the stable repo-side home
+  for active tracked thesis decision evidence.
 - Local migration backups under `archive_local/` are useful for forensics, but
   they are not authoritative runtime guidance.
 - `scripts/phase4h/README.md` documents the preserved Phase4H closeout

@@ -110,8 +110,8 @@ validation:
   bootstrap_sample_frac: 1.0
   
 # Expected results are tracked in timestamped decision artifacts:
-# - reports_2026-02-09/MIN_DISTANCE_DECISION_2026-02-09.md
-# - reports_2026-02-09/N_SAMPLES_DECISION_2026-02-09.md
+# - docs/06_REFERENCE/thesis_decision_evidence/MIN_DISTANCE_DECISION_2026-02-09.md
+# - docs/06_REFERENCE/thesis_decision_evidence/N_SAMPLES_DECISION_2026-02-09.md
 
 # Output
 output:

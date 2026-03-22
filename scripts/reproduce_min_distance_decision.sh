@@ -10,7 +10,7 @@ if command -v micromamba >/dev/null 2>&1; then
 elif [ -x "${ROOT}/scripts/exec_in_env.sh" ]; then
   PY_CMD=("${ROOT}/scripts/exec_in_env.sh" --env "${ENV_NAME}" -- python)
 fi
-OUT_DIR="${ROOT}/reports_2026-02-09"
+OUT_DIR="${ROOT}/docs/06_REFERENCE/thesis_decision_evidence"
 
 echo "[reproduce-min-distance] python=${PY_CMD[*]}"
 echo "[reproduce-min-distance] output=${OUT_DIR}"

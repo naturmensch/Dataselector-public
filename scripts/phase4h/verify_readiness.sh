@@ -44,11 +44,11 @@ summary = {
     "selection_validation_seeds": sel.get("validation_seeds"),
     "min_distance_geom_ref": compute_min_distance_km(str(csv_path)),
     "artifacts": {
-        "min_distance_pre_registration": (root / "reports_2026-02-09/MIN_DISTANCE_PRE_REGISTRATION_2026-02-09.md").exists(),
-        "min_distance_decision": (root / "reports_2026-02-09/MIN_DISTANCE_DECISION_2026-02-09.md").exists(),
-        "n_samples_pre_registration": (root / "reports_2026-02-09/N_SAMPLES_PRE_REGISTRATION_2026-02-09.md").exists(),
-        "n_samples_decision": (root / "reports_2026-02-09/N_SAMPLES_DECISION_2026-02-09.md").exists(),
-        "policy24_golive": (root / "reports_2026-02-09/GO_LIVE_EVIDENCE_POLICY24_20260210T000328Z.md").exists(),
+        "min_distance_pre_registration": (root / "docs/06_REFERENCE/thesis_decision_evidence/MIN_DISTANCE_PRE_REGISTRATION_2026-02-09.md").exists(),
+        "min_distance_decision": (root / "docs/06_REFERENCE/thesis_decision_evidence/MIN_DISTANCE_DECISION_2026-02-09.md").exists(),
+        "n_samples_pre_registration": (root / "docs/06_REFERENCE/thesis_decision_evidence/N_SAMPLES_PRE_REGISTRATION_2026-02-09.md").exists(),
+        "n_samples_decision": (root / "docs/06_REFERENCE/thesis_decision_evidence/N_SAMPLES_DECISION_2026-02-09.md").exists(),
+        "policy24_golive": (root / "docs/06_REFERENCE/thesis_decision_evidence/GO_LIVE_EVIDENCE_POLICY24_20260210T000328Z.md").exists(),
     },
 }
 print(json.dumps(summary, indent=2, ensure_ascii=False))

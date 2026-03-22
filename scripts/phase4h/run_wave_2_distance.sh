@@ -22,7 +22,7 @@ append_status "${WAVE}" "running" "Starting min-distance policy comparison"
     --metadata-path data/new_all_tiles.csv \
     --distances 28.5 40 45 \
     --seeds 42 43 44 45 46 \
-    --output-dir reports_2026-02-09
+    --output-dir docs/06_REFERENCE/thesis_decision_evidence
 
   echo "[${WAVE}] finished $(ts_utc)"
 } | tee "${LOG_FILE}"

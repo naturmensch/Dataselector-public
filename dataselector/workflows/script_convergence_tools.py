@@ -726,7 +726,7 @@ def run_temporal_sensitivity_test(
         },
         "output_dir": {
             "type": str,
-            "default": "reports_2026-02-09",
+            "default": "docs/06_REFERENCE/thesis_decision_evidence",
             "help": "Directory for result CSV/MD artifacts",
         },
         "pre_names": {
@@ -749,7 +749,7 @@ def cli_compare_min_distance_policies(
     seeds: list[int] | None = None,
     n_samples: int | None = None,
     config_path: str = "config/pipeline_config.yaml",
-    output_dir: str = "reports_2026-02-09",
+    output_dir: str = "docs/06_REFERENCE/thesis_decision_evidence",
     pre_names: list[str] | None = None,
     pre_indices: list[int] | None = None,
 ) -> int:

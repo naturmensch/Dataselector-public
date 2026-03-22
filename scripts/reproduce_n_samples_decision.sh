@@ -13,7 +13,7 @@ fi
 DISTANCE="${DISTANCE:-28.5}"
 SEEDS=(${SEEDS:-42 43 44 45 46})
 CANDIDATES=(${CANDIDATES:-24 28 32 34 40})
-BASE_OUT="${ROOT}/reports_2026-02-09/n_samples"
+BASE_OUT="${ROOT}/docs/06_REFERENCE/thesis_decision_evidence/n_samples"
 
 echo "[reproduce-n-samples] python=${PY_CMD[*]}"
 echo "[reproduce-n-samples] distance=${DISTANCE}"
