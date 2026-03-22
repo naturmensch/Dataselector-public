@@ -1,6 +1,6 @@
 # E2E Test Strategy & Structure
 
-**Status:** Post-migration test infrastructure planning (2026-02-02)
+**Status:** Historical planning note, refreshed to match the current canonical E2E suite
 
 ## Test Categorization
 
@@ -44,11 +44,11 @@ Complete workflow testing - multiple phases or data pipelines.
 | Test | Workflow | Purpose | Duration | Resources |
 |---|---|---|---|---|
 | `test_autoscale_multi_stage` | 3 autoscale stages | Multi-stage optimization | 15 min | Medium |
-| `test_xxl_complete_5_phases` | Abbreviated XXL (Hamburg subset) | 5-phase pipeline | 25 min | High |
-| `test_resume_recovery` | XXL interrupt + resume | Checkpoint/resume logic | 20 min | High |
+| `test_thesis_complete_e2e` | thesis-orchestrate / thesis-pipeline | Canonical thesis run contract | 20 min | High |
+| `test_sampler_suite` | thesis sampler evaluation | Multi-seed sampler workflow | 15 min | High |
 | `test_geo_workflow_full` | build-tiles → align-audit | Complete geo pipeline | 10 min | Images + GIS |
 
-**Total Duration:** ~70 min (recommended: run sequentially or dedicated CI stage)  
+**Total Duration:** ~60 min (recommended: run sequentially or dedicated CI stage)  
 **Failure Rate:** Expected 1-10% (integration complexity)
 
 ### 4. Error & Fallback Tests (Edge Cases, 2-5 min each)
@@ -90,12 +90,12 @@ Group C (Image-dependent): build_tiles_real_images, sampler_comparison_seeds
 Run complete pipelines sequentially to avoid resource conflicts:
 ```bash
 pytest tests/e2e/test_autoscale_workflow.py
-pytest tests/e2e/test_xxl_pipeline.py
-pytest tests/e2e/test_resume_recovery.py
+pytest tests/e2e/test_thesis_complete_e2e.py
+pytest tests/e2e/test_sampler_suite.py
 pytest tests/e2e/test_geo_workflow.py
 ```
 
-**Typical CI time:** ~95 min (includes setup/teardown)
+**Typical CI time:** ~80 min (includes setup/teardown)
 
 ### Stage 4: Error Tests (20 min)
 Run in parallel (isolated, no resource contention):
@@ -111,11 +111,11 @@ pytest tests/e2e/ -k "error" -n 5
 |---|---|---|---|
 | Smoke | 6 | ✅ Yes | 5 min |
 | Integration | 7 | 🟡 Partial | 18 min |
-| E2E Workflows | 4 | ❌ No | 95 min |
+| E2E Workflows | 4 | ❌ No | 80 min |
 | Error | 5 | ✅ Yes | 25 min |
 | **Total** | 22 | - | **143 min** (~2.4 hours) |
 
-**Optimized (parallel where safe):** ~120 min (~2 hours)
+**Optimized (parallel where safe):** ~105 min (~1.75 hours)
 
 ## Fixture Strategy
 

@@ -58,7 +58,7 @@ graph TB
     subgraph "Workflows Layer"
         WF_Autoscale[Autoscale Workflow]
         WF_Suite[Sampler Suite Workflow]
-        WF_XXL[XXL Pipeline Workflow]
+        WF_Thesis[Canonical Thesis Workflow]
     end
 
     subgraph "Orchestration Layer"
@@ -89,11 +89,11 @@ graph TB
 
     CLI --> WF_Autoscale
     CLI --> WF_Suite
-    CLI --> WF_XXL
+    CLI --> WF_Thesis
 
     WF_Autoscale --> OptunaRunner
     WF_Suite --> OptunaRunner
-    WF_XXL --> Pipeline
+    WF_Thesis --> Pipeline
 
     OptunaRunner --> Pipeline
     Pipeline --> ExpMgr
@@ -117,7 +117,7 @@ graph TB
     style CLI fill:#4CAF50
     style WF_Autoscale fill:#2196F3
     style WF_Suite fill:#2196F3
-    style WF_XXL fill:#2196F3
+    style WF_Thesis fill:#2196F3
     style DS fill:#FF9800
     style MCFL fill:#FF9800
     style Pipeline fill:#9C27B0
@@ -351,16 +351,23 @@ $$d = 2 \cdot R \cdot \arcsin\left(\sqrt{\sin^2\left(\frac{\Delta\phi}{2}\right)
 
 **Output:** `outputs/selected_sampler.json` (Best Sampler + Stats)
 
-#### XXL Workflow
-**Script:** `scripts/xxl_KDR146_run_thesis_complete_modern.py`  
-**Invocation:** `dataselector xxl [--phases "0,1,2,3,4,5"]`
+#### Canonical Thesis Workflows
+**Entry points:** `dataselector thesis-orchestrate` and `dataselector thesis-pipeline`
 
-**Zweck:** Vollständige Thesis-Pipeline (Phases 0–5).
+**Zweck:** Heutige kanonische Thesis-Pipeline auf `outputs/runs/` mit
+vorkonfigurierter Orchestrierung, Snapshot-/Manifest-Artefakten und
+run-lokalen Reports.
 
-**Phases:**
-- **Phase 0:** Convergence Analysis (Hamburg subset, 41 tiles)
-- **Phase 1–4:** Full KDR100 (673 tiles) mit Best Sampler + Params
-- **Phase 5:** Bootstrap UQ (200 Resamples)
+**Workflow roles:**
+- **`thesis-orchestrate`:** Empfohlener End-to-End-Einstieg für Precompute,
+  Snapshot, Lauf und Berichtsartefakte in einem kontrollierten Run-Verzeichnis
+- **`thesis-pipeline`:** Direkt ausführbarer Thesis-Lauf für gezielte Runs,
+  Dry-Runs und reproduzierbare CLI-Ausführung
+- **`generate-monitor`:** Run-lokale Zusammenfassung für vorhandene Thesis-Runs
+  unter `outputs/runs/<run_id>/`
+
+**Historical note:** Die frühere `xxl`-/`xxl-monitor`-Surface ist archiviert
+unter `docs/07_ARCHIVE/legacy_xxl_ops/` und kein aktiver Pipeline-Vertrag mehr.
 
 ---
 
@@ -507,11 +514,11 @@ dataselector autoscale --n-trials 100 --seed 42
 # Phase 2: Sampler Suite
 dataselector sampler-suite --seeds 5
 
-# Phase 3: XXL Pipeline
-dataselector xxl --phases "0,1,2,3,4,5"
+# Phase 3: Canonical orchestration
+dataselector thesis-orchestrate --config config/pipeline_config.yaml
 
-# XXL Monitor (resume-capable)
-dataselector xxl-monitor --resume
+# Direct thesis run
+dataselector thesis-pipeline --execution-profile thesis_repro --output-dir outputs/runs/thesis_run
 
 # Final Selection
 dataselector final-selection --config outputs/autoscale_best_latest.json
@@ -519,8 +526,8 @@ dataselector final-selection --config outputs/autoscale_best_latest.json
 # Compare Samplers
 dataselector compare-samplers --samplers qmc tpe cmaes
 
-# Generate Reports
-dataselector generate-reports --run-dir outputs/runs/YYYYMMDD_THHMMSS
+# Generate monitor summary for a completed thesis run
+dataselector generate-monitor --run-dir outputs/runs/YYYYMMDD_THHMMSS
 ```
 
 ---
@@ -578,10 +585,11 @@ class CustomVisualizer(Visualizer):
 ---
 
 **Related Documentation:**
-- [XXL Pipeline Detailed](../XXL_PIPELINE_DETAILED.md) – Phases 0–5
+- [Pipeline Guide](../03_USER_GUIDES/PIPELINES.md) – Canonical thesis workflows
 - [API Reference](../API_REFERENCE.md) – Complete API
 - [Scientific Background](../SCIENTIFIC_BACKGROUND.md) – Mathematical Foundations
 - [Developer Guide](../DEVELOPER.md) – Contribution Guidelines
+- [Historical XXL Details](../07_ARCHIVE/legacy_xxl_ops/XXL_PIPELINE_DETAILED.md) – Archived pre-thesis-orchestrate workflow
 
 ---
 
