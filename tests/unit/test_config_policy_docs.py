@@ -34,6 +34,18 @@ THESIS_POLICY_DOCS = [
     ROOT / "docs" / "CONFIG_POLICY.md",
     ROOT / "docs" / "PARAMETER_POLICY_LEDGER.md",
 ]
+PHASE5_CONTRACT_DOCS = [
+    ROOT / "docs" / "METHODOLOGY.md",
+    ROOT / "docs" / "THESIS_METHOD_CONTRACT.md",
+    ROOT / "docs" / "03_USER_GUIDES" / "THESIS_PIPELINE_HOWTO.md",
+    ROOT / "docs" / "CONFIG_POLICY.md",
+    ROOT / "docs" / "PARAMETER_POLICY_LEDGER.md",
+]
+PHASE5_PRIMARY_DOCS = [
+    ROOT / "docs" / "THESIS_METHOD_CONTRACT.md",
+    ROOT / "docs" / "03_USER_GUIDES" / "THESIS_PIPELINE_HOWTO.md",
+    ROOT / "docs" / "CONFIG_POLICY.md",
+]
 MIN_DISTANCE_EVIDENCE_DOC = ROOT / "docs" / "MIN_DISTANCE_EVIDENCE_ADDENDUM.md"
 N_SAMPLES_EVIDENCE_DOC = ROOT / "docs" / "N_SAMPLES_EVIDENCE_ADDENDUM.md"
 TEST_SUITE_CURATION_DOC = ROOT / "docs" / "TEST_SUITE_CURATION.md"
@@ -382,6 +394,42 @@ def test_phase5_docs_capture_optional_post_freeze_boundary():
     assert (
         "--patch-include-case false" in howto_text
     ), "Thesis HOWTO must document the default core-only integrated patch scope"
+
+
+def test_phase5_docs_declare_frozen_patch_contract_and_downstream_materialization():
+    for path in PHASE5_CONTRACT_DOCS:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        normalized = " ".join(text.split())
+        assert (
+            "annotated Phase 5 patch dataset" in normalized
+        ), f"{path.relative_to(ROOT)} must name the annotated Phase 5 patch dataset"
+        assert (
+            "selected_patches.csv" in normalized
+        ), f"{path.relative_to(ROOT)} must reference selected_patches.csv"
+        assert (
+            "patch_id" in normalized
+        ), f"{path.relative_to(ROOT)} must reference patch_id as frozen contract field"
+        assert (
+            "patch_split_manifest.json" in normalized
+        ), f"{path.relative_to(ROOT)} must reference the upstream patch split manifest"
+        assert (
+            "materialized training contract" in normalized
+        ), f"{path.relative_to(ROOT)} must describe downstream materialized training contracts"
+
+
+def test_phase5_primary_docs_keep_upstream_split_regime_as_main_reference():
+    for path in PHASE5_PRIMARY_DOCS:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        normalized = " ".join(text.split())
+        assert (
+            "primary thesis results" in normalized
+        ), f"{path.relative_to(ROOT)} must scope the main evaluation protocol"
+        assert (
+            "frozen upstream patch split regime" in normalized
+        ), f"{path.relative_to(ROOT)} must keep the upstream patch split regime as reference"
+        assert (
+            "sensitivity analysis" in normalized
+        ), f"{path.relative_to(ROOT)} must classify alternative downstream splits as sensitivity analysis"
 
 
 def test_active_test_suite_curation_doc_exists_and_maps_release_tiers():
