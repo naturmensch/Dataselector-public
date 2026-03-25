@@ -93,14 +93,14 @@ Schnelle Governance-Gates:
 ```bash
 micromamba run -n dataselector python -m dataselector check-runtime-readiness
 micromamba run -n dataselector python -m dataselector check-script-wrappers --strict
-micromamba run -n dataselector pytest -q tests/unit/test_config_policy_docs.py
-micromamba run -n dataselector pytest -q tests/unit/test_authoritative_docs_consistency.py
+micromamba run -n dataselector python -m pytest -q tests/unit/test_config_policy_docs.py
+micromamba run -n dataselector python -m pytest -q tests/unit/test_authoritative_docs_consistency.py
 ```
 
 Langer kanonischer Pipeline-Gate:
 
 ```bash
-micromamba run -n dataselector pytest -q tests/test_thesis_pipeline.py
+micromamba run -n dataselector python -m pytest -q tests/test_thesis_pipeline.py
 ```
 
 ## Repo-Status und Qualitaetsbild
