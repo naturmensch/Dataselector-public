@@ -682,6 +682,22 @@ micromamba run -n dataselector python -m dataselector thesis-pipeline \
 Dataselector liefert die finale Auswahl. Train/Val/Test-Splits bleiben im
 Trainings-Repo autoritativ (`split_authority = masterarbeit_strassenerkennung_cv`).
 
+Für den bereits annotierten Phase-5-Datensatz gilt:
+
+1. Sobald Annotation auf Basis der Phase-5-Patches begonnen hat, ist der
+   annotated Phase 5 patch dataset eingefroren.
+2. Eingefroren sind `selected_patches.csv`, `patch_id`, Patch-Bounds /
+   Quicklook-Ausschnitte, Patch-Mask-Zuordnung und das Upstream-
+   `patch_split_manifest.json`.
+3. Downstream `materialize-patches` im Trainings-Repo ist ein technischer
+   Konsum-/Materialisierungsschritt: Das Repo verwaltet den materialized
+   training contract, den es tatsächlich trainiert, ändert aber nicht den
+   annotierten Phase-5-Datensatz.
+4. Für primary thesis results bleibt das frozen upstream patch split regime
+   die methodische Referenz. Alternative lokale Split-Erzeugung downstream ist
+   höchstens Fallback oder sensitivity analysis, nicht stiller Ersatz des
+   Hauptprotokolls.
+
 ### 9.1 Handoff-Artefakte erzeugen
 
 Für den aktuellen patch-basierten Thesis-Datensatz (z. B. `29x2`) ist der
@@ -711,6 +727,16 @@ Warum der Patch-Handoff auf GeoTIFF-v2 standardisiert ist:
 2. VRT-basierte Annotation in QGIS ist stabiler und reduziert manuelle Patch-Auswahl.
 3. Der Vertrag ist maschinell erzwingbar (`handoff_patch_format_v2`, `geotiff_deflate_rgb`).
 4. Der Speicheraufpreis bleibt im niedrigen einstelligen Bereich und ist für den Workflow vertretbar.
+
+Wissenschaftliche Einordnung des Patch-Handoffs:
+
+1. Der Patch-Handoff beschreibt den bereits annotierten Phase-5-Datensatz; er
+   ist kein Reselektionsschritt.
+2. Die im Handoff enthaltenen Upstream-Folds sind Provenance des eingefrorenen
+   Patch-Datensatzes.
+3. Downstream-Materialisierung im Trainings-Repo darf technische
+   Trainingsartefakte erzeugen, aber nicht stillschweigend das
+   Hauptevaluationsdesign neu definieren.
 
 Der tile-basierte Legacy-Flow bleibt verfügbar:
 

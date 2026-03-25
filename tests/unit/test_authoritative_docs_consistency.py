@@ -16,6 +16,15 @@ AUTHORITATIVE_DOCS = [
     ROOT / "docs" / "DEVELOPER.md",
 ]
 
+ACTIVE_COMMAND_STYLE_DOCS = [
+    ROOT / "AGENTS.md",
+    ROOT / "README.md",
+    ROOT / "README_EN.md",
+    ROOT / "docs" / "DEVELOPER.md",
+    ROOT / "docs" / "INDEX.md",
+    ROOT / "docs" / "TEST_SUITE_CURATION.md",
+]
+
 
 def test_authoritative_docs_no_hardcoded_miniconda_paths():
     offenders: list[str] = []
@@ -55,5 +64,25 @@ def test_authoritative_docs_reference_src_only_as_legacy():
                 offenders.append(f"{doc.relative_to(ROOT)}:{lineno}: {line.strip()}")
     assert not offenders, (
         "Authoritative docs reference src/ without explicit legacy context:\n"
+        + "\n".join(offenders)
+    )
+
+
+def test_active_docs_use_python_module_invocation_for_micromamba_commands():
+    offenders: list[str] = []
+    legacy_patterns = (
+        "micromamba run -n dataselector pytest",
+        "micromamba run -n dataselector pip ",
+        "micromamba run -n dataselector -- ",
+    )
+
+    for doc in ACTIVE_COMMAND_STYLE_DOCS:
+        text = doc.read_text(encoding="utf-8", errors="ignore")
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            if any(pattern in line for pattern in legacy_patterns):
+                offenders.append(f"{doc.relative_to(ROOT)}:{lineno}: {line.strip()}")
+
+    assert not offenders, (
+        "Active docs still contain legacy micromamba command styles:\n"
         + "\n".join(offenders)
     )
