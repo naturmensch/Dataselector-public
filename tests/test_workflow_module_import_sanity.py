@@ -29,6 +29,11 @@ import pytest
         ("dataselector.workflows.bootstrap", "bootstrap_selection"),
         ("dataselector.workflows.bootstrap", "summarize_bootstrap"),
         ("dataselector.workflows.bootstrap", "jaccard"),
+        ("dataselector.workflows.width_calibration", "sync_width_calibration_source"),
+        ("dataselector.workflows.width_calibration", "prepare_width_calibration"),
+        ("dataselector.workflows.width_calibration", "measure_width_calibration"),
+        ("dataselector.workflows.width_calibration", "summarize_width_calibration"),
+        ("dataselector.workflows.width_calibration", "audit_width_calibration_sensitivity"),
     ],
 )
 def test_workflow_module_import_sanity(module_name: str, symbol: str):
