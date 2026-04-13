@@ -14,20 +14,19 @@ from dataselector.runtime.parameter_snapshot import compute_file_sha256
 
 from .models import (
     COMMON_CLASS_QUOTAS,
-    WORKFLOW_VERSION,
-    HAMBURG_TILE,
-    MID_CLASS_QUOTAS,
     MANIFEST_FILENAME,
-    PatchContext,
+    MID_CLASS_QUOTAS,
     REPEAT_ALL_CLASSES,
     REPEAT_QUOTAS,
-    RunManifest,
     SPECIAL_CLASS_QUOTAS,
     SUPPORTED_CLASSES,
     TASK_COLUMNS,
     TASK_FILENAME,
-    TaskRecord,
+    WORKFLOW_VERSION,
     EligibilityParameters,
+    PatchContext,
+    RunManifest,
+    TaskRecord,
     is_hamburg_patch,
     normalize_class,
     normalize_source_fid,
@@ -45,30 +44,58 @@ from .runs import (
 )
 
 
-def load_selected_patches(handoff_dir: Path) -> pd.DataFrame:
+def load_selected_patches(
+    handoff_dir: Path, *, exclude_hamburg: bool = True
+) -> pd.DataFrame:
     selected_path = handoff_dir / "selected_patches.csv"
     if not selected_path.exists():
         raise FileNotFoundError(f"Missing selected_patches.csv: {selected_path}")
     df = pd.read_csv(selected_path)
-    require_columns(df, ["patch_id", "tile_shortname", "selection_rank", "patch_index", "quicklook_path"], "selected_patches.csv")
+    require_columns(
+        df,
+        [
+            "patch_id",
+            "tile_shortname",
+            "selection_rank",
+            "patch_index",
+            "quicklook_path",
+        ],
+        "selected_patches.csv",
+    )
     df = df.copy()
     df["patch_id"] = df["patch_id"].astype(str)
     df["tile_shortname"] = df["tile_shortname"].astype(str)
-    df["selection_rank"] = pd.to_numeric(df["selection_rank"], errors="coerce").fillna(0).astype(int)
-    df["patch_index"] = pd.to_numeric(df["patch_index"], errors="coerce").fillna(0).astype(int)
-    df = df.sort_values(["selection_rank", "patch_index", "patch_id"], kind="stable").reset_index(drop=True)
+    df["selection_rank"] = (
+        pd.to_numeric(df["selection_rank"], errors="coerce").fillna(0).astype(int)
+    )
+    df["patch_index"] = (
+        pd.to_numeric(df["patch_index"], errors="coerce").fillna(0).astype(int)
+    )
+    df = df.sort_values(
+        ["selection_rank", "patch_index", "patch_id"], kind="stable"
+    ).reset_index(drop=True)
     df["_patch_order"] = np.arange(len(df), dtype=int)
-    filtered = df.loc[
-        ~df.apply(
-            lambda row: is_hamburg_patch(str(row["patch_id"]), str(row["tile_shortname"])),
-            axis=1,
-        )
-    ].copy().reset_index(drop=True)
+    if not exclude_hamburg:
+        return df
+    filtered = (
+        df.loc[
+            ~df.apply(
+                lambda row: is_hamburg_patch(
+                    str(row["patch_id"]), str(row["tile_shortname"])
+                ),
+                axis=1,
+            )
+        ]
+        .copy()
+        .reset_index(drop=True)
+    )
     filtered["_patch_order"] = np.arange(len(filtered), dtype=int)
     return filtered
 
 
-def build_patch_contexts(handoff_dir: Path, selected_df: pd.DataFrame) -> list[PatchContext]:
+def build_patch_contexts(
+    handoff_dir: Path, selected_df: pd.DataFrame
+) -> list[PatchContext]:
     contexts: list[PatchContext] = []
     for row in selected_df.to_dict("records"):
         quicklook_relpath = str(row["quicklook_path"]).strip()
@@ -123,7 +150,9 @@ def load_roads_layer(
     gdf["class"] = gdf["class"].map(normalize_class)
     gdf = gdf.loc[gdf["class"].isin(SUPPORTED_CLASSES)].copy()
     gdf["source_fid"] = gdf["source_fid"].map(normalize_source_fid)
-    gdf["source_feature_id"] = gdf["_source_row"].map(lambda value: f"row_{int(value):06d}")
+    gdf["source_feature_id"] = gdf["_source_row"].map(
+        lambda value: f"row_{int(value):06d}"
+    )
     gdf = gdf.loc[gdf.geometry.notna()].copy()
     gdf = gdf.loc[~gdf.geometry.is_empty].copy()
     return gdf
@@ -176,7 +205,11 @@ def extract_lines(geometry: Any) -> list[LineString]:
     if isinstance(geometry, LineString):
         return [geometry]
     if isinstance(geometry, MultiLineString):
-        return [part for part in geometry.geoms if isinstance(part, LineString) and not part.is_empty]
+        return [
+            part
+            for part in geometry.geoms
+            if isinstance(part, LineString) and not part.is_empty
+        ]
     if isinstance(geometry, GeometryCollection):
         out: list[LineString] = []
         for geom in geometry.geoms:
@@ -330,8 +363,12 @@ def build_candidate_dataframe(
     excluded_patch_ids = sorted(
         {
             str(row["patch_id"])
-            for row in pd.read_csv(handoff_dir / "selected_patches.csv").to_dict("records")
-            if is_hamburg_patch(str(row.get("patch_id", "")), str(row.get("tile_shortname", "")))
+            for row in pd.read_csv(handoff_dir / "selected_patches.csv").to_dict(
+                "records"
+            )
+            if is_hamburg_patch(
+                str(row.get("patch_id", "")), str(row.get("tile_shortname", ""))
+            )
         }
     )
     for patch in contexts:
@@ -389,7 +426,9 @@ def rng_for(seed: int, *parts: Any) -> np.random.Generator:
     return np.random.default_rng(value)
 
 
-def shuffle_records(records: list[dict[str, Any]], rng: np.random.Generator) -> list[dict[str, Any]]:
+def shuffle_records(
+    records: list[dict[str, Any]], rng: np.random.Generator
+) -> list[dict[str, Any]]:
     if len(records) <= 1:
         return list(records)
     order = rng.permutation(len(records))
@@ -412,7 +451,9 @@ def round_robin_select(
     base_tiles = tiles[: min(len(tiles), int(tile_target))] if tile_target else tiles
     buckets: dict[str, deque[dict[str, Any]]] = {}
     for tile in tiles:
-        tile_records = group_df.loc[group_df["tile_shortname"] == tile].to_dict("records")
+        tile_records = group_df.loc[group_df["tile_shortname"] == tile].to_dict(
+            "records"
+        )
         buckets[tile] = deque(shuffle_records(tile_records, rng_for(seed, tile)))
     active_tiles = list(base_tiles)
     extra_tiles = [tile for tile in tiles if tile not in active_tiles]
@@ -444,9 +485,13 @@ def select_primary_tasks(candidates_df: pd.DataFrame, *, seed: int) -> pd.DataFr
         if class_id in REPEAT_ALL_CLASSES or class_id == 8:
             selected = group.to_dict("records")
         elif class_id in COMMON_CLASS_QUOTAS:
-            selected = round_robin_select(group, target=COMMON_CLASS_QUOTAS[class_id], seed=seed, tile_target=4)
+            selected = round_robin_select(
+                group, target=COMMON_CLASS_QUOTAS[class_id], seed=seed, tile_target=4
+            )
         elif class_id in MID_CLASS_QUOTAS:
-            selected = round_robin_select(group, target=MID_CLASS_QUOTAS[class_id], seed=seed, tile_target=3)
+            selected = round_robin_select(
+                group, target=MID_CLASS_QUOTAS[class_id], seed=seed, tile_target=3
+            )
         elif class_id in SPECIAL_CLASS_QUOTAS:
             selected = round_robin_select(
                 group,
@@ -459,8 +504,14 @@ def select_primary_tasks(candidates_df: pd.DataFrame, *, seed: int) -> pd.DataFr
         rows.extend(selected)
     if not rows:
         return pd.DataFrame(columns=TASK_COLUMNS)
-    primary_df = pd.DataFrame(rows).drop_duplicates(subset=["candidate_id"]).reset_index(drop=True)
-    shuffled = shuffle_records(primary_df.to_dict("records"), rng_for(seed, "primary_queue"))
+    primary_df = (
+        pd.DataFrame(rows)
+        .drop_duplicates(subset=["candidate_id"])
+        .reset_index(drop=True)
+    )
+    shuffled = shuffle_records(
+        primary_df.to_dict("records"), rng_for(seed, "primary_queue")
+    )
     task_rows = [
         TaskRecord(
             task_id=f"task_{idx:05d}",
@@ -497,7 +548,9 @@ def select_repeat_tasks(primary_df: pd.DataFrame, *, seed: int) -> pd.DataFrame:
             quota = int(REPEAT_QUOTAS.get(class_id, 0))
             if quota <= 0:
                 continue
-            repeat_source = shuffle_records(group.to_dict("records"), rng_for(seed, "repeat", class_id))[: min(quota, len(group))]
+            repeat_source = shuffle_records(
+                group.to_dict("records"), rng_for(seed, "repeat", class_id)
+            )[: min(quota, len(group))]
         selected_repeat_rows.extend(repeat_source)
     shuffled = shuffle_records(selected_repeat_rows, rng_for(seed, "repeat_queue"))
     start_idx = len(primary_df) + 1
@@ -534,9 +587,15 @@ def prepare_width_calibration(
     prompt_for_sync: bool = False,
 ) -> dict[str, Any]:
     repo_root_path = repo_root()
-    handoff_dir_path = resolve_path(handoff_dir, repo_root_path=repo_root_path, prefer_repo=True).resolve()
-    roads_gpkg_path = resolve_path(roads_gpkg, repo_root_path=repo_root_path, prefer_repo=True).resolve()
-    out_dir_path = resolve_path(out_dir, repo_root_path=repo_root_path, prefer_repo=True).resolve()
+    handoff_dir_path = resolve_path(
+        handoff_dir, repo_root_path=repo_root_path, prefer_repo=True
+    ).resolve()
+    roads_gpkg_path = resolve_path(
+        roads_gpkg, repo_root_path=repo_root_path, prefer_repo=True
+    ).resolve()
+    out_dir_path = resolve_path(
+        out_dir, repo_root_path=repo_root_path, prefer_repo=True
+    ).resolve()
     out_dir_path.mkdir(parents=True, exist_ok=True)
     eligibility = EligibilityParameters()
     current_local_sha = compute_file_sha256(roads_gpkg_path)
@@ -588,7 +647,9 @@ def prepare_width_calibration(
         },
         "eligibility_parameters": {
             **asdict(eligibility),
-            "minimum_border_margin_px": int(eligibility.border_margin_px(int(crop_size_px))),
+            "minimum_border_margin_px": int(
+                eligibility.border_margin_px(int(crop_size_px))
+            ),
         },
         "selected_patches_csv": str(selected_csv),
         "selected_patches_csv_sha256": compute_file_sha256(selected_csv),

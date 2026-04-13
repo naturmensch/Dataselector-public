@@ -82,7 +82,8 @@ def test_active_docs_use_python_module_invocation_for_micromamba_commands():
             if any(pattern in line for pattern in legacy_patterns):
                 offenders.append(f"{doc.relative_to(ROOT)}:{lineno}: {line.strip()}")
 
-    assert not offenders, (
-        "Active docs still contain legacy micromamba command styles:\n"
-        + "\n".join(offenders)
+    assert (
+        not offenders
+    ), "Active docs still contain legacy micromamba command styles:\n" + "\n".join(
+        offenders
     )

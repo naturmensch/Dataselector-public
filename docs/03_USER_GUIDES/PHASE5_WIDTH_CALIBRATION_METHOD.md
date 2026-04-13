@@ -18,20 +18,33 @@ per-class summary plus mask-level sensitivity outputs.
 
 ## Commands
 
-Sync the editable QGIS roads GeoPackage into the repo-local working copy:
+Build the canonical repo-local Phase-5 roads source from the classified base
+layer plus the tracer-derived class-4 and class-5 layers:
 
 ```bash
-micromamba run -n dataselector python -m dataselector sync-width-calibration-source \
-  --source-gpkg <qgis-project-root>/cut_fixed_geometry_roads.gpkg
+micromamba run -n dataselector python -m dataselector build-width-calibration-roads-source \
+  --cut-roads-gpkg <qgis-project-root>/cut_fixed_geometry_roads.gpkg \
+  --tracer4-gpkg <qgis-project-root>/4_roads_tracer_patches.gpkg \
+  --tracer5-gpkg <qgis-project-root>/5_roads_tracer_patches.gpkg
 ```
+
+This writes the canonical merged source to
+`handoff/local_sources/phase5_roads_merged.gpkg` with layer
+`phase5_roads_merged` plus provenance in
+`handoff/local_sources/phase5_roads_merged.sources.json`.
+
+`sync-width-calibration-source` remains available only as an auxiliary/manual
+copy path when you already have a single editable GeoPackage that should be
+mirrored into an ignored repo-local location. It is not the canonical Phase-5
+width-calibration input anymore.
 
 Prepare deterministic measurement tasks:
 
 ```bash
 micromamba run -n dataselector python -m dataselector prepare-width-calibration \
   --handoff-dir handoff/thesis_orchestrate_20260313T200624Z_patches_core \
-  --roads-gpkg handoff/local_sources/cut_fixed_geometry_roads.gpkg \
-  --roads-layer cut_fixed_geometry_roads \
+  --roads-gpkg handoff/local_sources/phase5_roads_merged.gpkg \
+  --roads-layer phase5_roads_merged \
   --seed 42 \
   --crop-size-px 64 \
   --out-dir handoff/thesis_orchestrate_20260313T200624Z_patches_core_widths_64px
@@ -86,13 +99,27 @@ Run the mask-level sensitivity audit:
 micromamba run -n dataselector python -m dataselector audit-width-calibration-sensitivity \
   --summary-csv handoff/thesis_orchestrate_20260313T200624Z_patches_core_widths_64px/width_calibration_summary.csv \
   --handoff-dir handoff/thesis_orchestrate_20260313T200624Z_patches_core \
-  --roads-gpkg handoff/local_sources/cut_fixed_geometry_roads.gpkg \
+  --roads-gpkg handoff/local_sources/phase5_roads_merged.gpkg \
   --out-dir handoff/thesis_orchestrate_20260313T200624Z_patches_core_widths_64px
 ```
 
 `summarize-width-calibration` now writes only per-class summary statistics.
 `audit-width-calibration-sensitivity` writes only the mask-level sensitivity
 artifacts and overlays.
+
+Render fixed-width debug/test-only patch masks for a minimal downstream smoke:
+
+```bash
+micromamba run -n dataselector python -m dataselector render-width-calibration-debug-masks \
+  --handoff-dir handoff/thesis_orchestrate_20260313T200624Z_patches_core \
+  --roads-gpkg handoff/local_sources/phase5_roads_merged.gpkg \
+  --out-dir handoff/thesis_orchestrate_20260313T200624Z_patches_core_debug_masks_10px \
+  --fixed-width-px 10
+```
+
+This path is explicitly `debug_only` / `test_only`.
+It does not replace width calibration, does not change any scientific artifact,
+and must not be used for final thesis masks.
 
 ## Measurement Definition
 
@@ -174,15 +201,28 @@ Run artifacts:
 - `width_calibration_summary.json`
 - `width_calibration_sensitivity.csv`
 - `width_calibration_sensitivity_overlays/`
-- `handoff/local_sources/cut_fixed_geometry_roads.sync.json`
+- `handoff/local_sources/phase5_roads_merged.sources.json`
+- optional auxiliary/manual-copy provenance: `handoff/local_sources/cut_fixed_geometry_roads.sync.json`
+- `width_calibration_debug_mask_manifest.json` (`debug_only` / `test_only`)
 
 ## Recommended Order
 
-1. `sync-width-calibration-source`
+1. `build-width-calibration-roads-source`
 2. `prepare-width-calibration`
 3. `measure-width-calibration`
 4. `summarize-width-calibration`
 5. `audit-width-calibration-sensitivity`
+
+## Debug/Test-Only Smoke Path
+
+`render-width-calibration-debug-masks` exists only for technical validation of
+mask generation and a minimal downstream training smoke.
+
+- It renders one fixed width for all classes.
+- It does not use the scientific width-calibration outputs.
+- It does not modify `width_calibration_manifest.json`,
+  `width_calibration_summary.csv/json`, or `final_width_px`.
+- It is not valid for final thesis masks.
 
 ## Summary Outputs
 

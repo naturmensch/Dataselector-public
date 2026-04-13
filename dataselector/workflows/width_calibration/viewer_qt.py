@@ -13,8 +13,8 @@ from .models import (
     DEFAULT_DISPLAY_CROP_FACTOR,
     DEFAULT_DISPLAY_SCALE,
     REJECTION_REASONS,
-    TaskRecord,
     VIEWER_HOTKEY_HELP,
+    TaskRecord,
     normalize_source_fid,
 )
 from .prepare import pixel_window
@@ -73,7 +73,11 @@ def ui_scale_from_screen_metrics(
     screen_height_px: float | None = None,
 ) -> float:
     dpi_scale = 1.0
-    if screen_dpi is not None and np.isfinite(float(screen_dpi)) and float(screen_dpi) > 0.0:
+    if (
+        screen_dpi is not None
+        and np.isfinite(float(screen_dpi))
+        and float(screen_dpi) > 0.0
+    ):
         dpi_scale = float(screen_dpi) / 96.0
     resolution_scale = 1.0
     if (
@@ -82,7 +86,9 @@ def ui_scale_from_screen_metrics(
         and float(screen_width_px) > 0.0
         and float(screen_height_px) > 0.0
     ):
-        resolution_scale = max(float(screen_width_px) / 1920.0, float(screen_height_px) / 1080.0)
+        resolution_scale = max(
+            float(screen_width_px) / 1920.0, float(screen_height_px) / 1080.0
+        )
     return float(min(2.5, max(1.0, dpi_scale, resolution_scale)))
 
 
@@ -124,7 +130,9 @@ class InteractiveMeasurementViewer:
         self.fig.canvas.mpl_connect("key_press_event", self._on_key)
         print("Interactive width calibration")
         print("Left-click twice to measure width.")
-        print(f"Display settings: crop_factor={self.display_crop_factor:.2f}, scale={self.display_scale}x")
+        print(
+            f"Display settings: crop_factor={self.display_crop_factor:.2f}, scale={self.display_scale}x"
+        )
         print(VIEWER_HOTKEY_HELP)
         self._show_next_task()
         plt.show()
@@ -161,7 +169,9 @@ class InteractiveMeasurementViewer:
                 window.removeToolBar(toolbar)
             except Exception:
                 pass
-        existing_bar = window.findChild(QtWidgets.QToolBar, "WidthCalibrationControlsBar")
+        existing_bar = window.findChild(
+            QtWidgets.QToolBar, "WidthCalibrationControlsBar"
+        )
         if existing_bar is not None:
             try:
                 window.removeToolBar(existing_bar)
@@ -184,7 +194,10 @@ class InteractiveMeasurementViewer:
         bar.setStyleSheet(
             "\n".join(
                 [
-                    "QToolBar {" f" spacing: {gap_px}px;" f" padding: {margin_px}px;" "}",
+                    "QToolBar {"
+                    f" spacing: {gap_px}px;"
+                    f" padding: {margin_px}px;"
+                    "}",
                     "QToolButton, QPushButton {"
                     f" font-size: {button_font_px}px;"
                     " font-weight: 600;"
@@ -192,7 +205,10 @@ class InteractiveMeasurementViewer:
                     f" min-width: {button_min_width}px;"
                     f" padding: {button_padding_y}px {button_padding_x}px;"
                     "}",
-                    "QLabel {" f" font-size: {label_font_px}px;" f" padding-left: {gap_px * 2}px;" "}",
+                    "QLabel {"
+                    f" font-size: {label_font_px}px;"
+                    f" padding-left: {gap_px * 2}px;"
+                    "}",
                 ]
             )
         )
@@ -210,10 +226,15 @@ class InteractiveMeasurementViewer:
         add_button("Quit", self._quit_viewer)
 
         spacer = QtWidgets.QWidget()
-        spacer.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Preferred)
+        spacer.setSizePolicy(
+            QtWidgets.QSizePolicy.Policy.Expanding,
+            QtWidgets.QSizePolicy.Policy.Preferred,
+        )
         bar.addWidget(spacer)
         help_label = QtWidgets.QLabel(VIEWER_HOTKEY_HELP)
-        help_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        help_label.setAlignment(
+            QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter
+        )
         bar.addWidget(help_label)
         self._qt_control_bar = bar
         window.addToolBar(QtCore.Qt.ToolBarArea.BottomToolBarArea, bar)
@@ -221,7 +242,10 @@ class InteractiveMeasurementViewer:
         self._qt_status_bar = status_bar
         status_bar.setSizeGripEnabled(False)
         status_bar.setStyleSheet(
-            "QStatusBar {" f" font-size: {label_font_px}px;" f" min-height: {max(24, int(round(24 * self._ui_scale)))}px;" "}"
+            "QStatusBar {"
+            f" font-size: {label_font_px}px;"
+            f" min-height: {max(24, int(round(24 * self._ui_scale)))}px;"
+            "}"
         )
         status_bar.showMessage(VIEWER_HOTKEY_HELP)
         try:
@@ -265,7 +289,11 @@ class InteractiveMeasurementViewer:
 
     def _undo_last_task(self) -> None:
         undone = self.session.undo_last()
-        print("Nothing to undo." if undone is None else f"Undid measurement for task {undone.get('task_id', '')}")
+        print(
+            "Nothing to undo."
+            if undone is None
+            else f"Undid measurement for task {undone.get('task_id', '')}"
+        )
         self._show_next_task()
 
     def _quit_viewer(self) -> None:
@@ -296,7 +324,9 @@ class InteractiveMeasurementViewer:
             )
             if str(part).strip()
         ]
-        self._qt_status_bar.showMessage(f"{' | '.join(prefix_parts)} | {VIEWER_HOTKEY_HELP}")
+        self._qt_status_bar.showMessage(
+            f"{' | '.join(prefix_parts)} | {VIEWER_HOTKEY_HELP}"
+        )
 
     def _show_reject_dialog(self) -> tuple[str, str] | None:
         if self._window is None or self.current_task is None:
@@ -304,7 +334,9 @@ class InteractiveMeasurementViewer:
         try:
             from PySide6 import QtCore, QtWidgets
         except Exception as exc:
-            raise RuntimeError("Reject dialog requires PySide6/Qt6 to be available.") from exc
+            raise RuntimeError(
+                "Reject dialog requires PySide6/Qt6 to be available."
+            ) from exc
         dialog = QtWidgets.QDialog(self._window)
         dialog.setWindowTitle(f"Reject {self.current_task.task_id}")
         dialog.setModal(True)
@@ -346,7 +378,9 @@ class InteractiveMeasurementViewer:
         reject_button.setEnabled(False)
         button_box.accepted.connect(dialog.accept)
         button_box.rejected.connect(dialog.reject)
-        reason_combo.currentIndexChanged.connect(lambda _idx: reject_button.setEnabled(bool(reason_combo.currentData())))
+        reason_combo.currentIndexChanged.connect(
+            lambda _idx: reject_button.setEnabled(bool(reason_combo.currentData()))
+        )
         layout.addWidget(button_box)
         reason_combo.setFocus()
         if dialog.exec() != int(QtWidgets.QDialog.DialogCode.Accepted):
@@ -363,7 +397,9 @@ class InteractiveMeasurementViewer:
         if dialog_result is None:
             return
         reason, note = dialog_result
-        self.session.record_reject(self.current_task.task_id, reject_reason=reason, note=note)
+        self.session.record_reject(
+            self.current_task.task_id, reject_reason=reason, note=note
+        )
         self._show_next_task()
 
     def _show_next_task(self) -> None:
@@ -390,14 +426,18 @@ class InteractiveMeasurementViewer:
             except Exception:
                 pass
 
-    def _load_crop(self, task: TaskRecord) -> tuple[np.ndarray, tuple[int, int, int, int]]:
+    def _load_crop(
+        self, task: TaskRecord
+    ) -> tuple[np.ndarray, tuple[int, int, int, int]]:
         quicklook_path = (self.handoff_dir / task.quicklook_path).resolve()
         with rasterio.open(quicklook_path) as ds:
             arr = np.moveaxis(ds.read([1, 2, 3]), 0, -1)
         window = pixel_window(
             anchor_x_px=task.anchor_x_px,
             anchor_y_px=task.anchor_y_px,
-            crop_size_px=display_crop_size_px(task.crop_size_px, self.display_crop_factor),
+            crop_size_px=display_crop_size_px(
+                task.crop_size_px, self.display_crop_factor
+            ),
             width=arr.shape[1],
             height=arr.shape[0],
         )
@@ -417,7 +457,9 @@ class InteractiveMeasurementViewer:
         self.ax.clear()
         self.fig.subplots_adjust(left=0.01, right=0.99, bottom=0.06, top=0.95)
         self.ax.imshow(display_image, interpolation="nearest")
-        self.ax.scatter([anchor_x_local], [anchor_y_local], c="yellow", s=50, marker="+")
+        self.ax.scatter(
+            [anchor_x_local], [anchor_y_local], c="yellow", s=50, marker="+"
+        )
         for click in self.current_clicks:
             self.ax.scatter(
                 [(click[0] - x0) * self.display_scale],
@@ -444,7 +486,12 @@ class InteractiveMeasurementViewer:
     def _on_click(self, event: Any) -> None:
         if self.current_task is None or self.current_window is None:
             return
-        if event.inaxes != self.ax or event.xdata is None or event.ydata is None or event.button != 1:
+        if (
+            event.inaxes != self.ax
+            or event.xdata is None
+            or event.ydata is None
+            or event.button != 1
+        ):
             return
         x0, y0, _x1, _y1 = self.current_window
         abs_x = float(x0 + (float(event.xdata) / float(self.display_scale)))
@@ -452,7 +499,9 @@ class InteractiveMeasurementViewer:
         self.current_clicks.append((abs_x, abs_y))
         if len(self.current_clicks) >= 2:
             click1, click2 = self.current_clicks[:2]
-            self.session.record_accept(self.current_task.task_id, click1=click1, click2=click2)
+            self.session.record_accept(
+                self.current_task.task_id, click1=click1, click2=click2
+            )
             self._show_next_task()
             return
         self._draw_current()

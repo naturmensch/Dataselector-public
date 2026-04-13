@@ -6,7 +6,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import rasterio
-from rasterio.features import rasterize
 from shapely.geometry import box
 
 from .models import (
@@ -28,10 +27,13 @@ from .prepare import (
     roads_for_crs,
     subset_by_bounds,
 )
+from .render import render_mask_for_patch
 from .runs import resolve_roads_layer_name
 
 
-def compute_patch_class_presence(*, handoff_dir: Path, roads_gdf: Any) -> dict[str, set[int]]:
+def compute_patch_class_presence(
+    *, handoff_dir: Path, roads_gdf: Any
+) -> dict[str, set[int]]:
     selected_df = load_selected_patches(handoff_dir)
     contexts = build_patch_contexts(handoff_dir, selected_df)
     cache: dict[str, Any] = {}
@@ -83,48 +85,24 @@ def connected_components(mask: np.ndarray) -> int:
     return count
 
 
-def render_mask_for_patch(patch: Any, roads_gdf: Any, *, class_widths_px: dict[int, int]) -> np.ndarray:
-    subset = subset_by_bounds(roads_gdf, patch.bounds)
-    patch_poly = box(*patch.bounds)
-    shapes: list[tuple[Any, int]] = []
-    for row in subset.to_dict("records"):
-        class_id = normalize_class(row.get("class"))
-        if class_id not in class_widths_px:
-            continue
-        width_px = int(class_widths_px[class_id])
-        if width_px <= 0:
-            continue
-        clipped = row["geometry"].intersection(patch_poly)
-        if clipped.is_empty:
-            continue
-        buffer_distance = (float(width_px) * float(patch.pixel_size)) / 2.0
-        for line in extract_lines(clipped):
-            if line.length <= 0:
-                continue
-            polygon = line.buffer(buffer_distance)
-            if polygon.is_empty:
-                continue
-            shapes.append((polygon.intersection(patch_poly), 255))
-    if not shapes:
-        return np.zeros((patch.height, patch.width), dtype=np.uint8)
-    return rasterize(
-        shapes=shapes,
-        out_shape=(patch.height, patch.width),
-        transform=patch.transform,
-        fill=0,
-        dtype="uint8",
-    )
-
-
 def load_patch_context_map(handoff_dir: Path) -> dict[str, Any]:
-    return {patch.patch_id: patch for patch in build_patch_contexts(handoff_dir, load_selected_patches(handoff_dir))}
+    return {
+        patch.patch_id: patch
+        for patch in build_patch_contexts(
+            handoff_dir, load_selected_patches(handoff_dir)
+        )
+    }
 
 
 def select_audit_subset(patch_classes: dict[str, set[int]]) -> list[tuple[str, str]]:
     selected: list[tuple[str, str]] = []
     seen: set[str] = set()
     for class_id in sorted(AUDIT_RARE_CLASSES):
-        candidates = sorted(patch_id for patch_id, classes in patch_classes.items() if class_id in classes)
+        candidates = sorted(
+            patch_id
+            for patch_id, classes in patch_classes.items()
+            if class_id in classes
+        )
         if candidates and candidates[0] not in seen:
             selected.append((candidates[0], f"rare_class_{class_id}"))
             seen.add(candidates[0])
@@ -165,9 +143,24 @@ def save_sensitivity_overlay(
     fig, axes = plt.subplots(1, 4, figsize=(16, 4))
     panels = [
         ("Quicklook", image, None, None),
-        (f"Baseline\nfg={counts['baseline']['foreground_pixels']} cc={counts['baseline']['connected_components']}", image, baseline_mask, "Reds"),
-        (f"Median-1px\nfg={counts['median_minus_1px']['foreground_pixels']} cc={counts['median_minus_1px']['connected_components']}", image, minus_mask, "Blues"),
-        (f"Median+1px\nfg={counts['median_plus_1px']['foreground_pixels']} cc={counts['median_plus_1px']['connected_components']}", image, plus_mask, "Greens"),
+        (
+            f"Baseline\nfg={counts['baseline']['foreground_pixels']} cc={counts['baseline']['connected_components']}",
+            image,
+            baseline_mask,
+            "Reds",
+        ),
+        (
+            f"Median-1px\nfg={counts['median_minus_1px']['foreground_pixels']} cc={counts['median_minus_1px']['connected_components']}",
+            image,
+            minus_mask,
+            "Blues",
+        ),
+        (
+            f"Median+1px\nfg={counts['median_plus_1px']['foreground_pixels']} cc={counts['median_plus_1px']['connected_components']}",
+            image,
+            plus_mask,
+            "Greens",
+        ),
     ]
     for ax, (title, base_img, mask, cmap) in zip(axes, panels):
         ax.imshow(base_img)
@@ -188,16 +181,33 @@ def audit_width_calibration_sensitivity(
     out_dir: str | Path,
 ) -> dict[str, Any]:
     repo_root_path = repo_root()
-    summary_path = resolve_path(summary_csv, repo_root_path=repo_root_path, prefer_repo=False).resolve()
-    handoff_dir_path = resolve_path(handoff_dir, repo_root_path=repo_root_path, prefer_repo=True).resolve()
-    roads_gpkg_path = resolve_path(roads_gpkg, repo_root_path=repo_root_path, prefer_repo=True).resolve()
-    out_dir_path = resolve_path(out_dir, repo_root_path=repo_root_path, prefer_repo=True).resolve()
+    summary_path = resolve_path(
+        summary_csv, repo_root_path=repo_root_path, prefer_repo=False
+    ).resolve()
+    handoff_dir_path = resolve_path(
+        handoff_dir, repo_root_path=repo_root_path, prefer_repo=True
+    ).resolve()
+    roads_gpkg_path = resolve_path(
+        roads_gpkg, repo_root_path=repo_root_path, prefer_repo=True
+    ).resolve()
+    out_dir_path = resolve_path(
+        out_dir, repo_root_path=repo_root_path, prefer_repo=True
+    ).resolve()
     out_dir_path.mkdir(parents=True, exist_ok=True)
     summary_df = pd.read_csv(summary_path)
-    roads_gdf = load_roads_layer(roads_gpkg_path, roads_layer=resolve_roads_layer_name(roads_gpkg_path))
-    patch_classes = compute_patch_class_presence(handoff_dir=handoff_dir_path, roads_gdf=roads_gdf)
+    roads_gdf = load_roads_layer(
+        roads_gpkg_path, roads_layer=resolve_roads_layer_name(roads_gpkg_path)
+    )
+    patch_classes = compute_patch_class_presence(
+        handoff_dir=handoff_dir_path, roads_gdf=roads_gdf
+    )
     present_classes = sorted(
-        {class_id for classes in patch_classes.values() for class_id in classes if class_id is not None}
+        {
+            class_id
+            for classes in patch_classes.values()
+            for class_id in classes
+            if class_id is not None
+        }
     )
     final_widths: dict[int, int] = {}
     for row in summary_df.to_dict("records"):
@@ -214,7 +224,9 @@ def audit_width_calibration_sensitivity(
             for class_id in patch_classes.get(patch_id, set())
         }
     )
-    missing_classes = sorted(class_id for class_id in audit_classes if class_id not in final_widths)
+    missing_classes = sorted(
+        class_id for class_id in audit_classes if class_id not in final_widths
+    )
     if missing_classes:
         raise ValueError(
             "Cannot run sensitivity audit because class widths are missing for: "
@@ -229,13 +241,20 @@ def audit_width_calibration_sensitivity(
         patch_roads = roads_for_crs(roads_gdf, patch.crs_wkt, cache)
         class_width_tables = {
             "baseline": final_widths,
-            "median_minus_1px": {class_id: max(1, int(width) - 1) for class_id, width in final_widths.items()},
-            "median_plus_1px": {class_id: int(width) + 1 for class_id, width in final_widths.items()},
+            "median_minus_1px": {
+                class_id: max(1, int(width) - 1)
+                for class_id, width in final_widths.items()
+            },
+            "median_plus_1px": {
+                class_id: int(width) + 1 for class_id, width in final_widths.items()
+            },
         }
         rendered: dict[str, np.ndarray] = {}
         counts: dict[str, dict[str, int]] = {}
         for variant, class_widths in class_width_tables.items():
-            mask = render_mask_for_patch(patch, patch_roads, class_widths_px=class_widths)
+            mask = render_mask_for_patch(
+                patch, patch_roads, class_widths_px=class_widths
+            )
             rendered[variant] = mask
             counts[variant] = {
                 "foreground_pixels": int(np.count_nonzero(mask)),
@@ -248,11 +267,19 @@ def audit_width_calibration_sensitivity(
                     patch_id=patch_id,
                     audit_reason=audit_reason,
                     variant=variant,
-                    classes_present=",".join(str(v) for v in sorted(patch_classes.get(patch_id, set()))),
+                    classes_present=",".join(
+                        str(v) for v in sorted(patch_classes.get(patch_id, set()))
+                    ),
                     foreground_pixels=int(variant_counts["foreground_pixels"]),
                     connected_components=int(variant_counts["connected_components"]),
-                    delta_foreground_pixels_vs_baseline=int(variant_counts["foreground_pixels"] - baseline_counts["foreground_pixels"]),
-                    delta_connected_components_vs_baseline=int(variant_counts["connected_components"] - baseline_counts["connected_components"]),
+                    delta_foreground_pixels_vs_baseline=int(
+                        variant_counts["foreground_pixels"]
+                        - baseline_counts["foreground_pixels"]
+                    ),
+                    delta_connected_components_vs_baseline=int(
+                        variant_counts["connected_components"]
+                        - baseline_counts["connected_components"]
+                    ),
                 ).to_row()
             )
         save_sensitivity_overlay(

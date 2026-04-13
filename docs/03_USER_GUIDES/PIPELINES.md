@@ -22,29 +22,29 @@ Primary runbook:
 ## Canonical Commands
 
 ```bash
-python -m dataselector thesis-orchestrate --help
-python -m dataselector thesis-pipeline --help
-python -m dataselector thesis-sampler-suite --help
-python -m dataselector generate-monitor --help
+micromamba run -n dataselector python -m dataselector thesis-orchestrate --help
+micromamba run -n dataselector python -m dataselector thesis-pipeline --help
+micromamba run -n dataselector python -m dataselector thesis-sampler-suite --help
+micromamba run -n dataselector python -m dataselector generate-monitor --help
 ```
 
 ## Typical Thesis Sequence
 
 ```bash
-python -m dataselector thesis-orchestrate \
+micromamba run -n dataselector python -m dataselector thesis-orchestrate \
   --config config/pipeline_config.yaml \
   --output-dir outputs/runs/<run_id>
 
-python -m dataselector thesis-pipeline \
+micromamba run -n dataselector python -m dataselector thesis-pipeline \
   --use-params outputs/runs/<run_id>/final_config.yaml
 ```
 
 For deterministic annotation qualification use:
 
 ```bash
-python -m dataselector thesis-pipeline --execution-profile thesis_repro --seed 42 --dry-run --output-dir outputs/runs/thesis_preflight
-python -m dataselector thesis-pipeline --execution-profile thesis_repro --seed 42 --output-dir outputs/runs/thesis_run_A
-python -m dataselector thesis-pipeline --execution-profile thesis_repro --seed 42 --output-dir outputs/runs/thesis_run_B
+micromamba run -n dataselector python -m dataselector thesis-pipeline --execution-profile thesis_repro --seed 42 --dry-run --output-dir outputs/runs/thesis_preflight
+micromamba run -n dataselector python -m dataselector thesis-pipeline --execution-profile thesis_repro --seed 42 --output-dir outputs/runs/thesis_run_A
+micromamba run -n dataselector python -m dataselector thesis-pipeline --execution-profile thesis_repro --seed 42 --output-dir outputs/runs/thesis_run_B
 ```
 
 ## Notes

@@ -2261,7 +2261,9 @@ def generate_monitor_report(run_dir: str | Path | None = None) -> Path:
 
     report_path = selected_run / "THESIS_PIPELINE_REPORT.md"
     manifest_root = selected_run / "manifest"
-    manifest_files = sorted(manifest_root.glob("*.json")) if manifest_root.exists() else []
+    manifest_files = (
+        sorted(manifest_root.glob("*.json")) if manifest_root.exists() else []
+    )
     status_log = selected_run / "logs" / "status.log"
     summary_json = selected_run / "monitor" / "summary.json"
     manifest_json = selected_run / "manifest.json"

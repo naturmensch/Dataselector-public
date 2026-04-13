@@ -116,6 +116,7 @@ def test_thesis_pipeline_signature():
         "build_handoffs",
         "patches_per_tile",
         "patch_include_case",
+        "patch_id_file",
         "handoff_root",
     ]
 
@@ -309,6 +310,9 @@ def test_run_thesis_pipeline_phase5_success_records_handoffs(tmp_path, monkeypat
     ws = tmp_path
     (ws / "data").mkdir(parents=True, exist_ok=True)
     (ws / "config").mkdir(parents=True, exist_ok=True)
+    filter_path = ws / "config" / "patch_filters" / "phase5_subset.txt"
+    filter_path.parent.mkdir(parents=True, exist_ok=True)
+    filter_path.write_text("KDR_001_p1\nKDR_002_p1\n", encoding="utf-8")
     (ws / "data" / "new_all_tiles.csv").write_text(
         _minimal_metadata_csv_text(),
         encoding="utf-8",
@@ -320,12 +324,14 @@ def test_run_thesis_pipeline_phase5_success_records_handoffs(tmp_path, monkeypat
     monkeypatch.chdir(ws)
 
     report_calls: list[dict[str, object]] = []
+    phase5_calls: list[dict[str, object]] = []
 
     def _fake_report(**kwargs):
         report_calls.append(kwargs)
         return ws / "outputs" / "THESIS_PIPELINE_REPORT.md"
 
     def _fake_phase5(**kwargs):
+        phase5_calls.append(kwargs)
         return {
             "build_handoffs": True,
             "handoff_root": str(ws / "handoff"),
@@ -350,6 +356,9 @@ def test_run_thesis_pipeline_phase5_success_records_handoffs(tmp_path, monkeypat
                 ws / "handoff" / "outputs_patches_core" / "patch_handoff_manifest.json"
             ),
             "patch_handoff_selection_count": 48,
+            "patch_id_filter_path": str(
+                ws / "handoff" / "outputs_patches_core" / "patch_id_filter.txt"
+            ),
             "patch_handoff_verify": {"status": "ok"},
             "phase5_freeze_boundary_verified": True,
             "phase5_freeze_boundary_hashes": {"selection_core.csv": "abc"},
@@ -378,17 +387,23 @@ def test_run_thesis_pipeline_phase5_success_records_handoffs(tmp_path, monkeypat
         build_handoffs=True,
         patches_per_tile=2,
         patch_include_case=False,
+        patch_id_file=str(filter_path),
         handoff_root="handoff",
     )
 
     assert success is True
     assert len(report_calls) == 2
+    assert len(phase5_calls) == 1
     run_meta = json.loads((ws / "outputs" / "run_metadata.json").read_text("utf-8"))
     extra = run_meta["extra"]
+    assert phase5_calls[0]["patch_id_file"] == str(filter_path.resolve())
     assert extra["build_handoffs"] is True
     assert extra["patch_include_case"] is False
     assert extra["patch_selection_group"] == "core"
     assert extra["patches_total"] == 48
+    assert extra["patch_id_filter_path"] == str(
+        ws / "handoff" / "outputs_patches_core" / "patch_id_filter.txt"
+    )
     assert extra["phase5_freeze_boundary_verified"] is True
     assert extra["phase_status"]["phase5_handoffs"] == "success"
 
@@ -483,6 +498,9 @@ def test_run_phase5_annotation_handoffs_verifies_freeze_boundary(tmp_path, monke
 
     output_dir = tmp_path / "outputs"
     output_dir.mkdir(parents=True, exist_ok=True)
+    filter_path = tmp_path / "filters" / "phase5_subset.txt"
+    filter_path.parent.mkdir(parents=True, exist_ok=True)
+    filter_path.write_text("KDR_001_p1\n", encoding="utf-8")
     pd.DataFrame([{"shortName": "KDR_001", "selection_rank": 0}]).to_csv(
         output_dir / "selection_core.csv", index=False
     )
@@ -520,10 +538,21 @@ def test_run_phase5_annotation_handoffs_verifies_freeze_boundary(tmp_path, monke
         }
 
     monkeypatch.setattr(mod, "run_thesis_build_annotation_plan", _fake_annotation_plan)
+    patch_prepare_calls: list[dict[str, object]] = []
+
+    def _fake_prepare_patch_handoff(**kwargs):
+        patch_prepare_calls.append(kwargs)
+        return {
+            "selection_count": 2,
+            "patch_id_filter_path": str(
+                tmp_path / "handoff" / "outputs_patches_core" / "patch_id_filter.txt"
+            ),
+        }
+
     monkeypatch.setattr(
         mod,
         "prepare_patch_handoff",
-        lambda **_kwargs: {"selection_count": 2},
+        _fake_prepare_patch_handoff,
     )
     monkeypatch.setattr(mod, "verify_patch_handoff", lambda **_kwargs: {"status": "ok"})
 
@@ -533,9 +562,18 @@ def test_run_phase5_annotation_handoffs_verifies_freeze_boundary(tmp_path, monke
         handoff_root=str(tmp_path / "handoff"),
         patches_per_tile=2,
         patch_include_case=False,
+        patch_id_file=filter_path,
         tile_exclusion_policy=None,
     )
 
+    assert len(patch_prepare_calls) == 1
+    assert (
+        Path(str(patch_prepare_calls[0]["patch_id_file"])).resolve()
+        == filter_path.resolve()
+    )
+    assert result["patch_id_filter_path"] == str(
+        tmp_path / "handoff" / "outputs_patches_core" / "patch_id_filter.txt"
+    )
     assert result["phase5_freeze_boundary_verified"] is True
     assert (
         result["phase5_freeze_boundary_hashes"]
@@ -1595,6 +1633,7 @@ def test_cli_integration():
     assert "--build-handoffs" in out
     assert "--patches-per-tile" in out
     assert "--patch-include-case" in out
+    assert "--patch-id-file" in out
     assert "--handoff-root" in out
     assert "--validation-min-distances" in out
     assert "--validation-replicate-mode" in out

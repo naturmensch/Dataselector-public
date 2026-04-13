@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import geopandas as gpd
+import pandas as pd
 
 from dataselector.runtime.parameter_snapshot import compute_file_sha256
 
@@ -17,14 +18,15 @@ from .models import (
     ARCHIVE_TIMESTAMP_FORMAT,
     MANIFEST_FILENAME,
     MEASUREMENTS_FILENAME,
+    MERGED_ROADS_MANIFEST_FILENAME,
     SENSITIVITY_FILENAME,
     SENSITIVITY_OVERLAY_DIRNAME,
     SUMMARY_FILENAME,
     SUMMARY_JSON_FILENAME,
-    SyncMetadata,
-    RunManifest,
     TASK_FILENAME,
     WORKFLOW_VERSION,
+    RunManifest,
+    SyncMetadata,
     repo_root,
     resolve_path,
     utc_now,
@@ -34,11 +36,26 @@ from .models import (
 
 def default_roads_gpkg_path(*, repo_root_path: Path | None = None) -> Path:
     root = repo_root_path if repo_root_path is not None else repo_root()
-    return (root / "handoff" / "local_sources" / "cut_fixed_geometry_roads.gpkg").resolve()
+    return (
+        root / "handoff" / "local_sources" / "cut_fixed_geometry_roads.gpkg"
+    ).resolve()
+
+
+def default_merged_roads_gpkg_path(*, repo_root_path: Path | None = None) -> Path:
+    root = repo_root_path if repo_root_path is not None else repo_root()
+    return (root / "handoff" / "local_sources" / "phase5_roads_merged.gpkg").resolve()
+
+
+def default_merged_roads_layer_name() -> str:
+    return "phase5_roads_merged"
 
 
 def sync_metadata_path(dest_gpkg: Path) -> Path:
     return dest_gpkg.with_suffix(".sync.json")
+
+
+def merged_roads_manifest_path(dest_gpkg: Path) -> Path:
+    return dest_gpkg.with_name(MERGED_ROADS_MANIFEST_FILENAME)
 
 
 def read_sync_metadata(path: Path) -> SyncMetadata | None:
@@ -78,16 +95,225 @@ def resolve_roads_layer_name(roads_gpkg: Path) -> str:
     if len(layers) == 1:
         return str(layers.iloc[0]["name"])
     names = {str(value) for value in layers["name"].tolist()}
+    if default_merged_roads_layer_name() in names:
+        return default_merged_roads_layer_name()
     if "cut_fixed_geometry_roads" in names:
         return "cut_fixed_geometry_roads"
     raise ValueError(
         "roads_gpkg contains multiple layers and no default "
-        "'cut_fixed_geometry_roads' layer could be resolved."
+        "'phase5_roads_merged' or 'cut_fixed_geometry_roads' layer could be resolved."
     )
 
 
 def source_mtime_utc(path: Path) -> str:
     return datetime.fromtimestamp(path.stat().st_mtime, timezone.utc).isoformat()
+
+
+def _validate_source_layer_exists(
+    source_gpkg: Path, *, roads_layer: str
+) -> dict[str, Any]:
+    if not source_gpkg.exists():
+        raise FileNotFoundError(f"Road source not found: {source_gpkg}")
+    return read_roads_layer_info(source_gpkg, roads_layer=roads_layer)
+
+
+def _load_source_rows(
+    source_gpkg: Path,
+    *,
+    roads_layer: str,
+    source_class_policy: str,
+    forced_class: int | None = None,
+) -> gpd.GeoDataFrame:
+    _validate_source_layer_exists(source_gpkg, roads_layer=roads_layer)
+    gdf = gpd.read_file(source_gpkg, layer=roads_layer)
+    if gdf.empty:
+        return gpd.GeoDataFrame(
+            {
+                "class": pd.Series(dtype="int64"),
+                "source_gpkg": pd.Series(dtype="object"),
+                "source_layer": pd.Series(dtype="object"),
+            },
+            geometry=[],
+            crs=gdf.crs,
+        )
+
+    if source_class_policy == "preserve":
+        if "class" not in gdf.columns:
+            raise ValueError(
+                f"Road layer missing required 'class' field: {source_gpkg} [{roads_layer}]"
+            )
+        classes = pd.to_numeric(gdf["class"], errors="raise").astype(int)
+    elif source_class_policy == "forced":
+        if forced_class is None:
+            raise ValueError(
+                "forced_class is required when source_class_policy='forced'"
+            )
+        classes = pd.Series(
+            [int(forced_class)] * len(gdf), index=gdf.index, dtype="int64"
+        )
+    else:
+        raise ValueError(f"Unsupported source_class_policy: {source_class_policy}")
+
+    normalized = gpd.GeoDataFrame(
+        {
+            "class": classes,
+            "source_gpkg": str(source_gpkg.resolve()),
+            "source_layer": str(roads_layer),
+        },
+        geometry=gdf.geometry,
+        crs=gdf.crs,
+    )
+    normalized = normalized.loc[~normalized.geometry.isna()].copy()
+    normalized = normalized.loc[~normalized.geometry.is_empty].copy()
+    return normalized
+
+
+def _coerce_to_target_crs(
+    source_frames: list[gpd.GeoDataFrame],
+    *,
+    target_crs: Any,
+) -> list[gpd.GeoDataFrame]:
+    coerced: list[gpd.GeoDataFrame] = []
+    for frame in source_frames:
+        if frame.empty:
+            coerced.append(frame.set_crs(target_crs, allow_override=True))
+            continue
+        if frame.crs is None:
+            raise ValueError("All roads source layers must declare a CRS.")
+        if target_crs is not None and frame.crs != target_crs:
+            coerced.append(frame.to_crs(target_crs))
+        else:
+            coerced.append(frame)
+    return coerced
+
+
+def build_width_calibration_roads_source(
+    *,
+    cut_roads_gpkg: str | Path,
+    tracer4_gpkg: str | Path,
+    tracer5_gpkg: str | Path,
+    dest_gpkg: str | Path | None = None,
+    cut_roads_layer: str = "cut_fixed_geometry_roads",
+    tracer4_layer: str = "4_roads_tracer_patches",
+    tracer5_layer: str = "5_roads_tracer_patches",
+    dest_layer: str = "phase5_roads_merged",
+) -> dict[str, Any]:
+    repo_root_path = repo_root()
+    cut_path = resolve_path(
+        cut_roads_gpkg, repo_root_path=repo_root_path, prefer_repo=False
+    ).resolve()
+    tracer4_path = resolve_path(
+        tracer4_gpkg, repo_root_path=repo_root_path, prefer_repo=False
+    ).resolve()
+    tracer5_path = resolve_path(
+        tracer5_gpkg, repo_root_path=repo_root_path, prefer_repo=False
+    ).resolve()
+    dest_path = (
+        resolve_path(
+            dest_gpkg, repo_root_path=repo_root_path, prefer_repo=True
+        ).resolve()
+        if dest_gpkg is not None
+        else default_merged_roads_gpkg_path(repo_root_path=repo_root_path)
+    )
+    dest_layer_name = str(dest_layer).strip() or default_merged_roads_layer_name()
+
+    cut_frame = _load_source_rows(
+        cut_path,
+        roads_layer=cut_roads_layer,
+        source_class_policy="preserve",
+    )
+    tracer4_frame = _load_source_rows(
+        tracer4_path,
+        roads_layer=tracer4_layer,
+        source_class_policy="forced",
+        forced_class=4,
+    )
+    tracer5_frame = _load_source_rows(
+        tracer5_path,
+        roads_layer=tracer5_layer,
+        source_class_policy="forced",
+        forced_class=5,
+    )
+
+    target_crs = cut_frame.crs
+    if target_crs is None:
+        raise ValueError("cut_roads_gpkg must declare a CRS.")
+
+    source_frames = _coerce_to_target_crs(
+        [cut_frame, tracer4_frame, tracer5_frame],
+        target_crs=target_crs,
+    )
+    merged = gpd.GeoDataFrame(
+        pd.concat(source_frames, ignore_index=True),
+        geometry="geometry",
+        crs=target_crs,
+    )
+    if merged.empty:
+        raise ValueError("Merged roads source would be empty.")
+
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_handle = tempfile.NamedTemporaryFile(
+        prefix=f".{dest_path.stem}.",
+        suffix=dest_path.suffix,
+        dir=str(dest_path.parent),
+        delete=False,
+    )
+    temp_path = Path(temp_handle.name)
+    temp_handle.close()
+    try:
+        merged.to_file(temp_path, layer=dest_layer_name, driver="GPKG")
+        os.replace(temp_path, dest_path)
+    except Exception:
+        try:
+            temp_path.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise
+
+    validate_sync_source(dest_path, roads_layer=dest_layer_name)
+    dest_sha256 = compute_file_sha256(dest_path)
+    manifest_path = merged_roads_manifest_path(dest_path)
+    sources_payload = [
+        {
+            "source_gpkg": str(cut_path),
+            "source_layer": str(cut_roads_layer),
+            "source_gpkg_sha256": compute_file_sha256(cut_path),
+            "class_policy": "preserve",
+        },
+        {
+            "source_gpkg": str(tracer4_path),
+            "source_layer": str(tracer4_layer),
+            "source_gpkg_sha256": compute_file_sha256(tracer4_path),
+            "class_policy": "forced",
+            "forced_class": 4,
+        },
+        {
+            "source_gpkg": str(tracer5_path),
+            "source_layer": str(tracer5_layer),
+            "source_gpkg_sha256": compute_file_sha256(tracer5_path),
+            "class_policy": "forced",
+            "forced_class": 5,
+        },
+    ]
+    write_json(
+        manifest_path,
+        {
+            "dest_gpkg": str(dest_path),
+            "dest_layer": str(dest_layer_name),
+            "dest_gpkg_sha256": dest_sha256,
+            "feature_count": int(len(merged)),
+            "generated_utc": utc_now(),
+            "sources": sources_payload,
+        },
+    )
+    return {
+        "dest_gpkg": str(dest_path),
+        "dest_layer": str(dest_layer_name),
+        "dest_gpkg_sha256": dest_sha256,
+        "feature_count": int(len(merged)),
+        "sources_json": str(manifest_path),
+        "source_count": len(sources_payload),
+    }
 
 
 def copy_file_atomic(source: Path, dest: Path) -> None:
@@ -175,7 +401,9 @@ def load_width_calibration_manifest(tasks_csv_path: Path) -> tuple[Path, RunMani
 
 
 def resolve_manifest_path(path_value: str | Path, *, repo_root_path: Path) -> Path:
-    return resolve_path(path_value, repo_root_path=repo_root_path, prefer_repo=False).resolve()
+    return resolve_path(
+        path_value, repo_root_path=repo_root_path, prefer_repo=False
+    ).resolve()
 
 
 def validated_sync_metadata_for_local_copy(
@@ -198,7 +426,10 @@ def validated_sync_metadata_for_local_copy(
             ).resolve()
         if recorded_dest_path != roads_gpkg.resolve():
             return None, None
-    if sync_metadata.dest_gpkg_sha256 and sync_metadata.dest_gpkg_sha256 != local_sha256:
+    if (
+        sync_metadata.dest_gpkg_sha256
+        and sync_metadata.dest_gpkg_sha256 != local_sha256
+    ):
         return None, None
     return sync_path, sync_metadata
 
@@ -236,9 +467,13 @@ def sync_width_calibration_source(
     roads_layer: str = "cut_fixed_geometry_roads",
 ) -> dict[str, Any]:
     repo_root_path = repo_root()
-    source_path = resolve_path(source_gpkg, repo_root_path=repo_root_path, prefer_repo=False).resolve()
+    source_path = resolve_path(
+        source_gpkg, repo_root_path=repo_root_path, prefer_repo=False
+    ).resolve()
     dest_path = (
-        resolve_path(dest_gpkg, repo_root_path=repo_root_path, prefer_repo=True).resolve()
+        resolve_path(
+            dest_gpkg, repo_root_path=repo_root_path, prefer_repo=True
+        ).resolve()
         if dest_gpkg is not None
         else default_roads_gpkg_path(repo_root_path=repo_root_path)
     )
@@ -290,7 +525,9 @@ def maybe_sync_local_copy_from_source(
     if not source_value:
         return current_local_sha, False
     repo_root_path = repo_root()
-    source_gpkg_path = resolve_manifest_path(source_value, repo_root_path=repo_root_path)
+    source_gpkg_path = resolve_manifest_path(
+        source_value, repo_root_path=repo_root_path
+    )
     if not source_gpkg_path.exists():
         return current_local_sha, False
     current_source_sha = compute_file_sha256(source_gpkg_path)
@@ -335,7 +572,9 @@ def existing_run_manifest_staleness_reason(
     if not manifest_path.exists():
         return "existing width-calibration artifacts were found, but the run manifest is missing"
     try:
-        manifest = RunManifest.from_payload(json.loads(manifest_path.read_text(encoding="utf-8")))
+        manifest = RunManifest.from_payload(
+            json.loads(manifest_path.read_text(encoding="utf-8"))
+        )
     except Exception:
         return "existing width-calibration artifacts were found, but the run manifest is unreadable"
     if manifest.workflow_version != WORKFLOW_VERSION:
@@ -343,7 +582,9 @@ def existing_run_manifest_staleness_reason(
     if not manifest.handoff_dir:
         return "handoff_dir is missing from the existing run manifest"
     try:
-        recorded_handoff_path = resolve_manifest_path(manifest.handoff_dir, repo_root_path=repo_root())
+        recorded_handoff_path = resolve_manifest_path(
+            manifest.handoff_dir, repo_root_path=repo_root()
+        )
     except Exception:
         return "handoff_dir in the existing run manifest is invalid"
     if recorded_handoff_path != handoff_dir:
@@ -361,7 +602,9 @@ def existing_run_manifest_staleness_reason(
         current_source_sha = str(current_sync_metadata.source_gpkg_sha256).strip()
         if not current_source_sha:
             return "current sync metadata is incomplete"
-    recorded_source_sha = str(manifest.extras.get("sync_source_gpkg_sha256", "")).strip()
+    recorded_source_sha = str(
+        manifest.extras.get("sync_source_gpkg_sha256", "")
+    ).strip()
     if current_source_sha and recorded_source_sha != current_source_sha:
         return "sync_source_gpkg_sha256 changed"
     return None
@@ -417,7 +660,9 @@ def preflight_measure_width_calibration(
             "Width calibration manifest is missing roads_gpkg or roads_gpkg_sha256. "
             "Rerun prepare-width-calibration."
         )
-    roads_gpkg_path = resolve_manifest_path(manifest.roads_gpkg, repo_root_path=repo_root_path)
+    roads_gpkg_path = resolve_manifest_path(
+        manifest.roads_gpkg, repo_root_path=repo_root_path
+    )
     if not roads_gpkg_path.exists():
         raise FileNotFoundError(
             f"Roads GeoPackage recorded in width calibration manifest was not found: {roads_gpkg_path}"
@@ -448,7 +693,9 @@ def preflight_measure_width_calibration(
     source_value = str(sync_metadata.source_gpkg_path).strip()
     if not source_value:
         return manifest, roads_gpkg_path
-    source_gpkg_path = resolve_manifest_path(source_value, repo_root_path=repo_root_path)
+    source_gpkg_path = resolve_manifest_path(
+        source_value, repo_root_path=repo_root_path
+    )
     if not source_gpkg_path.exists():
         return manifest, roads_gpkg_path
     current_source_sha = compute_file_sha256(source_gpkg_path)

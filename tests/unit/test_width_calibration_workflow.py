@@ -14,8 +14,10 @@ from shapely.geometry import MultiLineString
 from dataselector.cli_decorators import get_registered_commands
 from dataselector.workflows.width_calibration import (
     audit_width_calibration_sensitivity,
+    build_width_calibration_roads_source,
     measure_width_calibration,
     prepare_width_calibration,
+    render_width_calibration_debug_masks,
     summarize_width_calibration,
     sync_width_calibration_source,
 )
@@ -72,7 +74,14 @@ def _build_handoff(tmp_path: Path) -> dict[str, Path]:
         ("KDR_146_p1", "KDR_146", 400.0, 64.0, 5, 1),
     ]
     rows: list[dict[str, object]] = []
-    for selection_rank, (patch_id, tile_shortname, left, top, split_fold, patch_index) in enumerate(patch_specs):
+    for selection_rank, (
+        patch_id,
+        tile_shortname,
+        left,
+        top,
+        split_fold,
+        patch_index,
+    ) in enumerate(patch_specs):
         quicklook_name = f"{patch_id}.tif"
         _write_quicklook(quicklook_dir / quicklook_name, left=left, top=top)
         rows.append(
@@ -99,9 +108,7 @@ def _build_handoff(tmp_path: Path) -> dict[str, Path]:
     pd.DataFrame(
         {
             "patch_id": [row["patch_id"] for row in rows],
-            "required_mask_filename": [
-                f"{row['patch_id']}_mask.tif" for row in rows
-            ],
+            "required_mask_filename": [f"{row['patch_id']}_mask.tif" for row in rows],
         }
     ).to_csv(handoff_dir / "patch_mask_requirements.csv", index=False)
     (handoff_dir / "patch_handoff_manifest.json").write_text(
@@ -132,9 +139,39 @@ def _write_roads_gpkg(path: Path, *, classes: list[int]) -> None:
     roads_gdf.to_file(path, layer="cut_fixed_geometry_roads", driver="GPKG")
 
 
+def _write_named_roads_layer(
+    path: Path,
+    *,
+    layer: str,
+    classes: list[int],
+    x_offset: float,
+) -> None:
+    if path.exists():
+        path.unlink()
+    geometries = [
+        MultiLineString(
+            [
+                [
+                    (x_offset + float(idx) * 20.0, 16.0),
+                    (x_offset + float(idx) * 20.0 + 12.0, 16.0),
+                ]
+            ]
+        )
+        for idx in range(len(classes))
+    ]
+    roads_gdf = gpd.GeoDataFrame(
+        {"class": classes},
+        geometry=geometries,
+        crs="EPSG:3857",
+    )
+    roads_gdf.to_file(path, layer=layer, driver="GPKG")
+
+
 @pytest.mark.fast
 @pytest.mark.unit
-def test_prepare_width_calibration_is_deterministic_and_excludes_hamburg(tmp_path: Path):
+def test_prepare_width_calibration_is_deterministic_and_excludes_hamburg(
+    tmp_path: Path,
+):
     env = _build_handoff(tmp_path)
     out1 = tmp_path / "prepared_a"
     out2 = tmp_path / "prepared_b"
@@ -167,8 +204,12 @@ def test_prepare_width_calibration_is_deterministic_and_excludes_hamburg(tmp_pat
     manifest = json.loads(Path(result1["manifest_json"]).read_text(encoding="utf-8"))
     assert manifest["hamburg_excluded_at_task_generation"] is True
     assert manifest["eligibility_parameters"]["minimum_in_crop_line_support_px"] == 32.0
-    assert manifest["primary_task_count"] == int((tasks_a["pass_type"] == "primary").sum())
-    assert manifest["repeat_task_count"] == int((tasks_a["pass_type"] == "repeat").sum())
+    assert manifest["primary_task_count"] == int(
+        (tasks_a["pass_type"] == "primary").sum()
+    )
+    assert manifest["repeat_task_count"] == int(
+        (tasks_a["pass_type"] == "repeat").sum()
+    )
 
 
 @pytest.mark.fast
@@ -220,6 +261,80 @@ def test_sync_width_calibration_source_rejects_missing_class_field(tmp_path: Pat
 
 @pytest.mark.fast
 @pytest.mark.unit
+def test_build_width_calibration_roads_source_merges_base_and_tracer_layers(
+    tmp_path: Path,
+):
+    cut_roads_path = tmp_path / "cut_fixed_geometry_roads.gpkg"
+    tracer4_path = tmp_path / "tracer4_roads.gpkg"
+    tracer5_path = tmp_path / "tracer5_roads.gpkg"
+    dest_path = tmp_path / "handoff" / "local_sources" / "phase5_roads_merged.gpkg"
+
+    _write_named_roads_layer(
+        cut_roads_path,
+        layer="cut_fixed_geometry_roads",
+        classes=[0, 3],
+        x_offset=0.0,
+    )
+    _write_named_roads_layer(
+        tracer4_path,
+        layer="4_roads_tracer_patches",
+        classes=[91],
+        x_offset=100.0,
+    )
+    _write_named_roads_layer(
+        tracer5_path,
+        layer="5_roads_tracer_patches",
+        classes=[92],
+        x_offset=200.0,
+    )
+
+    result = build_width_calibration_roads_source(
+        cut_roads_gpkg=cut_roads_path,
+        tracer4_gpkg=tracer4_path,
+        tracer5_gpkg=tracer5_path,
+        dest_gpkg=dest_path,
+    )
+
+    assert result["dest_gpkg"] == str(dest_path.resolve())
+    assert result["dest_layer"] == "phase5_roads_merged"
+    assert result["feature_count"] == 4
+    assert Path(result["dest_gpkg"]).exists()
+    assert Path(result["sources_json"]).exists()
+
+    merged_gdf = gpd.read_file(dest_path, layer="phase5_roads_merged")
+    assert merged_gdf["class"].tolist() == [0, 3, 4, 5]
+    assert merged_gdf.loc[
+        merged_gdf["source_layer"] == "cut_fixed_geometry_roads",
+        "class",
+    ].tolist() == [0, 3]
+    assert merged_gdf.loc[
+        merged_gdf["source_layer"] == "4_roads_tracer_patches",
+        "class",
+    ].tolist() == [4]
+    assert merged_gdf.loc[
+        merged_gdf["source_layer"] == "5_roads_tracer_patches",
+        "class",
+    ].tolist() == [5]
+
+    sources_manifest = json.loads(
+        Path(result["sources_json"]).read_text(encoding="utf-8")
+    )
+    assert sources_manifest["dest_gpkg"] == str(dest_path.resolve())
+    assert sources_manifest["dest_layer"] == "phase5_roads_merged"
+    assert sources_manifest["feature_count"] == 4
+    assert len(sources_manifest["sources"]) == 3
+    assert sources_manifest["sources"][0]["class_policy"] == "preserve"
+    assert sources_manifest["sources"][1]["forced_class"] == 4
+    assert sources_manifest["sources"][2]["forced_class"] == 5
+    assert all(
+        str(entry["source_gpkg"]).endswith(".gpkg")
+        and str(entry["source_gpkg_sha256"]).strip()
+        for entry in sources_manifest["sources"]
+    )
+
+
+@pytest.mark.fast
+@pytest.mark.unit
 def test_prepare_width_calibration_manifest_includes_sync_metadata(tmp_path: Path):
     env = _build_handoff(tmp_path)
     dest_path = tmp_path / "local_sources" / "roads.gpkg"
@@ -240,7 +355,9 @@ def test_prepare_width_calibration_manifest_includes_sync_metadata(tmp_path: Pat
     )
 
     manifest = json.loads(Path(prepared["manifest_json"]).read_text(encoding="utf-8"))
-    assert manifest["sync_metadata_path"] == str(Path(sync_result["sync_metadata_path"]).resolve())
+    assert manifest["sync_metadata_path"] == str(
+        Path(sync_result["sync_metadata_path"]).resolve()
+    )
     assert manifest["sync_source_gpkg"] == str(Path(env["roads_path"]).resolve())
     assert manifest["sync_source_gpkg_sha256"] == sync_result["source_gpkg_sha256"]
 
@@ -272,11 +389,14 @@ def test_prepare_width_calibration_can_prompt_and_sync_before_generating_tasks(
         prompt_for_sync=True,
     )
 
-    assert sync_width_calibration_source(
-        source_gpkg=env["roads_path"],
-        dest_gpkg=dest_path,
-        roads_layer="cut_fixed_geometry_roads",
-    )["in_sync"] is True
+    assert (
+        sync_width_calibration_source(
+            source_gpkg=env["roads_path"],
+            dest_gpkg=dest_path,
+            roads_layer="cut_fixed_geometry_roads",
+        )["in_sync"]
+        is True
+    )
     manifest = json.loads(Path(prepared["manifest_json"]).read_text(encoding="utf-8"))
     assert manifest["roads_gpkg_sha256"] == manifest["sync_source_gpkg_sha256"]
 
@@ -322,7 +442,9 @@ def test_prepare_width_calibration_archives_stale_run_and_preserves_measurements
     archive_dir = Path(prepared["archive_dir"])
     assert prepared["archived_previous_run"] is True
     assert archive_dir.exists()
-    assert (archive_dir / "width_calibration_measurements.csv").read_text(encoding="utf-8") == "sentinel_measurements\n"
+    assert (archive_dir / "width_calibration_measurements.csv").read_text(
+        encoding="utf-8"
+    ) == "sentinel_measurements\n"
     assert (out_dir / "width_calibration_tasks.csv").exists()
     manifest = json.loads(Path(prepared["manifest_json"]).read_text(encoding="utf-8"))
     assert manifest["archived_previous_run"] is True
@@ -368,7 +490,9 @@ def test_prepare_width_calibration_archives_unknown_existing_run_without_manifes
     env = _build_handoff(tmp_path)
     out_dir = tmp_path / "prepared"
     out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "width_calibration_tasks.csv").write_text("stale_tasks\n", encoding="utf-8")
+    (out_dir / "width_calibration_tasks.csv").write_text(
+        "stale_tasks\n", encoding="utf-8"
+    )
     monkeypatch.setattr("sys.stdin.isatty", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _prompt="": "y")
 
@@ -384,7 +508,9 @@ def test_prepare_width_calibration_archives_unknown_existing_run_without_manifes
 
     archive_dir = Path(prepared["archive_dir"])
     assert prepared["archived_previous_run"] is True
-    assert (archive_dir / "width_calibration_tasks.csv").read_text(encoding="utf-8") == "stale_tasks\n"
+    assert (archive_dir / "width_calibration_tasks.csv").read_text(
+        encoding="utf-8"
+    ) == "stale_tasks\n"
     assert (out_dir / "width_calibration_manifest.json").exists()
 
 
@@ -424,7 +550,9 @@ def test_prepare_width_calibration_keeps_current_run_in_place(
 
 @pytest.mark.fast
 @pytest.mark.unit
-def test_measure_width_calibration_fails_when_local_copy_changed_after_prepare(tmp_path: Path):
+def test_measure_width_calibration_fails_when_local_copy_changed_after_prepare(
+    tmp_path: Path,
+):
     env = _build_handoff(tmp_path)
     dest_path = tmp_path / "local_sources" / "roads.gpkg"
     sync_width_calibration_source(
@@ -442,7 +570,9 @@ def test_measure_width_calibration_fails_when_local_copy_changed_after_prepare(t
     )
     _write_roads_gpkg(dest_path, classes=[1, 0, 3, 8, 0])
 
-    with pytest.raises(RuntimeError, match="stale relative to the current repo-local roads copy"):
+    with pytest.raises(
+        RuntimeError, match="stale relative to the current repo-local roads copy"
+    ):
         measure_width_calibration(
             handoff_dir=env["handoff_dir"],
             tasks_csv=prepared["tasks_csv"],
@@ -452,7 +582,9 @@ def test_measure_width_calibration_fails_when_local_copy_changed_after_prepare(t
 
 @pytest.mark.fast
 @pytest.mark.unit
-def test_measure_width_calibration_fails_when_source_is_newer_than_local_copy(tmp_path: Path):
+def test_measure_width_calibration_fails_when_source_is_newer_than_local_copy(
+    tmp_path: Path,
+):
     env = _build_handoff(tmp_path)
     dest_path = tmp_path / "local_sources" / "roads.gpkg"
     sync_width_calibration_source(
@@ -511,11 +643,14 @@ def test_measure_width_calibration_can_prompt_sync_then_requires_reprepare(
             prompt_for_sync=True,
         )
 
-    assert sync_width_calibration_source(
-        source_gpkg=env["roads_path"],
-        dest_gpkg=dest_path,
-        roads_layer="cut_fixed_geometry_roads",
-    )["in_sync"] is True
+    assert (
+        sync_width_calibration_source(
+            source_gpkg=env["roads_path"],
+            dest_gpkg=dest_path,
+            roads_layer="cut_fixed_geometry_roads",
+        )["in_sync"]
+        is True
+    )
 
 
 @pytest.mark.fast
@@ -536,7 +671,10 @@ def test_measure_width_calibration_allows_matching_local_copy_without_sync_metad
     monkeypatch.setattr(
         InteractiveMeasurementViewer,
         "run",
-        lambda self: {"started": True, "measurements_csv": str(self.session.measurements_path)},
+        lambda self: {
+            "started": True,
+            "measurements_csv": str(self.session.measurements_path),
+        },
     )
 
     result = measure_width_calibration(
@@ -749,12 +887,16 @@ def test_load_measurements_csv_accepts_legacy_files_without_source_fid(tmp_path:
 
 @pytest.mark.fast
 @pytest.mark.unit
-def test_reject_current_task_uses_dialog_result(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_reject_current_task_uses_dialog_result(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     class DummySession:
         def __init__(self) -> None:
             self.calls: list[tuple[str, str, str]] = []
 
-        def record_reject(self, task_id: str, *, reject_reason: str, note: str = "") -> None:
+        def record_reject(
+            self, task_id: str, *, reject_reason: str, note: str = ""
+        ) -> None:
             self.calls.append((task_id, reject_reason, note))
 
     session = DummySession()
@@ -794,12 +936,16 @@ def test_reject_current_task_uses_dialog_result(monkeypatch: pytest.MonkeyPatch,
 
 @pytest.mark.fast
 @pytest.mark.unit
-def test_reject_current_task_cancel_keeps_task(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+def test_reject_current_task_cancel_keeps_task(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
     class DummySession:
         def __init__(self) -> None:
             self.calls: list[tuple[str, str, str]] = []
 
-        def record_reject(self, task_id: str, *, reject_reason: str, note: str = "") -> None:
+        def record_reject(
+            self, task_id: str, *, reject_reason: str, note: str = ""
+        ) -> None:
             self.calls.append((task_id, reject_reason, note))
 
     session = DummySession()
@@ -838,7 +984,6 @@ def test_reject_current_task_cancel_keeps_task(monkeypatch: pytest.MonkeyPatch, 
 def test_summarize_width_calibration_uses_primary_only(
     tmp_path: Path,
 ):
-    env = _build_handoff(tmp_path)
     measurements_path = tmp_path / "measurements.csv"
     measurements_df = pd.DataFrame(
         [
@@ -1128,15 +1273,59 @@ def test_audit_width_calibration_sensitivity_writes_expected_outputs(
 
 @pytest.mark.fast
 @pytest.mark.unit
+def test_render_width_calibration_debug_masks_writes_patch_masks_and_manifest(
+    tmp_path: Path,
+):
+    env = _build_handoff(tmp_path)
+    out_dir = tmp_path / "debug_masks"
+
+    result = render_width_calibration_debug_masks(
+        handoff_dir=env["handoff_dir"],
+        roads_gpkg=env["roads_path"],
+        out_dir=out_dir,
+        fixed_width_px=10,
+    )
+
+    requirements_df = pd.read_csv(env["handoff_dir"] / "patch_mask_requirements.csv")
+    expected_names = requirements_df["required_mask_filename"].astype(str).tolist()
+    assert result["mask_count"] == len(expected_names)
+    for mask_name in expected_names:
+        assert (out_dir / mask_name).exists()
+
+    manifest = json.loads(Path(result["manifest_json"]).read_text(encoding="utf-8"))
+    assert manifest["debug_only"] is True
+    assert manifest["test_only"] is True
+    assert manifest["rendering_mode"] == "fixed_width_px"
+    assert manifest["fixed_width_px"] == 10
+
+    sample_mask_path = out_dir / "KDR_001_p1_mask.tif"
+    with (
+        rasterio.open(sample_mask_path) as mask_ds,
+        rasterio.open(
+            env["handoff_dir"] / "quicklooks" / "KDR_001_p1.tif"
+        ) as quicklook_ds,
+    ):
+        mask = mask_ds.read(1)
+        assert int(np.count_nonzero(mask)) > 0
+        assert mask_ds.width == quicklook_ds.width
+        assert mask_ds.height == quicklook_ds.height
+        assert mask_ds.transform == quicklook_ds.transform
+        assert str(mask_ds.crs) == str(quicklook_ds.crs)
+
+
+@pytest.mark.fast
+@pytest.mark.unit
 def test_width_calibration_commands_are_registered():
     import dataselector.cli  # noqa: F401
 
     commands = get_registered_commands()
     assert "sync-width-calibration-source" in commands
+    assert "build-width-calibration-roads-source" in commands
     assert "prepare-width-calibration" in commands
     assert "measure-width-calibration" in commands
     assert "summarize-width-calibration" in commands
     assert "audit-width-calibration-sensitivity" in commands
+    assert "render-width-calibration-debug-masks" in commands
 
 
 @pytest.mark.fast
@@ -1160,16 +1349,33 @@ def test_upsample_nearest_rgb_scales_image_by_integer_factor():
 @pytest.mark.unit
 def test_ui_scale_from_screen_metrics_handles_normal_and_hidpi_layouts():
     assert ui_scale_from_screen_metrics(None) == 1.0
-    assert ui_scale_from_screen_metrics(82.0, screen_width_px=1920, screen_height_px=1080) == 1.0
-    assert ui_scale_from_screen_metrics(110.0, screen_width_px=1920, screen_height_px=1080) == 1.1458333333333333
-    assert ui_scale_from_screen_metrics(165.0, screen_width_px=1920, screen_height_px=1080) == 1.71875
-    assert ui_scale_from_screen_metrics(96.0, screen_width_px=2880, screen_height_px=1800) == 1.6666666666666667
-    assert ui_scale_from_screen_metrics(260.0, screen_width_px=3840, screen_height_px=2160) == 2.5
+    assert (
+        ui_scale_from_screen_metrics(82.0, screen_width_px=1920, screen_height_px=1080)
+        == 1.0
+    )
+    assert (
+        ui_scale_from_screen_metrics(110.0, screen_width_px=1920, screen_height_px=1080)
+        == 1.1458333333333333
+    )
+    assert (
+        ui_scale_from_screen_metrics(165.0, screen_width_px=1920, screen_height_px=1080)
+        == 1.71875
+    )
+    assert (
+        ui_scale_from_screen_metrics(96.0, screen_width_px=2880, screen_height_px=1800)
+        == 1.6666666666666667
+    )
+    assert (
+        ui_scale_from_screen_metrics(260.0, screen_width_px=3840, screen_height_px=2160)
+        == 2.5
+    )
 
 
 @pytest.mark.fast
 @pytest.mark.unit
-def test_select_interactive_matplotlib_backend_requires_qt(monkeypatch: pytest.MonkeyPatch):
+def test_select_interactive_matplotlib_backend_requires_qt(
+    monkeypatch: pytest.MonkeyPatch,
+):
     class DummyMatplotlib:
         def get_backend(self) -> str:
             return "Agg"
@@ -1184,7 +1390,9 @@ def test_select_interactive_matplotlib_backend_requires_qt(monkeypatch: pytest.M
 
 @pytest.mark.fast
 @pytest.mark.unit
-def test_select_interactive_matplotlib_backend_activates_qt(monkeypatch: pytest.MonkeyPatch):
+def test_select_interactive_matplotlib_backend_activates_qt(
+    monkeypatch: pytest.MonkeyPatch,
+):
     class DummyMatplotlib:
         def __init__(self) -> None:
             self.backend = "Agg"
@@ -1199,7 +1407,8 @@ def test_select_interactive_matplotlib_backend_activates_qt(monkeypatch: pytest.
 
     monkeypatch.setattr(
         "dataselector.workflows.width_calibration.viewer_qt.has_module",
-        lambda module_name: module_name in {"PySide6", "matplotlib.backends.backend_qtagg"},
+        lambda module_name: module_name
+        in {"PySide6", "matplotlib.backends.backend_qtagg"},
     )
     dummy = DummyMatplotlib()
     backend = select_interactive_matplotlib_backend(dummy)

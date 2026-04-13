@@ -133,6 +133,106 @@ def _load_csv(path: Path) -> tuple[list[dict[str, str]], list[str]]:
         return list(reader), list(reader.fieldnames or [])
 
 
+def _load_patch_id_filter_file(path: Path) -> list[str]:
+    ordered: list[str] = []
+    seen: set[str] = set()
+    with path.open("r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line in seen:
+                continue
+            seen.add(line)
+            ordered.append(line)
+    return ordered
+
+
+def _rebuild_patch_split_manifest(
+    *,
+    split_manifest: dict[str, Any],
+    selected_rows: list[dict[str, str | int]],
+    run_id: str,
+) -> dict[str, Any]:
+    patch_to_fold = {
+        str(row["patch_id"]): int(row["split_fold"]) for row in selected_rows
+    }
+    selected_tiles = {
+        str(row["tile_shortname"]).strip()
+        for row in selected_rows
+        if str(row["tile_shortname"]).strip()
+    }
+
+    original_folds = split_manifest.get("folds", [])
+    fold_order: list[int] = []
+    if isinstance(original_folds, list):
+        for entry in original_folds:
+            if not isinstance(entry, dict):
+                continue
+            try:
+                fold_value = int(entry.get("fold"))
+            except Exception:
+                continue
+            if fold_value not in fold_order:
+                fold_order.append(fold_value)
+    if not fold_order:
+        n_splits = split_manifest.get("n_splits")
+        if (
+            isinstance(n_splits, int)
+            and n_splits > 0
+            and all(fold >= 1 for fold in patch_to_fold.values())
+        ):
+            fold_order = list(range(1, int(n_splits) + 1))
+        else:
+            fold_order = sorted(set(int(value) for value in patch_to_fold.values()))
+
+    fold_entries: list[dict[str, Any]] = []
+    for fold_value in fold_order:
+        fold_rows = [
+            row for row in selected_rows if int(row["split_fold"]) == int(fold_value)
+        ]
+        patch_ids = [str(row["patch_id"]) for row in fold_rows]
+        tile_shortnames = sorted(
+            {
+                str(row["tile_shortname"]).strip()
+                for row in fold_rows
+                if str(row["tile_shortname"]).strip()
+            }
+        )
+        fold_entries.append(
+            {
+                "fold": int(fold_value),
+                "n_patches": int(len(patch_ids)),
+                "n_tiles": int(len(tile_shortnames)),
+                "patch_ids": patch_ids,
+                "tile_shortnames": tile_shortnames,
+            }
+        )
+
+    rebuilt = dict(split_manifest) if isinstance(split_manifest, dict) else {}
+    rebuilt["version"] = int(rebuilt.get("version", 1) or 1)
+    rebuilt["generated_utc"] = datetime.now(timezone.utc).isoformat()
+    rebuilt["run_id"] = str(rebuilt.get("run_id") or run_id)
+    rebuilt["grouping_key"] = str(rebuilt.get("grouping_key") or "tile_shortname")
+    rebuilt["splitter"] = str(rebuilt.get("splitter") or "GroupKFold")
+    if "n_splits" in rebuilt:
+        try:
+            rebuilt["n_splits"] = int(rebuilt["n_splits"])
+        except Exception:
+            rebuilt["n_splits"] = int(len(fold_order))
+    else:
+        rebuilt["n_splits"] = int(len(fold_order))
+    rebuilt["counts"] = {
+        "total_patches": int(len(selected_rows)),
+        "qc_passed_patches": int(len(selected_rows)),
+        "qc_rejected_patches": 0,
+        "unique_tiles": int(len(selected_tiles)),
+    }
+    rebuilt["folds"] = fold_entries
+    rebuilt["patch_to_fold"] = patch_to_fold
+    return rebuilt
+
+
 def _load_excluded_tiles(policy_path: Path) -> list[str]:
     if not policy_path.exists():
         return []
@@ -642,6 +742,7 @@ def prepare_patch_handoff(
     out_dir: str | Path,
     patch_manifest_csv: str | None = None,
     patch_split_manifest: str | None = None,
+    patch_id_file: str | Path | None = None,
     images_dir: str | Path = DEFAULT_IMAGES_DIR,
     tile_exclusion_policy: str | Path = DEFAULT_TILE_POLICY,
     repo_root: str | Path | None = None,
@@ -669,6 +770,16 @@ def prepare_patch_handoff(
         repo_root=repo_root_path,
         prefer_repo=True,
     ).resolve()
+    patch_id_file_path = (
+        _resolve_path(
+            patch_id_file,
+            repo_root=repo_root_path,
+            run_dir=run_dir_path,
+            prefer_repo=True,
+        ).resolve()
+        if patch_id_file is not None and str(patch_id_file).strip()
+        else None
+    )
 
     if not run_dir_path.exists():
         raise HandoffCheckError(
@@ -887,6 +998,49 @@ def prepare_patch_handoff(
         )
     )
 
+    patch_id_filter_values: list[str] = []
+    patch_id_filter_sha = ""
+    patch_id_filter_handoff_rel = ""
+    if patch_id_file_path is not None:
+        if not patch_id_file_path.exists():
+            raise HandoffCheckError(
+                EXIT_SCHEMA,
+                [f"[SCHEMA] patch-id filter file not found: {patch_id_file_path}"],
+            )
+        patch_id_filter_values = _load_patch_id_filter_file(patch_id_file_path)
+        if not patch_id_filter_values:
+            raise HandoffCheckError(
+                EXIT_SCHEMA,
+                [f"[SCHEMA] patch-id filter file is empty: {patch_id_file_path}"],
+            )
+        available_patch_ids = {str(row["patch_id"]) for row in selected_rows}
+        unknown_patch_ids = [
+            patch_id
+            for patch_id in patch_id_filter_values
+            if patch_id not in available_patch_ids
+        ]
+        if unknown_patch_ids:
+            raise HandoffCheckError(
+                EXIT_SCHEMA,
+                [
+                    f"[SCHEMA] patch-id filter references unknown patch_id: {patch_id}"
+                    for patch_id in unknown_patch_ids
+                ],
+            )
+        selected_rows = [
+            row
+            for row in selected_rows
+            if str(row["patch_id"]) in set(patch_id_filter_values)
+        ]
+        if not selected_rows:
+            raise HandoffCheckError(
+                EXIT_SCHEMA,
+                ["[SCHEMA] patch-id filter removed every qc_passed patch"],
+            )
+        patch_id_filter_handoff_rel = "patch_id_filter.txt"
+        shutil.copy2(patch_id_file_path, out_dir_path / patch_id_filter_handoff_rel)
+        patch_id_filter_sha = _sha256(out_dir_path / patch_id_filter_handoff_rel)
+
     quicklook_copy_errors: list[str] = []
     for row in selected_rows:
         patch_id = str(row["patch_id"])
@@ -952,9 +1106,14 @@ def prepare_patch_handoff(
                 }
             )
 
+    filtered_split_manifest = _rebuild_patch_split_manifest(
+        split_manifest=split_manifest,
+        selected_rows=selected_rows,
+        run_id=run_dir_path.name,
+    )
     split_manifest_out_path = out_dir_path / "patch_split_manifest.json"
     split_manifest_out_path.write_text(
-        json.dumps(split_manifest, ensure_ascii=True, indent=2),
+        json.dumps(filtered_split_manifest, ensure_ascii=True, indent=2),
         encoding="utf-8",
     )
 
@@ -1063,6 +1222,15 @@ def prepare_patch_handoff(
         "source_patch_split_manifest_resolution": source_patch_split_resolution,
         "source_images_dir": _rel_or_abs(images_dir_path, repo_root_path),
     }
+    if patch_id_filter_handoff_rel:
+        manifest["patch_id_filter_path"] = patch_id_filter_handoff_rel
+        manifest["patch_id_filter_sha256"] = patch_id_filter_sha
+        manifest["patch_id_filter_count"] = len(patch_id_filter_values)
+        manifest["patch_id_filter_mode"] = "explicit_subset"
+        manifest["source_patch_id_filter_path"] = _rel_or_abs(
+            patch_id_file_path,
+            repo_root_path,
+        )
 
     patch_handoff_manifest_path = out_dir_path / "patch_handoff_manifest.json"
     patch_handoff_manifest_path.write_text(
@@ -1081,6 +1249,11 @@ def prepare_patch_handoff(
         "selected_patches_path": str(selected_patches_path),
         "patch_mask_requirements_path": str(patch_mask_requirements_path),
         "patch_split_manifest_path": str(split_manifest_out_path),
+        "patch_id_filter_path": (
+            str(out_dir_path / patch_id_filter_handoff_rel)
+            if patch_id_filter_handoff_rel
+            else ""
+        ),
     }
 
 
@@ -1391,6 +1564,68 @@ def verify_patch_handoff(
         schema_errors.append(
             "[SCHEMA] patch_split_manifest_sha256 mismatch for patch_split_manifest.json"
         )
+    filter_path_raw = str(manifest.get("patch_id_filter_path", "")).strip()
+    if filter_path_raw:
+        filter_path = (
+            Path(filter_path_raw)
+            if Path(filter_path_raw).is_absolute()
+            else (handoff_dir_path / filter_path_raw).resolve()
+        )
+        if not filter_path.exists():
+            schema_errors.append(f"[SCHEMA] missing file: {filter_path}")
+        else:
+            actual_filter_sha = _sha256(filter_path)
+            recorded_filter_sha = str(
+                manifest.get("patch_id_filter_sha256", "")
+            ).strip()
+            if not recorded_filter_sha:
+                schema_errors.append(
+                    "[SCHEMA] patch_id_filter_sha256 missing for patch-id filter file"
+                )
+            elif recorded_filter_sha != actual_filter_sha:
+                schema_errors.append(
+                    "[SCHEMA] patch_id_filter_sha256 mismatch for patch-id filter file"
+                )
+            try:
+                filter_values = _load_patch_id_filter_file(filter_path)
+            except Exception as exc:
+                schema_errors.append(
+                    f"[SCHEMA] failed to read patch-id filter file: {exc}"
+                )
+                filter_values = []
+            if not filter_values:
+                schema_errors.append(
+                    f"[SCHEMA] patch-id filter file is empty: {filter_path}"
+                )
+            recorded_filter_count_raw = manifest.get("patch_id_filter_count")
+            if (
+                recorded_filter_count_raw is None
+                or str(recorded_filter_count_raw).strip() == ""
+            ):
+                schema_errors.append(
+                    "[SCHEMA] patch_id_filter_count missing for patch-id filter file"
+                )
+            else:
+                try:
+                    if isinstance(recorded_filter_count_raw, bool):
+                        raise ValueError("boolean is not a valid integer count")
+                    recorded_filter_count = int(recorded_filter_count_raw)
+                    if (
+                        isinstance(recorded_filter_count_raw, float)
+                        and not float(recorded_filter_count_raw).is_integer()
+                    ):
+                        raise ValueError("non-integral float")
+                except Exception:
+                    schema_errors.append(
+                        "[SCHEMA] patch_id_filter_count in patch_handoff_manifest.json is not an integer"
+                    )
+                else:
+                    actual_filter_count = len(filter_values)
+                    if recorded_filter_count != actual_filter_count:
+                        schema_errors.append(
+                            "[SCHEMA] patch_id_filter_count mismatch for patch-id filter file: "
+                            f"manifest={recorded_filter_count}, normalized_filter={actual_filter_count}"
+                        )
 
     try:
         split_manifest = json.loads(split_manifest_path.read_text(encoding="utf-8"))
@@ -1668,6 +1903,7 @@ def _build_parser() -> argparse.ArgumentParser:
     prepare_patches.add_argument("--out", required=True)
     prepare_patches.add_argument("--patch-manifest-csv", default="")
     prepare_patches.add_argument("--patch-split-manifest", default="")
+    prepare_patches.add_argument("--patch-id-file", default="")
     prepare_patches.add_argument("--images-dir", default=DEFAULT_IMAGES_DIR)
     prepare_patches.add_argument("--tile-exclusion-policy", default=DEFAULT_TILE_POLICY)
     prepare_patches.add_argument("--repo-root", default=str(_repo_root()))
@@ -1706,6 +1942,7 @@ def main(argv: list[str] | None = None) -> int:
                 out_dir=ns.out,
                 patch_manifest_csv=ns.patch_manifest_csv,
                 patch_split_manifest=ns.patch_split_manifest,
+                patch_id_file=ns.patch_id_file,
                 images_dir=ns.images_dir,
                 tile_exclusion_policy=ns.tile_exclusion_policy,
                 repo_root=ns.repo_root,

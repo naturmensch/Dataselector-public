@@ -890,6 +890,7 @@ def _run_phase5_annotation_handoffs(
     handoff_root: str | Path,
     patches_per_tile: int,
     patch_include_case: bool,
+    patch_id_file: str | Path | None,
     tile_exclusion_policy: Path | None,
 ) -> dict[str, Any]:
     handoff_root_path = _resolve_handoff_root(handoff_root)
@@ -925,6 +926,7 @@ def _run_phase5_annotation_handoffs(
     patch_prepare = prepare_patch_handoff(
         run_dir=output_dir,
         out_dir=patch_handoff_dir,
+        patch_id_file=patch_id_file,
         repo_root=_repo_root(),
         tile_exclusion_policy=tile_exclusion_policy
         or "config/tile_exclusion_policy.yaml",
@@ -970,6 +972,7 @@ def _run_phase5_annotation_handoffs(
             patch_handoff_dir / "patch_handoff_manifest.json"
         ),
         "patch_handoff_selection_count": patch_prepare.get("selection_count"),
+        "patch_id_filter_path": patch_prepare.get("patch_id_filter_path", ""),
         "patch_handoff_verify": patch_verify,
         "phase5_freeze_boundary_verified": True,
         "phase5_freeze_boundary_hashes": pre_hashes,
@@ -1012,6 +1015,7 @@ def run_thesis_pipeline(
     build_handoffs: bool = False,
     patches_per_tile: int = 2,
     patch_include_case: bool = False,
+    patch_id_file: str | Path | None = None,
     handoff_root: str = "handoff",
 ) -> bool:
     """
@@ -1048,6 +1052,7 @@ def run_thesis_pipeline(
         build_handoffs: Enable optional post-freeze Phase 5 handoff bundle
         patches_per_tile: Annotation-plan patches per selected tile for Phase 5
         patch_include_case: Include case tiles in the Phase 5 patch plan/handoff
+        patch_id_file: Optional plain-text patch-id allowlist for a filtered Phase-5 patch handoff
         handoff_root: Root directory for tile/patch handoff bundles
 
     Returns:
@@ -1096,6 +1101,17 @@ def run_thesis_pipeline(
     )
     patch_include_case_flag = _parse_bool(
         patch_include_case, label="patch_include_case"
+    )
+    patch_id_file_resolved = (
+        str(
+            (
+                Path(str(patch_id_file))
+                if Path(str(patch_id_file)).is_absolute()
+                else (_repo_root() / Path(str(patch_id_file)))
+            ).resolve()
+        )
+        if patch_id_file is not None and str(patch_id_file).strip()
+        else ""
     )
     handoff_root_resolved = str(_resolve_handoff_root(handoff_root))
     if tile_policy_path is not None:
@@ -2128,6 +2144,7 @@ def run_thesis_pipeline(
         "patches_per_tile": int(patches_per_tile_resolved),
         "patch_include_case": bool(patch_include_case_flag),
         "patch_selection_group": "final" if patch_include_case_flag else "core",
+        "patch_id_filter_path": patch_id_file_resolved,
         "annotation_plan_dir": None,
         "annotation_dataset_contract_path": None,
         "tile_handoff_dir": None,
@@ -2612,6 +2629,7 @@ def run_thesis_pipeline(
                         handoff_root=handoff_root_resolved,
                         patches_per_tile=patches_per_tile_resolved,
                         patch_include_case=patch_include_case_flag,
+                        patch_id_file=patch_id_file_resolved or None,
                         tile_exclusion_policy=tile_policy_path,
                     )
                 )
@@ -3051,6 +3069,11 @@ def run_thesis_pipeline(
             "choices": ["true", "false"],
             "help": "Include case tiles in the integrated patch plan/handoff",
         },
+        "patch_id_file": {
+            "type": str,
+            "default": "",
+            "help": "Optional plain-text patch-id allowlist for a filtered Phase-5 patch handoff",
+        },
         "handoff_root": {
             "type": str,
             "default": "handoff",
@@ -3093,6 +3116,7 @@ def main(
     build_handoffs: bool = False,
     patches_per_tile: int = 2,
     patch_include_case: str = "false",
+    patch_id_file: str = "",
     handoff_root: str = "handoff",
 ) -> int:
     """CLI entry point for thesis pipeline."""
@@ -3151,6 +3175,7 @@ def main(
             patch_include_case,
             label="patch_include_case",
         ),
+        patch_id_file=patch_id_file or None,
         handoff_root=handoff_root,
     )
     return 0 if success else 1

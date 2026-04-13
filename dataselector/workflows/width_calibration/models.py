@@ -27,6 +27,8 @@ SUMMARY_FILENAME = "width_calibration_summary.csv"
 SUMMARY_JSON_FILENAME = "width_calibration_summary.json"
 SENSITIVITY_FILENAME = "width_calibration_sensitivity.csv"
 SENSITIVITY_OVERLAY_DIRNAME = "width_calibration_sensitivity_overlays"
+DEBUG_MASK_MANIFEST_FILENAME = "width_calibration_debug_mask_manifest.json"
+MERGED_ROADS_MANIFEST_FILENAME = "phase5_roads_merged.sources.json"
 ARCHIVE_TIMESTAMP_FORMAT = "%Y%m%dT%H%M%SZ"
 TASK_COLUMNS = [
     "task_id",
@@ -395,7 +397,9 @@ def utc_now() -> str:
 
 def write_json(path: Path, payload: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(dict(payload), indent=2, ensure_ascii=True), encoding="utf-8")
+    path.write_text(
+        json.dumps(dict(payload), indent=2, ensure_ascii=True), encoding="utf-8"
+    )
 
 
 def resolve_path(
@@ -444,13 +448,17 @@ def require_columns(df: pd.DataFrame, required: list[str], label: str) -> None:
 
 
 def is_hamburg_patch(patch_id: str, tile_shortname: str) -> bool:
-    return str(patch_id).startswith(f"{HAMBURG_TILE}_") or str(tile_shortname) == HAMBURG_TILE
+    return (
+        str(patch_id).startswith(f"{HAMBURG_TILE}_")
+        or str(tile_shortname) == HAMBURG_TILE
+    )
 
 
 __all__ = [
     "ARCHIVE_TIMESTAMP_FORMAT",
     "AUDIT_RARE_CLASSES",
     "COMMON_CLASS_QUOTAS",
+    "DEBUG_MASK_MANIFEST_FILENAME",
     "DEFAULT_DISPLAY_CROP_FACTOR",
     "DEFAULT_DISPLAY_SCALE",
     "EligibilityParameters",
@@ -460,6 +468,7 @@ __all__ = [
     "MANIFEST_FILENAME",
     "MEASUREMENTS_FILENAME",
     "MEASUREMENT_COLUMNS",
+    "MERGED_ROADS_MANIFEST_FILENAME",
     "MID_CLASS_QUOTAS",
     "PatchContext",
     "REJECTION_REASONS",

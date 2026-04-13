@@ -176,6 +176,7 @@ def test_multicriteria_fit_guard_raises_on_mismatch(monkeypatch):
     with pytest.raises(ValueError, match=r"Feature rows .* != metadata rows .*"):
         mc.fit(X)
 
+
 if __name__ == "__main__":
     # run tests locally for debugging convenience
     import pytest

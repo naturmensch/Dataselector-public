@@ -12,11 +12,11 @@ from .models import (
     DEFAULT_DISPLAY_SCALE,
     LEGACY_MEASUREMENT_REQUIRED_COLUMNS,
     LEGACY_TASK_REQUIRED_COLUMNS,
-    MEASUREMENTS_FILENAME,
     MEASUREMENT_COLUMNS,
-    MeasurementRecord,
+    MEASUREMENTS_FILENAME,
     REJECTION_REASONS,
     TASK_COLUMNS,
+    MeasurementRecord,
     TaskRecord,
     normalize_source_fid,
     repo_root,
@@ -35,21 +35,32 @@ def load_tasks_csv(path: Path) -> pd.DataFrame:
     if "source_fid" not in df.columns:
         df["source_fid"] = ""
     df["source_fid"] = df["source_fid"].map(normalize_source_fid)
-    missing_fid = (
-        df["source_fid"].astype(str).str.strip().eq("")
-        & df["source_feature_id"].astype(str).str.strip().ne("")
-    )
+    missing_fid = df["source_fid"].astype(str).str.strip().eq("") & df[
+        "source_feature_id"
+    ].astype(str).str.strip().ne("")
     if missing_fid.any():
-        lookup = source_fid_lookup_from_roads(default_roads_gpkg_path(repo_root_path=repo_root()))
+        lookup = source_fid_lookup_from_roads(
+            default_roads_gpkg_path(repo_root_path=repo_root())
+        )
         if lookup:
-            df.loc[missing_fid, "source_fid"] = df.loc[missing_fid, "source_feature_id"].map(
-                lambda value: lookup.get(str(value).strip(), "")
-            )
-    for col in ("class", "anchor_x_px", "anchor_y_px", "crop_size_px", "queue_position"):
+            df.loc[missing_fid, "source_fid"] = df.loc[
+                missing_fid, "source_feature_id"
+            ].map(lambda value: lookup.get(str(value).strip(), ""))
+    for col in (
+        "class",
+        "anchor_x_px",
+        "anchor_y_px",
+        "crop_size_px",
+        "queue_position",
+    ):
         df[col] = pd.to_numeric(df[col], errors="raise").astype(int)
     pass_order = {"primary": 0, "repeat": 1}
-    df["_pass_order"] = df["pass_type"].astype(str).map(pass_order).fillna(99).astype(int)
-    df = df.sort_values(["_pass_order", "class", "queue_position", "task_id"], kind="stable").reset_index(drop=True)
+    df["_pass_order"] = (
+        df["pass_type"].astype(str).map(pass_order).fillna(99).astype(int)
+    )
+    df = df.sort_values(
+        ["_pass_order", "class", "queue_position", "task_id"], kind="stable"
+    ).reset_index(drop=True)
     return df.drop(columns=["_pass_order"])[TASK_COLUMNS].copy()
 
 
@@ -131,7 +142,9 @@ class WidthCalibrationSession:
     def __init__(self, *, tasks_df: pd.DataFrame, measurements_path: Path):
         self.tasks_df = tasks_df.reset_index(drop=True).copy()
         self.measurements_path = measurements_path
-        self._tasks = [TaskRecord.from_mapping(row) for row in self.tasks_df.to_dict("records")]
+        self._tasks = [
+            TaskRecord.from_mapping(row) for row in self.tasks_df.to_dict("records")
+        ]
         self._task_index = {task.task_id: task for task in self._tasks}
         self._deferred_task_ids: list[str] = []
         self._priority_task_id: str | None = None
@@ -148,7 +161,9 @@ class WidthCalibrationSession:
         for task in self._tasks:
             if task.task_id in completed:
                 continue
-            if task.pass_type == "repeat" and not keep_map.get(task.repeat_of_task_id, False):
+            if task.pass_type == "repeat" and not keep_map.get(
+                task.repeat_of_task_id, False
+            ):
                 continue
             if task.task_id in self._deferred_task_ids:
                 deferred.append(task.task_id)
@@ -156,7 +171,9 @@ class WidthCalibrationSession:
                 regular.append(task.task_id)
         ordered = regular + [task_id for task_id in deferred if task_id not in regular]
         if self._priority_task_id and self._priority_task_id in ordered:
-            ordered = [self._priority_task_id] + [task_id for task_id in ordered if task_id != self._priority_task_id]
+            ordered = [self._priority_task_id] + [
+                task_id for task_id in ordered if task_id != self._priority_task_id
+            ]
         return ordered
 
     def next_task(self) -> TaskRecord | None:
@@ -180,7 +197,11 @@ class WidthCalibrationSession:
         note: str = "",
     ) -> dict[str, Any]:
         task = self._task_index[str(task_id)]
-        width_px = float(np.hypot(float(click1[0]) - float(click2[0]), float(click1[1]) - float(click2[1])))
+        width_px = float(
+            np.hypot(
+                float(click1[0]) - float(click2[0]), float(click1[1]) - float(click2[1])
+            )
+        )
         row = MeasurementRecord(
             task_id=task.task_id,
             candidate_id=task.candidate_id,
@@ -205,11 +226,15 @@ class WidthCalibrationSession:
         )
         append_measurement_row(self.measurements_path, row)
         self.reload()
-        self._deferred_task_ids = [item for item in self._deferred_task_ids if item != str(task_id)]
+        self._deferred_task_ids = [
+            item for item in self._deferred_task_ids if item != str(task_id)
+        ]
         self._priority_task_id = None
         return row.to_row()
 
-    def record_reject(self, task_id: str, *, reject_reason: str, note: str = "") -> dict[str, Any]:
+    def record_reject(
+        self, task_id: str, *, reject_reason: str, note: str = ""
+    ) -> dict[str, Any]:
         if reject_reason not in REJECTION_REASONS:
             raise ValueError(f"Unsupported reject reason: {reject_reason!r}")
         task = self._task_index[str(task_id)]
@@ -237,7 +262,9 @@ class WidthCalibrationSession:
         )
         append_measurement_row(self.measurements_path, row)
         self.reload()
-        self._deferred_task_ids = [item for item in self._deferred_task_ids if item != str(task_id)]
+        self._deferred_task_ids = [
+            item for item in self._deferred_task_ids if item != str(task_id)
+        ]
         self._priority_task_id = None
         return row.to_row()
 
@@ -273,9 +300,15 @@ def measure_width_calibration(
     from .viewer_qt import InteractiveMeasurementViewer
 
     repo_root_path = repo_root()
-    handoff_dir_path = resolve_path(handoff_dir, repo_root_path=repo_root_path, prefer_repo=True).resolve()
-    tasks_csv_path = resolve_path(tasks_csv, repo_root_path=repo_root_path, prefer_repo=True).resolve()
-    out_csv_path = resolve_path(out_csv, repo_root_path=repo_root_path, prefer_repo=False).resolve()
+    handoff_dir_path = resolve_path(
+        handoff_dir, repo_root_path=repo_root_path, prefer_repo=True
+    ).resolve()
+    tasks_csv_path = resolve_path(
+        tasks_csv, repo_root_path=repo_root_path, prefer_repo=True
+    ).resolve()
+    out_csv_path = resolve_path(
+        out_csv, repo_root_path=repo_root_path, prefer_repo=False
+    ).resolve()
     if out_csv_path.exists() and not bool(resume):
         raise FileExistsError(
             f"Measurement CSV already exists. Use --resume to continue: {out_csv_path}"

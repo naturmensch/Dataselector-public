@@ -33,7 +33,18 @@ import pytest
         ("dataselector.workflows.width_calibration", "prepare_width_calibration"),
         ("dataselector.workflows.width_calibration", "measure_width_calibration"),
         ("dataselector.workflows.width_calibration", "summarize_width_calibration"),
-        ("dataselector.workflows.width_calibration", "audit_width_calibration_sensitivity"),
+        (
+            "dataselector.workflows.width_calibration",
+            "audit_width_calibration_sensitivity",
+        ),
+        (
+            "dataselector.workflows.width_calibration",
+            "build_width_calibration_roads_source",
+        ),
+        (
+            "dataselector.workflows.width_calibration",
+            "render_width_calibration_debug_masks",
+        ),
     ],
 )
 def test_workflow_module_import_sanity(module_name: str, symbol: str):

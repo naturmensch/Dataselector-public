@@ -42,7 +42,7 @@ import dataselector.workflows.thesis_pipeline
 import dataselector.workflows.thesis_sampler_suite
 import dataselector.workflows.tune_weights
 import dataselector.workflows.validation
-import dataselector.workflows.width_calibration
+import dataselector.workflows.width_calibration  # noqa: F401
 
 # Import decorator infrastructure
 from dataselector.cli_decorators import (

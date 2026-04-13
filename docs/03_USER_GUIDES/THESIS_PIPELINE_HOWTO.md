@@ -166,7 +166,8 @@ Flag semantics:
 10. `--build-handoffs` runs the optional post-freeze packaging bundle (tile handoff, annotation plan, patch handoff). Default: `false`.
 11. `--patches-per-tile` controls integrated patch-plan density when `--build-handoffs` is enabled.
 12. `--patch-include-case true|false` controls whether patch packaging uses the final core+case set or only the core set. Default: `false` (`core-only`).
-13. `--handoff-root` changes the root output directory for integrated handoff bundles (default: `handoff`).
+13. `--patch-id-file` optionally limits the integrated Phase-5 patch handoff to an explicit plain-text `patch_id` subset while preserving filter provenance.
+14. `--handoff-root` changes the root output directory for integrated handoff bundles (default: `handoff`).
 
 ### 4.0.1.0 Optional Phase 5: Annotation Plan + Handoff Bundle
 
@@ -178,7 +179,8 @@ micromamba run -n dataselector python -m dataselector thesis-orchestrate \
   --output-dir outputs/runs/thesis_orchestrated_$(date -u +%Y%m%dT%H%M%SZ) \
   --build-handoffs \
   --patches-per-tile 2 \
-  --patch-include-case false
+  --patch-include-case false \
+  --patch-id-file config/patch_filters/<subset>.txt
 ```
 
 Scientific boundary:
@@ -187,6 +189,10 @@ Scientific boundary:
 2. Default integrated patch scope is `core-only`.
 3. Snapshot and `selection_*` artifacts remain the authoritative frozen dataset.
 4. If Phase 5 fails, the run fails operationally, but the scientific freeze boundary must remain unchanged.
+
+The same integrated filter surface is available on
+`micromamba run -n dataselector python -m dataselector thesis-pipeline ... --build-handoffs --patch-id-file config/patch_filters/<subset>.txt`
+when you build the optional Phase-5 handoffs from the direct pipeline CLI.
 
 ### 4.0.1.2 Global n_samples Corridor Policy (Core)
 
@@ -706,11 +712,18 @@ empfohlene Flow:
 ```bash
 bash scripts/handoff_check.sh prepare-patches \
   --run-dir outputs/runs/<run_id> \
-  --out handoff/<selection_id>
+  --out handoff/<selection_id> \
+  --patch-id-file config/patch_filters/<subset>.txt
 
 bash scripts/handoff_check.sh verify-patches \
   --handoff-dir handoff/<selection_id>
 ```
+
+`--patch-id-file` is optional. If omitted, the full `qc_passed` patch set is
+packaged. If provided, the prepared handoff copies the filter file into the
+handoff, records filter provenance in `patch_handoff_manifest.json`, and writes
+a filtered `patch_split_manifest.json` for exactly the selected `patch_id`
+subset.
 
 `verify-patches` prüft:
 
@@ -799,3 +812,12 @@ bash scripts/setup/handoff_check.sh materialize \
 ```
 
 Erst nach grünem `verify-local` + `verify-server` Training/Splits starten.
+
+Technische Debug-/Smoke-Option:
+
+1. `render-width-calibration-debug-masks` kann für einen bestehenden Phase-5-Handoff
+   binäre Patch-Masken mit fester Breite rendern.
+2. Dieser Pfad ist ausschließlich für technische Validierung und einen minimalen
+   Trainings-Smoke gedacht.
+3. Er ersetzt weder die wissenschaftliche Width Calibration noch finale
+   Thesis-Masken.
