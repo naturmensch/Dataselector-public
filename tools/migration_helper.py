@@ -103,7 +103,7 @@ def generate_decorator(
     decorator_lines = [
         "@cli_command(",
         f'    "{command_name}",',
-        f'    help="{help_text or "TODO: Add help text"}",',
+        f'    help="{help_text or "Generated command (see function docstring for details)"}",',
         "    args={",
     ]
 

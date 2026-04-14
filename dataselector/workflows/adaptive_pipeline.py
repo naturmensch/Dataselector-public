@@ -15,10 +15,12 @@ Author: Phase 3R Migration
 from __future__ import annotations
 
 import os
+import shlex
 import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Sequence
 
 from dataselector.cli_decorators import cli_command
 
@@ -80,18 +82,34 @@ def _resolve_optuna_n_samples(
     )
 
 
-def run_cmd(cmd: str) -> None:
-    """Execute a shell command, printing output; do not fail on nonzero exit."""
-    print(f"🔧 Running: {cmd}")
-    subprocess.call(cmd, shell=True)
+def _normalize_cmd_argv(cmd: str | Sequence[str]) -> list[str]:
+    """Normalize command input to argv for shell-free subprocess execution."""
+    if isinstance(cmd, str):
+        argv = shlex.split(cmd)
+    else:
+        argv = [str(part) for part in cmd]
+    if not argv:
+        raise ValueError("Command must not be empty")
+    return argv
 
 
-def run_cmd_safe(cmd: str) -> None:
-    """Execute a shell command and fail fast on nonzero exit."""
-    print(f"🔧 Running (strict): {cmd}")
-    ret = subprocess.call(cmd, shell=True)
-    if ret != 0:
-        raise SystemExit(f"Command failed with exit code {ret}: {cmd}")
+def run_cmd(cmd: str | Sequence[str]) -> None:
+    """Execute a command, printing output; do not fail on nonzero exit."""
+    argv = _normalize_cmd_argv(cmd)
+    print(f"🔧 Running: {' '.join(argv)}")
+    subprocess.run(argv, check=False)
+
+
+def run_cmd_safe(cmd: str | Sequence[str]) -> None:
+    """Execute a command and fail fast on nonzero exit."""
+    argv = _normalize_cmd_argv(cmd)
+    print(f"🔧 Running (strict): {' '.join(argv)}")
+    try:
+        subprocess.run(argv, check=True)
+    except subprocess.CalledProcessError as exc:
+        raise SystemExit(
+            f"Command failed with exit code {exc.returncode}: {' '.join(argv)}"
+        ) from exc
 
 
 def run_adaptive_pipeline(
