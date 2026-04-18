@@ -1908,3 +1908,52 @@ def test_orchestrate_width_calibration_uses_default_measurements_path(
     expected_measurements_csv = str((out_dir / MEASUREMENTS_FILENAME).resolve())
     assert captured["out_csv"] == expected_measurements_csv
     assert result["measure"]["measurements_csv"] == expected_measurements_csv
+
+
+@pytest.mark.fast
+@pytest.mark.unit
+def test_orchestrate_width_calibration_accepts_custom_source_layers(tmp_path: Path):
+    env = _build_handoff(tmp_path)
+
+    cut_path = tmp_path / "cut_custom.gpkg"
+    tracer4_path = tmp_path / "tracer4_custom.gpkg"
+    tracer5_path = tmp_path / "tracer5_custom.gpkg"
+    out_dir = tmp_path / "orchestrated_output_custom_layers"
+
+    _write_named_roads_layer(
+        cut_path,
+        layer="cut_fixed_geometry_roads",
+        classes=[0, 3],
+        x_offset=0.0,
+    )
+    _write_named_roads_layer(
+        tracer4_path,
+        layer="4_fixed",
+        classes=[91],
+        x_offset=100.0,
+    )
+    _write_named_roads_layer(
+        tracer5_path,
+        layer="5_fixed",
+        classes=[92],
+        x_offset=200.0,
+    )
+
+    result = orchestrate_width_calibration(
+        cut_roads_gpkg=cut_path,
+        tracer4_gpkg=tracer4_path,
+        tracer5_gpkg=tracer5_path,
+        cut_roads_layer="cut_fixed_geometry_roads",
+        tracer4_layer="4_fixed",
+        tracer5_layer="5_fixed",
+        handoff_dir=env["handoff_dir"],
+        seed=42,
+        crop_size_px=128,
+        out_dir=out_dir,
+        skip_measure=True,
+        repo_root_path=tmp_path,
+    )
+
+    assert result["policy"]["tracer4_layer"] == "4_fixed"
+    assert result["policy"]["tracer5_layer"] == "5_fixed"
+    assert Path(result["prepare"]["tasks_csv"]).exists()

@@ -804,6 +804,9 @@ def orchestrate_width_calibration(
     cut_roads_gpkg: str | Path,
     tracer4_gpkg: str | Path,
     tracer5_gpkg: str | Path,
+    cut_roads_layer: str = "cut_fixed_geometry_roads",
+    tracer4_layer: str = "4_roads_tracer_patches",
+    tracer5_layer: str = "5_roads_tracer_patches",
     handoff_dir: str | Path,
     seed: int,
     crop_size_px: int,
@@ -829,6 +832,9 @@ def orchestrate_width_calibration(
         cut_roads_gpkg: Path to classified cut roads GeoPackage
         tracer4_gpkg: Path to class-4 tracer GeoPackage
         tracer5_gpkg: Path to class-5 tracer GeoPackage
+        cut_roads_layer: Layer name inside cut_roads_gpkg
+        tracer4_layer: Layer name inside tracer4_gpkg
+        tracer5_layer: Layer name inside tracer5_gpkg
         handoff_dir: Path to Phase-5 handoff directory
         seed: Random seed for deterministic task generation
         crop_size_px: Crop size for interactive measurement
@@ -888,9 +894,9 @@ def orchestrate_width_calibration(
         tracer4_gpkg=snapshot_result["snapshot_tracer4_gpkg"],
         tracer5_gpkg=snapshot_result["snapshot_tracer5_gpkg"],
         dest_gpkg=None,  # Use default path
-        cut_roads_layer="cut_fixed_geometry_roads",
-        tracer4_layer="4_roads_tracer_patches",
-        tracer5_layer="5_roads_tracer_patches",
+        cut_roads_layer=str(cut_roads_layer),
+        tracer4_layer=str(tracer4_layer),
+        tracer5_layer=str(tracer5_layer),
         dest_layer="phase5_roads_merged",
     )
     
@@ -944,6 +950,9 @@ def orchestrate_width_calibration(
             "repeat_min_per_class": int(repeat_min_per_class),
             "seed": int(seed),
             "crop_size_px": int(crop_size_px),
+            "cut_roads_layer": str(cut_roads_layer),
+            "tracer4_layer": str(tracer4_layer),
+            "tracer5_layer": str(tracer5_layer),
         },
     }
     if measure_result is not None:
