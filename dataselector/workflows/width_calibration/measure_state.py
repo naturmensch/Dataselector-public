@@ -6,6 +6,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import rasterio
 
 from .models import (
     DEFAULT_DISPLAY_CROP_FACTOR,
@@ -138,17 +139,59 @@ def measurement_keep_map(measurements_df: pd.DataFrame) -> dict[str, bool]:
     return out
 
 
+def _meters_per_linear_unit(linear_unit: str) -> float | None:
+    unit = str(linear_unit).strip().lower()
+    if not unit:
+        return None
+    if "metre" in unit or "meter" in unit:
+        return 1.0
+    if "foot" in unit or unit == "ft":
+        return 0.3048
+    return None
+
+
 class WidthCalibrationSession:
-    def __init__(self, *, tasks_df: pd.DataFrame, measurements_path: Path):
+    def __init__(self, *, tasks_df: pd.DataFrame, measurements_path: Path, handoff_dir: Path):
         self.tasks_df = tasks_df.reset_index(drop=True).copy()
         self.measurements_path = measurements_path
+        self.handoff_dir = handoff_dir
         self._tasks = [
             TaskRecord.from_mapping(row) for row in self.tasks_df.to_dict("records")
         ]
         self._task_index = {task.task_id: task for task in self._tasks}
         self._deferred_task_ids: list[str] = []
         self._priority_task_id: str | None = None
+        self._quicklook_metric_cache: dict[str, tuple[Any, Any, str, int]] = {}
         self.reload()
+
+    def _metric_context_for_task(self, task: TaskRecord) -> tuple[Any, Any, str, int]:
+        rel_path = str(task.quicklook_path).strip()
+        if rel_path in self._quicklook_metric_cache:
+            return self._quicklook_metric_cache[rel_path]
+        quicklook_path = (self.handoff_dir / rel_path).resolve()
+        pixel_size_x_m: Any = ""
+        pixel_size_y_m: Any = ""
+        crs_linear_unit = ""
+        metric_valid = 0
+        try:
+            with rasterio.open(quicklook_path) as ds:
+                res_x = float(abs(ds.res[0]))
+                res_y = float(abs(ds.res[1]))
+                crs = ds.crs
+                linear_unit = str(getattr(crs, "linear_units", "") or "")
+                meters_per_unit = _meters_per_linear_unit(linear_unit)
+                if meters_per_unit is not None:
+                    pixel_size_x_m = round(res_x * meters_per_unit, 6)
+                    pixel_size_y_m = round(res_y * meters_per_unit, 6)
+                    crs_linear_unit = linear_unit
+                    metric_valid = 1
+                else:
+                    crs_linear_unit = linear_unit
+        except Exception:
+            pass
+        context = (pixel_size_x_m, pixel_size_y_m, crs_linear_unit, metric_valid)
+        self._quicklook_metric_cache[rel_path] = context
+        return context
 
     def reload(self) -> None:
         self.measurements_df = load_measurements_csv(self.measurements_path)
@@ -202,6 +245,22 @@ class WidthCalibrationSession:
                 float(click1[0]) - float(click2[0]), float(click1[1]) - float(click2[1])
             )
         )
+        pixel_size_x_m, pixel_size_y_m, crs_linear_unit, metric_valid = (
+            self._metric_context_for_task(task)
+        )
+        width_m: Any = ""
+        if metric_valid:
+            dx_px = float(click1[0]) - float(click2[0])
+            dy_px = float(click1[1]) - float(click2[1])
+            width_m = round(
+                float(
+                    np.hypot(
+                        dx_px * float(pixel_size_x_m),
+                        dy_px * float(pixel_size_y_m),
+                    )
+                ),
+                6,
+            )
         row = MeasurementRecord(
             task_id=task.task_id,
             candidate_id=task.candidate_id,
@@ -220,6 +279,11 @@ class WidthCalibrationSession:
             click2_x_px=round(float(click2[0]), 6),
             click2_y_px=round(float(click2[1]), 6),
             width_px=round(width_px, 6),
+            width_m=width_m,
+            pixel_size_x_m=pixel_size_x_m,
+            pixel_size_y_m=pixel_size_y_m,
+            crs_linear_unit=crs_linear_unit,
+            metric_valid=metric_valid,
             keep=1,
             reject_reason="",
             note=str(note).strip(),
@@ -256,6 +320,11 @@ class WidthCalibrationSession:
             click2_x_px="",
             click2_y_px="",
             width_px="",
+            width_m="",
+            pixel_size_x_m="",
+            pixel_size_y_m="",
+            crs_linear_unit="",
+            metric_valid=0,
             keep=0,
             reject_reason=reject_reason,
             note=str(note).strip(),
@@ -319,7 +388,11 @@ def measure_width_calibration(
         prompt_for_sync=prompt_for_sync,
     )
     tasks_df = load_tasks_csv(tasks_csv_path)
-    session = WidthCalibrationSession(tasks_df=tasks_df, measurements_path=out_csv_path)
+    session = WidthCalibrationSession(
+        tasks_df=tasks_df,
+        measurements_path=out_csv_path,
+        handoff_dir=handoff_dir_path,
+    )
     viewer = InteractiveMeasurementViewer(
         handoff_dir=handoff_dir_path,
         session=session,

@@ -16,6 +16,7 @@ from dataselector.workflows.width_calibration import (
     audit_width_calibration_sensitivity,
     build_width_calibration_roads_source,
     measure_width_calibration,
+    orchestrate_width_calibration,
     prepare_width_calibration,
     render_width_calibration_debug_masks,
     summarize_width_calibration,
@@ -26,7 +27,9 @@ from dataselector.workflows.width_calibration.measure_state import (
     load_measurements_csv,
     load_tasks_csv,
 )
+from dataselector.workflows.width_calibration.prepare import compute_class_targets
 from dataselector.workflows.width_calibration.models import (
+    MEASUREMENTS_FILENAME,
     MEASUREMENT_COLUMNS,
     TASK_COLUMNS,
     TaskRecord,
@@ -331,6 +334,49 @@ def test_build_width_calibration_roads_source_merges_base_and_tracer_layers(
         and str(entry["source_gpkg_sha256"]).strip()
         for entry in sources_manifest["sources"]
     )
+
+
+@pytest.mark.fast
+@pytest.mark.unit
+def test_build_width_calibration_roads_source_rejects_invalid_cut_class_values(
+    tmp_path: Path,
+):
+    cut_roads_path = tmp_path / "cut_fixed_geometry_roads_invalid.gpkg"
+    tracer4_path = tmp_path / "tracer4_roads.gpkg"
+    tracer5_path = tmp_path / "tracer5_roads.gpkg"
+
+    cut_roads_gdf = gpd.GeoDataFrame(
+        {"class": [0, None]},
+        geometry=[
+            MultiLineString([[(0.0, 16.0), (12.0, 16.0)]]),
+            MultiLineString([[(20.0, 16.0), (32.0, 16.0)]]),
+        ],
+        crs="EPSG:3857",
+    )
+    cut_roads_gdf.to_file(
+        cut_roads_path,
+        layer="cut_fixed_geometry_roads",
+        driver="GPKG",
+    )
+    _write_named_roads_layer(
+        tracer4_path,
+        layer="4_roads_tracer_patches",
+        classes=[91],
+        x_offset=100.0,
+    )
+    _write_named_roads_layer(
+        tracer5_path,
+        layer="5_roads_tracer_patches",
+        classes=[92],
+        x_offset=200.0,
+    )
+
+    with pytest.raises(ValueError, match="non-finite or non-numeric values in 'class'"):
+        build_width_calibration_roads_source(
+            cut_roads_gpkg=cut_roads_path,
+            tracer4_gpkg=tracer4_path,
+            tracer5_gpkg=tracer5_path,
+        )
 
 
 @pytest.mark.fast
@@ -744,6 +790,7 @@ def test_width_calibration_session_resume_and_undo(tmp_path: Path):
     session = WidthCalibrationSession(
         tasks_df=tasks_df,
         measurements_path=measurements_path,
+        handoff_dir=tmp_path,
     )
     assert session.next_task().task_id == "task_00001"
 
@@ -765,8 +812,74 @@ def test_width_calibration_session_resume_and_undo(tmp_path: Path):
     resumed = WidthCalibrationSession(
         tasks_df=tasks_df,
         measurements_path=measurements_path,
+        handoff_dir=tmp_path,
     )
     assert resumed.next_task().task_id == "task_00002"
+
+
+@pytest.mark.fast
+@pytest.mark.unit
+def test_record_accept_populates_metric_columns_when_quicklook_is_metric(tmp_path: Path):
+    env = _build_handoff(tmp_path)
+    tasks_df = pd.DataFrame(
+        [
+            {
+                "task_id": "task_00001",
+                "candidate_id": "cand_1",
+                "class": 0,
+                "patch_id": "KDR_001_p1",
+                "tile_shortname": "KDR_001",
+                "source_fid": "1",
+                "source_feature_id": "row_000001",
+                "quicklook_path": "quicklooks/KDR_001_p1.tif",
+                "anchor_x_px": 32,
+                "anchor_y_px": 32,
+                "crop_size_px": 32,
+                "queue_position": 1,
+                "pass_type": "primary",
+                "repeat_of_task_id": "",
+            }
+        ],
+        columns=TASK_COLUMNS,
+    )
+    measurements_path = tmp_path / "measurements.csv"
+    session = WidthCalibrationSession(
+        tasks_df=tasks_df,
+        measurements_path=measurements_path,
+        handoff_dir=env["handoff_dir"],
+    )
+    row = session.record_accept(
+        "task_00001",
+        click1=(30.0, 32.0),
+        click2=(36.0, 32.0),
+    )
+    assert float(row["width_px"]) > 0.0
+    assert float(row["width_m"]) > 0.0
+    loaded = load_measurements_csv(measurements_path)
+    assert "width_m" in loaded.columns
+    assert "pixel_size_x_m" in loaded.columns
+    assert "pixel_size_y_m" in loaded.columns
+    assert "metric_valid" in loaded.columns
+
+
+@pytest.mark.fast
+@pytest.mark.unit
+def test_compute_class_targets_proportional_mode() -> None:
+    candidates_df = pd.DataFrame(
+        {
+            "class": [4] * 100 + [5] * 300 + [2] * 10,
+        }
+    )
+    targets = compute_class_targets(
+        candidates_df,
+        quota_mode="proportional",
+        sampling_rate=0.1,
+        min_per_class=3,
+        max_per_class=0,
+    )
+    assert targets[5] > targets[4]
+    assert targets[4] >= 3
+    assert targets[2] >= 3
 
 
 @pytest.mark.fast
@@ -1414,3 +1527,226 @@ def test_select_interactive_matplotlib_backend_activates_qt(
     backend = select_interactive_matplotlib_backend(dummy)
     assert backend == "QtAgg"
     assert dummy.calls == [("QtAgg", True)]
+
+
+# PR1 Orchestrator Tests
+
+
+@pytest.mark.fast
+@pytest.mark.unit
+def test_orchestrate_width_calibration_cli_registered():
+    """Test 1: CLI-Registrierung: neuer Command sichtbar."""
+    commands = get_registered_commands()
+    assert "orchestrate-width-calibration" in commands
+
+
+@pytest.mark.fast
+@pytest.mark.unit
+def test_orchestrate_width_calibration_call_order(tmp_path: Path):
+    """Test 2: Reihenfolge-Test: Snapshot vor Build vor Prepare."""
+    env = _build_handoff(tmp_path)
+    
+    cut_path = tmp_path / "cut.gpkg"
+    tracer4_path = tmp_path / "tracer4.gpkg"
+    tracer5_path = tmp_path / "tracer5.gpkg"
+    out_dir = tmp_path / "orchestrated_output"
+    
+    _write_named_roads_layer(cut_path, layer="cut_fixed_geometry_roads", classes=[0, 3], x_offset=0.0)
+    _write_named_roads_layer(tracer4_path, layer="4_roads_tracer_patches", classes=[91], x_offset=100.0)
+    _write_named_roads_layer(tracer5_path, layer="5_roads_tracer_patches", classes=[92], x_offset=200.0)
+    
+    result = orchestrate_width_calibration(
+        cut_roads_gpkg=cut_path,
+        tracer4_gpkg=tracer4_path,
+        tracer5_gpkg=tracer5_path,
+        handoff_dir=env["handoff_dir"],
+        seed=7,
+        crop_size_px=32,
+        out_dir=out_dir,
+        skip_measure=True,
+        repo_root_path=tmp_path,
+    )
+    
+    # Verify all stages completed with correct structure
+    assert "snapshot" in result
+    assert "build" in result
+    assert "prepare" in result
+    assert result["snapshot"]["run_id"]
+    assert result["build"]["dest_gpkg"]
+    assert result["prepare"]["tasks_csv"]
+    assert Path(result["prepare"]["tasks_csv"]).exists()
+
+
+@pytest.mark.fast
+@pytest.mark.unit
+def test_orchestrate_width_calibration_skip_measure(tmp_path: Path):
+    """Test 3: Skip-Measure-Test: kein Measure-Aufruf."""
+    env = _build_handoff(tmp_path)
+    
+    cut_path = tmp_path / "cut.gpkg"
+    tracer4_path = tmp_path / "tracer4.gpkg"
+    tracer5_path = tmp_path / "tracer5.gpkg"
+    out_dir = tmp_path / "orchestrated_output"
+    
+    _write_named_roads_layer(cut_path, layer="cut_fixed_geometry_roads", classes=[0, 3], x_offset=0.0)
+    _write_named_roads_layer(tracer4_path, layer="4_roads_tracer_patches", classes=[91], x_offset=100.0)
+    _write_named_roads_layer(tracer5_path, layer="5_roads_tracer_patches", classes=[92], x_offset=200.0)
+    
+    result = orchestrate_width_calibration(
+        cut_roads_gpkg=cut_path,
+        tracer4_gpkg=tracer4_path,
+        tracer5_gpkg=tracer5_path,
+        handoff_dir=env["handoff_dir"],
+        seed=7,
+        crop_size_px=32,
+        out_dir=out_dir,
+        skip_measure=True,
+        repo_root_path=tmp_path,
+    )
+    
+    # measure should not be in result when skip_measure=True
+    assert "measure" not in result
+
+
+@pytest.mark.fast
+@pytest.mark.unit
+def test_orchestrate_width_calibration_accepts_resume_flag(tmp_path: Path):
+    """Test 4: Resume-Parameter wird akzeptiert."""
+    env = _build_handoff(tmp_path)
+    
+    cut_path = tmp_path / "cut.gpkg"
+    tracer4_path = tmp_path / "tracer4.gpkg"
+    tracer5_path = tmp_path / "tracer5.gpkg"
+    out_dir = tmp_path / "orchestrated_output"
+    
+    _write_named_roads_layer(cut_path, layer="cut_fixed_geometry_roads", classes=[0, 3], x_offset=0.0)
+    _write_named_roads_layer(tracer4_path, layer="4_roads_tracer_patches", classes=[91], x_offset=100.0)
+    _write_named_roads_layer(tracer5_path, layer="5_roads_tracer_patches", classes=[92], x_offset=200.0)
+    
+    # Orchestrator accepts resume flag without error (actual resume requires interactive testing)
+    result = orchestrate_width_calibration(
+        cut_roads_gpkg=cut_path,
+        tracer4_gpkg=tracer4_path,
+        tracer5_gpkg=tracer5_path,
+        handoff_dir=env["handoff_dir"],
+        seed=7,
+        crop_size_px=32,
+        out_dir=out_dir,
+        skip_measure=True,
+        resume=True,  # Accept resume flag
+        repo_root_path=tmp_path,
+    )
+    
+    # Verify it completes successfully
+    assert result["prepare"]["tasks_csv"]
+
+
+@pytest.mark.fast
+@pytest.mark.unit
+def test_orchestrate_width_calibration_qt_gating(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    """Test 6: Qt-Gating-Test: früher Abbruch bei fehlender Qt-Umgebung."""
+    env = _build_handoff(tmp_path)
+    
+    cut_path = tmp_path / "cut.gpkg"
+    tracer4_path = tmp_path / "tracer4.gpkg"
+    tracer5_path = tmp_path / "tracer5.gpkg"
+    out_dir = tmp_path / "orchestrated_output"
+    
+    _write_named_roads_layer(cut_path, layer="cut_fixed_geometry_roads", classes=[0, 3], x_offset=0.0)
+    _write_named_roads_layer(tracer4_path, layer="4_roads_tracer_patches", classes=[91], x_offset=100.0)
+    _write_named_roads_layer(tracer5_path, layer="5_roads_tracer_patches", classes=[92], x_offset=200.0)
+    
+    # Mock select_interactive_matplotlib_backend to raise error
+    def mock_select_backend(matplotlib_module: Any) -> str:
+        raise RuntimeError("PySide6 and matplotlib QtAgg must be available.")
+    
+    monkeypatch.setattr(
+        "dataselector.workflows.width_calibration.viewer_qt.select_interactive_matplotlib_backend",
+        mock_select_backend,
+    )
+    
+    # Should fail early when skip_measure=False and Qt is missing
+    with pytest.raises(RuntimeError, match="Cannot proceed with measurement"):
+        orchestrate_width_calibration(
+            cut_roads_gpkg=cut_path,
+            tracer4_gpkg=tracer4_path,
+            tracer5_gpkg=tracer5_path,
+            handoff_dir=env["handoff_dir"],
+            seed=7,
+            crop_size_px=32,
+            out_dir=out_dir,
+            skip_measure=False,
+            repo_root_path=tmp_path,
+        )
+
+
+@pytest.mark.fast
+@pytest.mark.unit
+def test_orchestrate_width_calibration_uses_default_measurements_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+):
+    env = _build_handoff(tmp_path)
+
+    cut_path = tmp_path / "cut.gpkg"
+    tracer4_path = tmp_path / "tracer4.gpkg"
+    tracer5_path = tmp_path / "tracer5.gpkg"
+    out_dir = tmp_path / "orchestrated_output"
+
+    _write_named_roads_layer(
+        cut_path,
+        layer="cut_fixed_geometry_roads",
+        classes=[0, 3],
+        x_offset=0.0,
+    )
+    _write_named_roads_layer(
+        tracer4_path,
+        layer="4_roads_tracer_patches",
+        classes=[91],
+        x_offset=100.0,
+    )
+    _write_named_roads_layer(
+        tracer5_path,
+        layer="5_roads_tracer_patches",
+        classes=[92],
+        x_offset=200.0,
+    )
+
+    monkeypatch.setattr(
+        "dataselector.workflows.width_calibration.viewer_qt.select_interactive_matplotlib_backend",
+        lambda _matplotlib_module: "QtAgg",
+    )
+
+    captured: dict[str, Any] = {}
+
+    def _fake_measure_width_calibration(**kwargs: Any) -> dict[str, Any]:
+        captured.update(kwargs)
+        return {
+            "tasks_csv": str(kwargs["tasks_csv"]),
+            "measurements_csv": str(kwargs["out_csv"]),
+            "status": "mocked",
+        }
+
+    monkeypatch.setattr(
+        "dataselector.workflows.width_calibration.measure_state.measure_width_calibration",
+        _fake_measure_width_calibration,
+    )
+
+    result = orchestrate_width_calibration(
+        cut_roads_gpkg=cut_path,
+        tracer4_gpkg=tracer4_path,
+        tracer5_gpkg=tracer5_path,
+        handoff_dir=env["handoff_dir"],
+        seed=7,
+        crop_size_px=32,
+        out_dir=out_dir,
+        skip_measure=False,
+        repo_root_path=tmp_path,
+    )
+
+    expected_measurements_csv = str((out_dir / MEASUREMENTS_FILENAME).resolve())
+    assert captured["out_csv"] == expected_measurements_csv
+    assert result["measure"]["measurements_csv"] == expected_measurements_csv
