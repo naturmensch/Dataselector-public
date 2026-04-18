@@ -671,7 +671,7 @@ def prepare_width_calibration(
     crop_size_px: int,
     out_dir: str | Path,
     prompt_for_sync: bool = False,
-    quota_mode: str = "fixed",
+    quota_mode: str = "proportional",
     sampling_rate: float = 0.05,
     min_per_class: int = 3,
     max_per_class: int = 0,
@@ -689,6 +689,22 @@ def prepare_width_calibration(
         out_dir, repo_root_path=repo_root_path, prefer_repo=True
     ).resolve()
     out_dir_path.mkdir(parents=True, exist_ok=True)
+    normalized_quota_mode = str(quota_mode).strip().lower()
+    if normalized_quota_mode not in {"fixed", "proportional"}:
+        raise ValueError("quota_mode must be one of {'fixed', 'proportional'}")
+    if normalized_quota_mode == "proportional":
+        if float(sampling_rate) <= 0.0:
+            raise ValueError("sampling_rate must be > 0")
+        if int(min_per_class) < 1:
+            raise ValueError("min_per_class must be >= 1")
+        if int(max_per_class) < 0:
+            raise ValueError("max_per_class must be >= 0")
+        if int(max_per_class) > 0 and int(max_per_class) < int(min_per_class):
+            raise ValueError("max_per_class must be >= min_per_class when max_per_class > 0")
+        if float(repeat_sampling_rate) < 0.0:
+            raise ValueError("repeat_sampling_rate must be >= 0")
+        if int(repeat_min_per_class) < 0:
+            raise ValueError("repeat_min_per_class must be >= 0")
     eligibility = EligibilityParameters()
     current_local_sha = compute_file_sha256(roads_gpkg_path)
     current_local_sha, _ = maybe_sync_local_copy_from_source(
@@ -720,7 +736,7 @@ def prepare_width_calibration(
     )
     primary_targets = compute_class_targets(
         candidates_df,
-        quota_mode=quota_mode,
+        quota_mode=normalized_quota_mode,
         sampling_rate=float(sampling_rate),
         min_per_class=int(min_per_class),
         max_per_class=int(max_per_class),
@@ -728,7 +744,7 @@ def prepare_width_calibration(
     primary_df = select_primary_tasks(
         candidates_df,
         seed=int(seed),
-        class_targets=primary_targets if str(quota_mode).strip().lower() == "proportional" else None,
+        class_targets=primary_targets if normalized_quota_mode == "proportional" else None,
     )
     repeat_targets = (
         compute_repeat_targets_from_primary(
@@ -736,13 +752,13 @@ def prepare_width_calibration(
             repeat_sampling_rate=float(repeat_sampling_rate),
             repeat_min_per_class=int(repeat_min_per_class),
         )
-        if str(quota_mode).strip().lower() == "proportional"
+        if normalized_quota_mode == "proportional"
         else {}
     )
     repeat_df = select_repeat_tasks(
         primary_df,
         seed=int(seed),
-        repeat_targets=repeat_targets if str(quota_mode).strip().lower() == "proportional" else None,
+        repeat_targets=repeat_targets if normalized_quota_mode == "proportional" else None,
     )
     tasks_df = pd.concat([primary_df, repeat_df], ignore_index=True)
     if not tasks_df.empty:
@@ -757,7 +773,7 @@ def prepare_width_calibration(
             "mid_frequency": MID_CLASS_QUOTAS,
             "special": SPECIAL_CLASS_QUOTAS,
         },
-        "quota_mode": str(quota_mode).strip().lower(),
+        "quota_mode": normalized_quota_mode,
         "quota_mode_parameters": {
             "sampling_rate": float(sampling_rate),
             "min_per_class": int(min_per_class),

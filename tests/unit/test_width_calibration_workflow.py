@@ -29,6 +29,7 @@ from dataselector.workflows.width_calibration.measure_state import (
 )
 from dataselector.workflows.width_calibration.prepare import compute_class_targets
 from dataselector.workflows.width_calibration.models import (
+    MANIFEST_FILENAME,
     MEASUREMENTS_FILENAME,
     MEASUREMENT_COLUMNS,
     TASK_COLUMNS,
@@ -884,6 +885,27 @@ def test_compute_class_targets_proportional_mode() -> None:
 
 @pytest.mark.fast
 @pytest.mark.unit
+def test_prepare_width_calibration_defaults_to_proportional_mode(tmp_path: Path) -> None:
+    env = _build_handoff(tmp_path)
+    out_dir = tmp_path / "prepared_default_mode"
+
+    result = prepare_width_calibration(
+        handoff_dir=env["handoff_dir"],
+        roads_gpkg=env["roads_path"],
+        roads_layer="cut_fixed_geometry_roads",
+        seed=42,
+        crop_size_px=32,
+        out_dir=out_dir,
+    )
+
+    manifest = json.loads(Path(result["manifest_json"]).read_text(encoding="utf-8"))
+    assert manifest["quota_mode"] == "proportional"
+    assert float(manifest["quota_mode_parameters"]["sampling_rate"]) == 0.05
+    assert int(manifest["quota_mode_parameters"]["min_per_class"]) == 3
+
+
+@pytest.mark.fast
+@pytest.mark.unit
 def test_load_tasks_csv_groups_primary_and_repeat_tasks_by_class(tmp_path: Path):
     tasks_path = tmp_path / "tasks.csv"
     pd.DataFrame(
@@ -1252,6 +1274,142 @@ def test_summarize_width_calibration_uses_primary_only(
 
     class8 = summary_df.loc[summary_df["class"] == 8].iloc[0]
     assert bool(class8["low_evidence_flag"])
+
+
+@pytest.mark.fast
+@pytest.mark.unit
+def test_summarize_width_calibration_includes_meter_fields_and_policy(tmp_path: Path):
+    measurements_path = tmp_path / "measurements.csv"
+    measurements_df = pd.DataFrame(
+        [
+            {
+                "task_id": "task_00001",
+                "candidate_id": "cand_001",
+                "class": 0,
+                "patch_id": "KDR_001_p1",
+                "tile_shortname": "KDR_001",
+                "source_fid": "65",
+                "source_feature_id": "row_000000",
+                "measure_id": "measure_00001",
+                "pass_type": "primary",
+                "repeat_of_task_id": "",
+                "anchor_x_px": 32,
+                "anchor_y_px": 32,
+                "click1_x_px": 30.0,
+                "click1_y_px": 32.0,
+                "click2_x_px": 34.0,
+                "click2_y_px": 32.0,
+                "width_px": 4.0,
+                "width_m": 4.0,
+                "pixel_size_x_m": 1.0,
+                "pixel_size_y_m": 1.0,
+                "crs_linear_unit": "metre",
+                "metric_valid": 1,
+                "keep": 1,
+                "reject_reason": "",
+                "note": "",
+            },
+            {
+                "task_id": "task_00002",
+                "candidate_id": "cand_002",
+                "class": 0,
+                "patch_id": "KDR_001_p1",
+                "tile_shortname": "KDR_001",
+                "source_fid": "65",
+                "source_feature_id": "row_000001",
+                "measure_id": "measure_00002",
+                "pass_type": "primary",
+                "repeat_of_task_id": "",
+                "anchor_x_px": 36,
+                "anchor_y_px": 32,
+                "click1_x_px": 33.0,
+                "click1_y_px": 32.0,
+                "click2_x_px": 39.0,
+                "click2_y_px": 32.0,
+                "width_px": 6.0,
+                "width_m": 6.0,
+                "pixel_size_x_m": 1.0,
+                "pixel_size_y_m": 1.0,
+                "crs_linear_unit": "metre",
+                "metric_valid": 1,
+                "keep": 1,
+                "reject_reason": "",
+                "note": "",
+            },
+            {
+                "task_id": "task_00003",
+                "candidate_id": "cand_001",
+                "class": 0,
+                "patch_id": "KDR_001_p1",
+                "tile_shortname": "KDR_001",
+                "source_fid": "65",
+                "source_feature_id": "row_000000",
+                "measure_id": "measure_00003",
+                "pass_type": "repeat",
+                "repeat_of_task_id": "task_00001",
+                "anchor_x_px": 32,
+                "anchor_y_px": 32,
+                "click1_x_px": 29.0,
+                "click1_y_px": 32.0,
+                "click2_x_px": 34.0,
+                "click2_y_px": 32.0,
+                "width_px": 5.0,
+                "width_m": 5.0,
+                "pixel_size_x_m": 1.0,
+                "pixel_size_y_m": 1.0,
+                "crs_linear_unit": "metre",
+                "metric_valid": 1,
+                "keep": 1,
+                "reject_reason": "",
+                "note": "",
+            },
+        ],
+        columns=MEASUREMENT_COLUMNS,
+    )
+    measurements_df.to_csv(measurements_path, index=False)
+
+    out_dir = tmp_path / "summary_meter"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    manifest_payload = {
+        "workflow_version": "phase5_width_calibration_v2",
+        "generated_utc": "2026-01-01T00:00:00+00:00",
+        "handoff_dir": "handoff/sample",
+        "roads_gpkg": "handoff/local_sources/phase5_roads_merged.gpkg",
+        "roads_gpkg_sha256": "abc",
+        "roads_layer": "phase5_roads_merged",
+        "seed": 42,
+        "crop_size_px": 128,
+        "quota_mode": "proportional",
+        "quota_mode_parameters": {
+            "sampling_rate": 0.05,
+            "min_per_class": 3,
+            "max_per_class": 0,
+            "repeat_sampling_rate": 0.2,
+            "repeat_min_per_class": 1,
+        },
+        "observed_class_counts": {"0": 2},
+        "primary_class_targets": {"0": 2},
+        "repeat_class_targets": {"0": 1},
+    }
+    (out_dir / MANIFEST_FILENAME).write_text(
+        json.dumps(manifest_payload, ensure_ascii=True),
+        encoding="utf-8",
+    )
+
+    result = summarize_width_calibration(
+        measurements_csv=measurements_path,
+        out_dir=out_dir,
+    )
+
+    summary_df = pd.read_csv(result["summary_csv"])
+    row = summary_df.loc[summary_df["class"] == 0].iloc[0]
+    assert float(row["median_m"]) == 5.0
+    assert float(row["repeat_median_abs_diff_m"]) == 1.0
+    assert float(row["final_width_m"]) == 5.0
+
+    summary_json = json.loads(Path(result["summary_json"]).read_text(encoding="utf-8"))
+    assert summary_json["sampling_policy"]["quota_mode"] == "proportional"
+    assert int(summary_json["sampling_policy"]["seed"]) == 42
 
 
 @pytest.mark.fast

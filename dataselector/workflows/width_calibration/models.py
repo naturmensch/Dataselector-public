@@ -79,11 +79,16 @@ SUMMARY_COLUMNS = [
     "median_px",
     "IQR_px",
     "MAD_px",
+    "median_m",
+    "IQR_m",
+    "MAD_m",
     "repeat_median_abs_diff_px",
+    "repeat_median_abs_diff_m",
     "low_evidence_flag",
     "high_variance_flag",
     "low_reliability_flag",
     "final_width_px",
+    "final_width_m",
 ]
 SENSITIVITY_COLUMNS = [
     "patch_id",
@@ -291,11 +296,16 @@ class SummaryRow:
     median_px: Any
     IQR_px: Any
     MAD_px: Any
+    median_m: Any
+    IQR_m: Any
+    MAD_m: Any
     repeat_median_abs_diff_px: Any
+    repeat_median_abs_diff_m: Any
     low_evidence_flag: bool
     high_variance_flag: bool
     low_reliability_flag: bool
     final_width_px: Any
+    final_width_m: Any
 
     def to_row(self) -> dict[str, Any]:
         return {
@@ -304,11 +314,16 @@ class SummaryRow:
             "median_px": self.median_px,
             "IQR_px": self.IQR_px,
             "MAD_px": self.MAD_px,
+            "median_m": self.median_m,
+            "IQR_m": self.IQR_m,
+            "MAD_m": self.MAD_m,
             "repeat_median_abs_diff_px": self.repeat_median_abs_diff_px,
+            "repeat_median_abs_diff_m": self.repeat_median_abs_diff_m,
             "low_evidence_flag": self.low_evidence_flag,
             "high_variance_flag": self.high_variance_flag,
             "low_reliability_flag": self.low_reliability_flag,
             "final_width_px": self.final_width_px,
+            "final_width_m": self.final_width_m,
         }
 
 

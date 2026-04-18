@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,7 @@ from dataselector.runtime.parameter_snapshot import compute_file_sha256
 
 from .measure_state import load_measurements_csv
 from .models import (
+    MANIFEST_FILENAME,
     SUMMARY_COLUMNS,
     SUMMARY_FILENAME,
     SUMMARY_JSON_FILENAME,
@@ -66,15 +68,33 @@ def summarize_width_calibration(
     measurements_df["width_px_num"] = pd.to_numeric(
         measurements_df["width_px"], errors="coerce"
     )
+    measurements_df["width_m_num"] = pd.to_numeric(
+        measurements_df.get("width_m", np.nan), errors="coerce"
+    )
+    measurements_df["metric_valid_bool"] = measurements_df.get(
+        "metric_valid", 0
+    ).map(bool_from_keep)
     primary_valid = measurements_df.loc[
         (measurements_df["pass_type"] == "primary")
         & (measurements_df["keep_bool"])
         & measurements_df["width_px_num"].notna()
     ].copy()
+    primary_valid_metric = measurements_df.loc[
+        (measurements_df["pass_type"] == "primary")
+        & (measurements_df["keep_bool"])
+        & (measurements_df["metric_valid_bool"])
+        & measurements_df["width_m_num"].notna()
+    ].copy()
     repeat_valid = measurements_df.loc[
         (measurements_df["pass_type"] == "repeat")
         & (measurements_df["keep_bool"])
         & measurements_df["width_px_num"].notna()
+    ].copy()
+    repeat_valid_metric = measurements_df.loc[
+        (measurements_df["pass_type"] == "repeat")
+        & (measurements_df["keep_bool"])
+        & (measurements_df["metric_valid_bool"])
+        & measurements_df["width_m_num"].notna()
     ].copy()
     primary_by_task = primary_valid[["task_id", "width_px_num"]].rename(
         columns={"task_id": "primary_task_id", "width_px_num": "primary_width_px"}
@@ -89,6 +109,19 @@ def summarize_width_calibration(
     repeat_pairs["abs_diff_px"] = (
         repeat_pairs["width_px_num"] - repeat_pairs["primary_width_px"]
     ).abs()
+    primary_by_task_m = primary_valid_metric[["task_id", "width_m_num"]].rename(
+        columns={"task_id": "primary_task_id", "width_m_num": "primary_width_m"}
+    )
+    repeat_pairs_m = repeat_valid_metric.merge(
+        primary_by_task_m,
+        left_on="repeat_of_task_id",
+        right_on="primary_task_id",
+        how="left",
+    )
+    repeat_pairs_m = repeat_pairs_m.loc[repeat_pairs_m["primary_width_m"].notna()].copy()
+    repeat_pairs_m["abs_diff_m"] = (
+        repeat_pairs_m["width_m_num"] - repeat_pairs_m["primary_width_m"]
+    ).abs()
     present_classes = sorted(
         int(class_id)
         for class_id in primary_valid["class"].dropna().astype(int).unique().tolist()
@@ -97,9 +130,18 @@ def summarize_width_calibration(
     for class_id in present_classes:
         class_primary = primary_valid.loc[primary_valid["class"] == class_id].copy()
         values = class_primary["width_px_num"].astype(float).to_numpy()
+        class_primary_m = primary_valid_metric.loc[
+            primary_valid_metric["class"] == class_id
+        ].copy()
+        values_m = class_primary_m["width_m_num"].astype(float).to_numpy()
         class_repeat_pairs = repeat_pairs.loc[repeat_pairs["class"] == class_id].copy()
         repeat_abs = class_repeat_pairs["abs_diff_px"].astype(float).to_numpy()
+        class_repeat_pairs_m = repeat_pairs_m.loc[
+            repeat_pairs_m["class"] == class_id
+        ].copy()
+        repeat_abs_m = class_repeat_pairs_m["abs_diff_m"].astype(float).to_numpy()
         median_px = float(np.median(values)) if values.size else float("nan")
+        median_m = float(np.median(values_m)) if values_m.size else float("nan")
         summary_rows.append(
             SummaryRow(
                 class_id=int(class_id),
@@ -107,9 +149,17 @@ def summarize_width_calibration(
                 median_px=round(median_px, 6) if values.size else np.nan,
                 IQR_px=round(iqr(values), 6) if values.size else np.nan,
                 MAD_px=round(mad(values), 6) if values.size else np.nan,
+                median_m=round(median_m, 6) if values_m.size else np.nan,
+                IQR_m=round(iqr(values_m), 6) if values_m.size else np.nan,
+                MAD_m=round(mad(values_m), 6) if values_m.size else np.nan,
                 repeat_median_abs_diff_px=(
                     round(float(np.median(repeat_abs)), 6)
                     if repeat_abs.size
+                    else np.nan
+                ),
+                repeat_median_abs_diff_m=(
+                    round(float(np.median(repeat_abs_m)), 6)
+                    if repeat_abs_m.size
                     else np.nan
                 ),
                 low_evidence_flag=bool(values.size < 5),
@@ -120,12 +170,29 @@ def summarize_width_calibration(
                     else False
                 ),
                 final_width_px=int(round(median_px)) if values.size else np.nan,
+                final_width_m=round(median_m, 6) if values_m.size else np.nan,
             ).to_row()
         )
     summary_df = pd.DataFrame(summary_rows, columns=SUMMARY_COLUMNS)
     summary_path = out_dir_path / SUMMARY_FILENAME
     summary_df.to_csv(summary_path, index=False)
     summary_json_path = out_dir_path / SUMMARY_JSON_FILENAME
+    manifest_path = out_dir_path / MANIFEST_FILENAME
+    sampling_policy: dict[str, Any] = {}
+    if manifest_path.exists():
+        try:
+            manifest_payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+            sampling_policy = {
+                "seed": manifest_payload.get("seed"),
+                "crop_size_px": manifest_payload.get("crop_size_px"),
+                "quota_mode": manifest_payload.get("quota_mode"),
+                "quota_mode_parameters": manifest_payload.get("quota_mode_parameters", {}),
+                "observed_class_counts": manifest_payload.get("observed_class_counts", {}),
+                "primary_class_targets": manifest_payload.get("primary_class_targets", {}),
+                "repeat_class_targets": manifest_payload.get("repeat_class_targets", {}),
+            }
+        except Exception:
+            sampling_policy = {}
     summary_payload = {
         "workflow_version": WORKFLOW_VERSION,
         "generated_utc": utc_now(),
@@ -133,6 +200,9 @@ def summarize_width_calibration(
         "measurements_csv_sha256": compute_file_sha256(measurements_path),
         "summary_csv": str(summary_path),
         "summary_csv_sha256": compute_file_sha256(summary_path),
+        "manifest_json": str(manifest_path),
+        "manifest_json_exists": manifest_path.exists(),
+        "sampling_policy": sampling_policy,
         "present_classes": present_classes,
         "results": summary_df.to_dict("records"),
     }

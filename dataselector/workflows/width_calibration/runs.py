@@ -810,7 +810,7 @@ def orchestrate_width_calibration(
     out_dir: str | Path,
     skip_measure: bool = False,
     resume: bool = False,
-    quota_mode: str = "fixed",
+    quota_mode: str = "proportional",
     sampling_rate: float = 0.05,
     min_per_class: int = 3,
     max_per_class: int = 0,
@@ -935,6 +935,16 @@ def orchestrate_width_calibration(
         "snapshot": snapshot_result,
         "build": build_result,
         "prepare": prepare_result,
+        "policy": {
+            "quota_mode": str(quota_mode).strip().lower(),
+            "sampling_rate": float(sampling_rate),
+            "min_per_class": int(min_per_class),
+            "max_per_class": int(max_per_class),
+            "repeat_sampling_rate": float(repeat_sampling_rate),
+            "repeat_min_per_class": int(repeat_min_per_class),
+            "seed": int(seed),
+            "crop_size_px": int(crop_size_px),
+        },
     }
     if measure_result is not None:
         payload["measure"] = measure_result

@@ -5,7 +5,7 @@
 This workflow calibrates classwise pixel widths for the binary Phase-5 road-mask
 generation step. It is designed for the actual 54-patch handoff and supports a
 deterministic measurement queue, an interactive two-click measurement tool, and
-per-class summary plus mask-level sensitivity outputs.
+per-class summary plus mask-level sensitivity outputs in pixel and meter units.
 
 ## Scope
 
@@ -17,6 +17,22 @@ per-class summary plus mask-level sensitivity outputs.
   introduce multiclass training.
 
 ## Commands
+
+Canonical end-to-end path (recommended):
+
+```bash
+micromamba run -n dataselector python -m dataselector orchestrate-width-calibration \
+  --cut-roads-gpkg <qgis-project-root>/cut_fixed_geometry_roads.gpkg \
+  --tracer4-gpkg <qgis-project-root>/4_roads_tracer_patches.gpkg \
+  --tracer5-gpkg <qgis-project-root>/5_roads_tracer_patches.gpkg \
+  --handoff-dir handoff/thesis_orchestrate_20260313T200624Z_patches_core \
+  --seed 42 \
+  --crop-size-px 128 \
+  --out-dir outputs/runs/width_calibration_<run_id>
+```
+
+`orchestrate-width-calibration` runs Snapshot -> Build -> Prepare -> optional
+Measure in one deterministic chain and records the active sampling policy.
 
 Build the canonical repo-local Phase-5 roads source from the classified base
 layer plus the tracer-derived class-4 and class-5 layers:
@@ -147,13 +163,30 @@ Rejected spots must be coded as one of:
 - Candidate anchors are generated automatically from the roads layer and the
   georeferenced quicklooks.
 - The human does not choose which object comes next.
-- Common classes `0`, `1`, `6` target 12 primary tasks each and cover 4
-  distinct tiles before same-tile duplication.
-- Mid-frequency classes `2`, `5` target 9 primary tasks each and cover 3
-  distinct tiles before same-tile duplication.
-- Class `9` uses all eligible anchors up to a target of 9 primary tasks.
-- Classes `3`, `4`, and `8` keep all eligible anchors.
+- Default policy is `quota_mode=proportional`.
+- Proportional mode computes class targets from observed candidate counts using
+  `sampling_rate`, `min_per_class`, optional `max_per_class`, and repeat
+  counterparts for repeat tasks.
+- Legacy fixed quotas remain available via `quota_mode=fixed`.
+- Fixed mode behavior:
+  - Common classes `0`, `1`, `6` target 12 primary tasks each and cover 4
+    distinct tiles before same-tile duplication.
+  - Mid-frequency classes `2`, `5` target 9 primary tasks each and cover 3
+    distinct tiles before same-tile duplication.
+  - Class `9` uses all eligible anchors up to a target of 9 primary tasks.
+  - Classes `3`, `4`, and `8` keep all eligible anchors.
 - Repeat tasks are pre-scheduled and shown later with prior values hidden.
+
+## Reproducibility Contract
+
+- `seed` is part of the deterministic queue contract and is recorded in
+  `width_calibration_manifest.json`.
+- Changing `seed`, `crop_size_px`, `handoff_dir`, or roads source provenance
+  invalidates an existing queue and triggers stale-run handling.
+- For cross-run comparability use `seed 42` unless a different seed is
+  explicitly justified and documented.
+- Width calibration must operate on a frozen handoff patch set for the active
+  run (no silent upstream re-selection during measurement).
 
 ## Fixed Eligibility Parameters
 
@@ -232,14 +265,20 @@ The per-class summary reports:
 - `median_px`
 - `IQR_px`
 - `MAD_px`
+- `median_m`
+- `IQR_m`
+- `MAD_m`
 - `repeat_median_abs_diff_px`
+- `repeat_median_abs_diff_m`
 - `low_evidence_flag`
 - `high_variance_flag`
 - `low_reliability_flag`
 - `final_width_px`
+- `final_width_m`
 
-The final rasterization width per class is the rounded median of accepted
-primary measurements only.
+The final rasterization width per class remains `final_width_px` (rounded
+median of accepted primary measurements). Meter fields are a scientific
+interpretation layer derived from georeferenced quicklooks.
 
 ## Sensitivity Audit
 

@@ -191,8 +191,8 @@ def build_width_calibration_roads_source_cmd(
         "quota_mode": {
             "type": str,
             "required": False,
-            "default": "fixed",
-            "help": "Prepare sampling mode: fixed (legacy) or proportional",
+            "default": "proportional",
+            "help": "Prepare sampling mode: proportional (default) or fixed (legacy)",
         },
         "sampling_rate": {
             "type": float,
@@ -246,7 +246,7 @@ def orchestrate_width_calibration_cmd(
     out_dir: str,
     skip_measure: bool = False,
     resume: bool = False,
-    quota_mode: str = "fixed",
+    quota_mode: str = "proportional",
     sampling_rate: float = 0.05,
     min_per_class: int = 3,
     max_per_class: int = 0,
@@ -320,8 +320,8 @@ def orchestrate_width_calibration_cmd(
         "quota_mode": {
             "type": str,
             "required": False,
-            "default": "fixed",
-            "help": "Task sampling mode: fixed (legacy) or proportional",
+            "default": "proportional",
+            "help": "Task sampling mode: proportional (default) or fixed (legacy)",
         },
         "sampling_rate": {
             "type": float,
@@ -362,7 +362,7 @@ def prepare_width_calibration_cmd(
     seed: int,
     crop_size_px: int,
     out_dir: str,
-    quota_mode: str = "fixed",
+    quota_mode: str = "proportional",
     sampling_rate: float = 0.05,
     min_per_class: int = 3,
     max_per_class: int = 0,
