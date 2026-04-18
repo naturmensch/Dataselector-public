@@ -64,6 +64,11 @@ MEASUREMENT_COLUMNS = [
     "click2_x_px",
     "click2_y_px",
     "width_px",
+    "width_m",
+    "pixel_size_x_m",
+    "pixel_size_y_m",
+    "crs_linear_unit",
+    "metric_valid",
     "keep",
     "reject_reason",
     "note",
@@ -109,8 +114,28 @@ REQUIRED_PATCH_COLUMNS = [
     "quicklook_path",
 ]
 LEGACY_TASK_REQUIRED_COLUMNS = [col for col in TASK_COLUMNS if col != "source_fid"]
+# Keep this list stable so historical measurement CSV files remain loadable
+# even when new optional measurement columns are added.
 LEGACY_MEASUREMENT_REQUIRED_COLUMNS = [
-    col for col in MEASUREMENT_COLUMNS if col != "source_fid"
+    "task_id",
+    "candidate_id",
+    "class",
+    "patch_id",
+    "tile_shortname",
+    "source_feature_id",
+    "measure_id",
+    "pass_type",
+    "repeat_of_task_id",
+    "anchor_x_px",
+    "anchor_y_px",
+    "click1_x_px",
+    "click1_y_px",
+    "click2_x_px",
+    "click2_y_px",
+    "width_px",
+    "keep",
+    "reject_reason",
+    "note",
 ]
 VIEWER_HOTKEY_HELP = (
     "Hotkeys: left-click x2 measure | r reject | s skip | "
@@ -220,6 +245,11 @@ class MeasurementRecord:
     click2_x_px: Any
     click2_y_px: Any
     width_px: Any
+    width_m: Any
+    pixel_size_x_m: Any
+    pixel_size_y_m: Any
+    crs_linear_unit: str
+    metric_valid: int
     keep: int
     reject_reason: str
     note: str
@@ -243,6 +273,11 @@ class MeasurementRecord:
             "click2_x_px": self.click2_x_px,
             "click2_y_px": self.click2_y_px,
             "width_px": self.width_px,
+            "width_m": self.width_m,
+            "pixel_size_x_m": self.pixel_size_x_m,
+            "pixel_size_y_m": self.pixel_size_y_m,
+            "crs_linear_unit": self.crs_linear_unit,
+            "metric_valid": self.metric_valid,
             "keep": self.keep,
             "reject_reason": self.reject_reason,
             "note": self.note,

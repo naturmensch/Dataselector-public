@@ -11,7 +11,11 @@ from .measure_state import (
 )
 from .prepare import prepare_width_calibration
 from .render import render_width_calibration_debug_masks
-from .runs import build_width_calibration_roads_source, sync_width_calibration_source
+from .runs import (
+    build_width_calibration_roads_source,
+    orchestrate_width_calibration,
+    sync_width_calibration_source,
+)
 from .summary import summarize_width_calibration
 
 __all__ = [
@@ -21,6 +25,7 @@ __all__ = [
     "load_measurements_csv",
     "load_tasks_csv",
     "measure_width_calibration",
+    "orchestrate_width_calibration",
     "prepare_width_calibration",
     "render_width_calibration_debug_masks",
     "summarize_width_calibration",

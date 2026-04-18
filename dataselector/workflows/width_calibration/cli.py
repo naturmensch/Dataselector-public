@@ -9,7 +9,11 @@ from .measure_state import measure_width_calibration
 from .models import DEFAULT_DISPLAY_CROP_FACTOR, DEFAULT_DISPLAY_SCALE
 from .prepare import prepare_width_calibration
 from .render import render_width_calibration_debug_masks
-from .runs import build_width_calibration_roads_source, sync_width_calibration_source
+from .runs import (
+    build_width_calibration_roads_source,
+    orchestrate_width_calibration,
+    sync_width_calibration_source,
+)
 from .summary import summarize_width_calibration
 
 
@@ -136,6 +140,150 @@ def build_width_calibration_roads_source_cmd(
 
 
 @cli_command(
+    "orchestrate-width-calibration",
+    help="Orchestrate complete width-calibration workflow: Snapshot -> Build -> Prepare -> optional Measure",
+    args={
+        "cut_roads_gpkg": {
+            "type": str,
+            "required": True,
+            "help": "Path to the classified cut roads GeoPackage",
+        },
+        "tracer4_gpkg": {
+            "type": str,
+            "required": True,
+            "help": "Path to the tracer GeoPackage whose features map to class 4",
+        },
+        "tracer5_gpkg": {
+            "type": str,
+            "required": True,
+            "help": "Path to the tracer GeoPackage whose features map to class 5",
+        },
+        "handoff_dir": {
+            "type": str,
+            "required": True,
+            "help": "Path to the Phase-5 handoff directory",
+        },
+        "seed": {
+            "type": int,
+            "required": True,
+            "help": "Random seed for deterministic task generation",
+        },
+        "crop_size_px": {
+            "type": int,
+            "required": True,
+            "help": "Crop size shown during interactive measurement",
+        },
+        "out_dir": {
+            "type": str,
+            "required": True,
+            "help": "Output directory for task and manifest artifacts",
+        },
+        "skip_measure": {
+            "type": bool,
+            "action": "store_true",
+            "help": "Skip the interactive measurement stage; only snapshot, build, and prepare",
+        },
+        "resume": {
+            "type": bool,
+            "action": "store_true",
+            "help": "Resume an existing measurement session instead of starting fresh",
+        },
+        "quota_mode": {
+            "type": str,
+            "required": False,
+            "default": "fixed",
+            "help": "Prepare sampling mode: fixed (legacy) or proportional",
+        },
+        "sampling_rate": {
+            "type": float,
+            "required": False,
+            "default": 0.05,
+            "help": "Per-class sampling rate used when quota_mode=proportional",
+        },
+        "min_per_class": {
+            "type": int,
+            "required": False,
+            "default": 3,
+            "help": "Minimum primary tasks per class for proportional mode",
+        },
+        "max_per_class": {
+            "type": int,
+            "required": False,
+            "default": 0,
+            "help": "Optional cap for primary tasks per class; 0 disables cap",
+        },
+        "repeat_sampling_rate": {
+            "type": float,
+            "required": False,
+            "default": 0.2,
+            "help": "Per-class repeat sampling rate used when quota_mode=proportional",
+        },
+        "repeat_min_per_class": {
+            "type": int,
+            "required": False,
+            "default": 1,
+            "help": "Minimum repeat tasks per class in proportional mode",
+        },
+        "display_crop_factor": {
+            "type": float,
+            "default": DEFAULT_DISPLAY_CROP_FACTOR,
+            "help": "Fraction of the prepared crop shown around the anchor point",
+        },
+        "display_scale": {
+            "type": int,
+            "default": DEFAULT_DISPLAY_SCALE,
+            "help": "Nearest-neighbor display scaling factor for the shown crop",
+        },
+    },
+)
+def orchestrate_width_calibration_cmd(
+    cut_roads_gpkg: str,
+    tracer4_gpkg: str,
+    tracer5_gpkg: str,
+    handoff_dir: str,
+    seed: int,
+    crop_size_px: int,
+    out_dir: str,
+    skip_measure: bool = False,
+    resume: bool = False,
+    quota_mode: str = "fixed",
+    sampling_rate: float = 0.05,
+    min_per_class: int = 3,
+    max_per_class: int = 0,
+    repeat_sampling_rate: float = 0.2,
+    repeat_min_per_class: int = 1,
+    display_crop_factor: float = DEFAULT_DISPLAY_CROP_FACTOR,
+    display_scale: int = DEFAULT_DISPLAY_SCALE,
+) -> int:
+    print(
+        json.dumps(
+            orchestrate_width_calibration(
+                cut_roads_gpkg=cut_roads_gpkg,
+                tracer4_gpkg=tracer4_gpkg,
+                tracer5_gpkg=tracer5_gpkg,
+                handoff_dir=handoff_dir,
+                seed=seed,
+                crop_size_px=crop_size_px,
+                out_dir=out_dir,
+                skip_measure=bool(skip_measure),
+                resume=bool(resume),
+                quota_mode=quota_mode,
+                sampling_rate=float(sampling_rate),
+                min_per_class=int(min_per_class),
+                max_per_class=int(max_per_class),
+                repeat_sampling_rate=float(repeat_sampling_rate),
+                repeat_min_per_class=int(repeat_min_per_class),
+                display_crop_factor=float(display_crop_factor),
+                display_scale=int(display_scale),
+            ),
+            indent=2,
+            ensure_ascii=True,
+        )
+    )
+    return 0
+
+
+@cli_command(
     "prepare-width-calibration",
     help="Prepare deterministic Phase-5 width-calibration measurement tasks",
     args={
@@ -169,6 +317,42 @@ def build_width_calibration_roads_source_cmd(
             "required": True,
             "help": "Output directory for task and manifest artifacts",
         },
+        "quota_mode": {
+            "type": str,
+            "required": False,
+            "default": "fixed",
+            "help": "Task sampling mode: fixed (legacy) or proportional",
+        },
+        "sampling_rate": {
+            "type": float,
+            "required": False,
+            "default": 0.05,
+            "help": "Per-class sampling rate used when quota_mode=proportional",
+        },
+        "min_per_class": {
+            "type": int,
+            "required": False,
+            "default": 3,
+            "help": "Minimum primary tasks per class for proportional mode",
+        },
+        "max_per_class": {
+            "type": int,
+            "required": False,
+            "default": 0,
+            "help": "Optional cap for primary tasks per class; 0 disables cap",
+        },
+        "repeat_sampling_rate": {
+            "type": float,
+            "required": False,
+            "default": 0.2,
+            "help": "Per-class repeat sampling rate used when quota_mode=proportional",
+        },
+        "repeat_min_per_class": {
+            "type": int,
+            "required": False,
+            "default": 1,
+            "help": "Minimum repeat tasks per class in proportional mode",
+        },
     },
 )
 def prepare_width_calibration_cmd(
@@ -178,6 +362,12 @@ def prepare_width_calibration_cmd(
     seed: int,
     crop_size_px: int,
     out_dir: str,
+    quota_mode: str = "fixed",
+    sampling_rate: float = 0.05,
+    min_per_class: int = 3,
+    max_per_class: int = 0,
+    repeat_sampling_rate: float = 0.2,
+    repeat_min_per_class: int = 1,
 ) -> int:
     print(
         json.dumps(
@@ -189,6 +379,12 @@ def prepare_width_calibration_cmd(
                 crop_size_px=crop_size_px,
                 out_dir=out_dir,
                 prompt_for_sync=True,
+                quota_mode=quota_mode,
+                sampling_rate=float(sampling_rate),
+                min_per_class=int(min_per_class),
+                max_per_class=int(max_per_class),
+                repeat_sampling_rate=float(repeat_sampling_rate),
+                repeat_min_per_class=int(repeat_min_per_class),
             ),
             indent=2,
             ensure_ascii=True,

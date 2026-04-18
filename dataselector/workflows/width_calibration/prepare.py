@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import asdict
+import math
 from pathlib import Path
 from typing import Any
 
@@ -426,6 +427,62 @@ def rng_for(seed: int, *parts: Any) -> np.random.Generator:
     return np.random.default_rng(value)
 
 
+def compute_class_targets(
+    candidates_df: pd.DataFrame,
+    *,
+    quota_mode: str,
+    sampling_rate: float,
+    min_per_class: int,
+    max_per_class: int,
+) -> dict[int, int]:
+    normalized_mode = str(quota_mode).strip().lower()
+    if normalized_mode not in {"fixed", "proportional"}:
+        raise ValueError(
+            "quota_mode must be one of {'fixed', 'proportional'}"
+        )
+    if normalized_mode == "fixed":
+        return {}
+    if sampling_rate <= 0.0:
+        raise ValueError("sampling_rate must be > 0 for proportional quota mode")
+    counts = (
+        candidates_df.groupby("class", dropna=False)
+        .size()
+        .astype(int)
+        .to_dict()
+    )
+    targets: dict[int, int] = {}
+    for class_id in SUPPORTED_CLASSES:
+        observed = int(counts.get(class_id, 0))
+        if observed <= 0:
+            continue
+        target = max(int(min_per_class), int(math.ceil(observed * float(sampling_rate))))
+        if max_per_class > 0:
+            target = min(target, int(max_per_class))
+        target = min(target, observed)
+        targets[int(class_id)] = int(target)
+    return targets
+
+
+def compute_repeat_targets_from_primary(
+    primary_df: pd.DataFrame,
+    *,
+    repeat_sampling_rate: float,
+    repeat_min_per_class: int,
+) -> dict[int, int]:
+    if repeat_sampling_rate < 0.0:
+        raise ValueError("repeat_sampling_rate must be >= 0")
+    counts = primary_df.groupby("class", dropna=False).size().astype(int).to_dict()
+    targets: dict[int, int] = {}
+    for class_id, observed in counts.items():
+        observed_count = int(observed)
+        if observed_count <= 0:
+            continue
+        target = int(math.ceil(observed_count * float(repeat_sampling_rate)))
+        target = max(int(repeat_min_per_class), target)
+        targets[int(class_id)] = min(target, observed_count)
+    return targets
+
+
 def shuffle_records(
     records: list[dict[str, Any]], rng: np.random.Generator
 ) -> list[dict[str, Any]]:
@@ -476,31 +533,49 @@ def round_robin_select(
     return selected
 
 
-def select_primary_tasks(candidates_df: pd.DataFrame, *, seed: int) -> pd.DataFrame:
+def select_primary_tasks(
+    candidates_df: pd.DataFrame,
+    *,
+    seed: int,
+    class_targets: dict[int, int] | None = None,
+) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
+    normalized_targets = class_targets or {}
     for class_id in SUPPORTED_CLASSES:
         group = candidates_df.loc[candidates_df["class"] == class_id].copy()
         if group.empty:
             continue
-        if class_id in REPEAT_ALL_CLASSES or class_id == 8:
-            selected = group.to_dict("records")
-        elif class_id in COMMON_CLASS_QUOTAS:
-            selected = round_robin_select(
-                group, target=COMMON_CLASS_QUOTAS[class_id], seed=seed, tile_target=4
-            )
-        elif class_id in MID_CLASS_QUOTAS:
-            selected = round_robin_select(
-                group, target=MID_CLASS_QUOTAS[class_id], seed=seed, tile_target=3
-            )
-        elif class_id in SPECIAL_CLASS_QUOTAS:
+        target_override = normalized_targets.get(int(class_id))
+        if target_override is not None:
             selected = round_robin_select(
                 group,
-                target=SPECIAL_CLASS_QUOTAS[class_id],
+                target=min(int(target_override), len(group)),
                 seed=seed,
-                tile_target=len(group["tile_shortname"].unique()),
+                tile_target=min(4, len(group["tile_shortname"].unique())),
             )
+        if class_id in REPEAT_ALL_CLASSES or class_id == 8:
+            selected = selected if target_override is not None else group.to_dict("records")
+        elif class_id in COMMON_CLASS_QUOTAS:
+            if target_override is None:
+                selected = round_robin_select(
+                    group, target=COMMON_CLASS_QUOTAS[class_id], seed=seed, tile_target=4
+                )
+        elif class_id in MID_CLASS_QUOTAS:
+            if target_override is None:
+                selected = round_robin_select(
+                    group, target=MID_CLASS_QUOTAS[class_id], seed=seed, tile_target=3
+                )
+        elif class_id in SPECIAL_CLASS_QUOTAS:
+            if target_override is None:
+                selected = round_robin_select(
+                    group,
+                    target=SPECIAL_CLASS_QUOTAS[class_id],
+                    seed=seed,
+                    tile_target=len(group["tile_shortname"].unique()),
+                )
         else:
-            selected = group.to_dict("records")
+            if target_override is None:
+                selected = group.to_dict("records")
         rows.extend(selected)
     if not rows:
         return pd.DataFrame(columns=TASK_COLUMNS)
@@ -534,15 +609,26 @@ def select_primary_tasks(candidates_df: pd.DataFrame, *, seed: int) -> pd.DataFr
     return pd.DataFrame(task_rows, columns=TASK_COLUMNS)
 
 
-def select_repeat_tasks(primary_df: pd.DataFrame, *, seed: int) -> pd.DataFrame:
+def select_repeat_tasks(
+    primary_df: pd.DataFrame,
+    *,
+    seed: int,
+    repeat_targets: dict[int, int] | None = None,
+) -> pd.DataFrame:
     if primary_df.empty:
         return pd.DataFrame(columns=TASK_COLUMNS)
     selected_repeat_rows: list[dict[str, Any]] = []
+    normalized_targets = repeat_targets or {}
     for class_id in sorted(set(primary_df["class"].astype(int).tolist())):
         group = primary_df.loc[primary_df["class"] == class_id].copy()
         if group.empty:
             continue
-        if class_id in REPEAT_ALL_CLASSES:
+        target_override = normalized_targets.get(int(class_id))
+        if target_override is not None:
+            repeat_source = shuffle_records(
+                group.to_dict("records"), rng_for(seed, "repeat", class_id)
+            )[: min(int(target_override), len(group))]
+        elif class_id in REPEAT_ALL_CLASSES:
             repeat_source = group.to_dict("records")
         else:
             quota = int(REPEAT_QUOTAS.get(class_id, 0))
@@ -585,6 +671,12 @@ def prepare_width_calibration(
     crop_size_px: int,
     out_dir: str | Path,
     prompt_for_sync: bool = False,
+    quota_mode: str = "fixed",
+    sampling_rate: float = 0.05,
+    min_per_class: int = 3,
+    max_per_class: int = 0,
+    repeat_sampling_rate: float = 0.2,
+    repeat_min_per_class: int = 1,
 ) -> dict[str, Any]:
     repo_root_path = repo_root()
     handoff_dir_path = resolve_path(
@@ -626,8 +718,32 @@ def prepare_width_calibration(
         crop_size_px=int(crop_size_px),
         eligibility=eligibility,
     )
-    primary_df = select_primary_tasks(candidates_df, seed=int(seed))
-    repeat_df = select_repeat_tasks(primary_df, seed=int(seed))
+    primary_targets = compute_class_targets(
+        candidates_df,
+        quota_mode=quota_mode,
+        sampling_rate=float(sampling_rate),
+        min_per_class=int(min_per_class),
+        max_per_class=int(max_per_class),
+    )
+    primary_df = select_primary_tasks(
+        candidates_df,
+        seed=int(seed),
+        class_targets=primary_targets if str(quota_mode).strip().lower() == "proportional" else None,
+    )
+    repeat_targets = (
+        compute_repeat_targets_from_primary(
+            primary_df,
+            repeat_sampling_rate=float(repeat_sampling_rate),
+            repeat_min_per_class=int(repeat_min_per_class),
+        )
+        if str(quota_mode).strip().lower() == "proportional"
+        else {}
+    )
+    repeat_df = select_repeat_tasks(
+        primary_df,
+        seed=int(seed),
+        repeat_targets=repeat_targets if str(quota_mode).strip().lower() == "proportional" else None,
+    )
     tasks_df = pd.concat([primary_df, repeat_df], ignore_index=True)
     if not tasks_df.empty:
         tasks_df = tasks_df[TASK_COLUMNS].copy()
@@ -641,6 +757,20 @@ def prepare_width_calibration(
             "mid_frequency": MID_CLASS_QUOTAS,
             "special": SPECIAL_CLASS_QUOTAS,
         },
+        "quota_mode": str(quota_mode).strip().lower(),
+        "quota_mode_parameters": {
+            "sampling_rate": float(sampling_rate),
+            "min_per_class": int(min_per_class),
+            "max_per_class": int(max_per_class),
+            "repeat_sampling_rate": float(repeat_sampling_rate),
+            "repeat_min_per_class": int(repeat_min_per_class),
+        },
+        "observed_class_counts": {
+            str(int(class_id)): int(count)
+            for class_id, count in candidates_df.groupby("class").size().to_dict().items()
+        },
+        "primary_class_targets": {str(int(k)): int(v) for k, v in primary_targets.items()},
+        "repeat_class_targets": {str(int(k)): int(v) for k, v in repeat_targets.items()},
         "repeat_schedule": {
             "repeat_all_classes": sorted(REPEAT_ALL_CLASSES),
             "quota_classes": REPEAT_QUOTAS,

@@ -349,7 +349,7 @@ def _collect_commit_data(
     file_df = pd.DataFrame(file_rows)
     if not commit_df.empty:
         commit_df["commit_date"] = pd.to_datetime(
-            commit_df["commit_date"], errors="coerce"
+            commit_df["commit_date"], errors="coerce", utc=True
         )
         commit_df = commit_df.sort_values("commit_date").reset_index(drop=True)
         commit_df["commit_date"] = commit_df["commit_date"].dt.strftime(

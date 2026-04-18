@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import geopandas as gpd
+import numpy as np
 import pandas as pd
 
 from dataselector.runtime.parameter_snapshot import compute_file_sha256
@@ -142,7 +143,27 @@ def _load_source_rows(
             raise ValueError(
                 f"Road layer missing required 'class' field: {source_gpkg} [{roads_layer}]"
             )
-        classes = pd.to_numeric(gdf["class"], errors="raise").astype(int)
+        raw_classes = gdf["class"]
+        numeric_classes = pd.to_numeric(raw_classes, errors="coerce")
+        numeric_values = numeric_classes.to_numpy(dtype="float64", copy=False)
+        invalid_mask = numeric_classes.isna() | ~np.isfinite(numeric_values)
+        if bool(invalid_mask.any()):
+            sample_values = raw_classes.loc[invalid_mask].head(5).tolist()
+            raise ValueError(
+                "Road layer contains non-finite or non-numeric values in 'class': "
+                f"{source_gpkg} [{roads_layer}] (invalid_rows={int(invalid_mask.sum())}, "
+                f"sample={sample_values})"
+            )
+        rounded = np.round(numeric_values)
+        if not np.all(np.isclose(numeric_values, rounded, rtol=0.0, atol=0.0)):
+            non_integral_mask = ~np.isclose(numeric_values, rounded, rtol=0.0, atol=0.0)
+            sample_values = raw_classes.loc[non_integral_mask].head(5).tolist()
+            raise ValueError(
+                "Road layer contains non-integer values in 'class': "
+                f"{source_gpkg} [{roads_layer}] (invalid_rows={int(non_integral_mask.sum())}, "
+                f"sample={sample_values})"
+            )
+        classes = numeric_classes.astype("int64")
     elif source_class_policy == "forced":
         if forced_class is None:
             raise ValueError(
@@ -707,16 +728,232 @@ def preflight_measure_width_calibration(
     return manifest, roads_gpkg_path
 
 
+def snapshot_width_calibration_sources(
+    *,
+    cut_roads_gpkg: str | Path,
+    tracer4_gpkg: str | Path,
+    tracer5_gpkg: str | Path,
+    repo_root_path: Path | None = None,
+) -> dict[str, Any]:
+    """Create timestamped snapshots of three QGIS road sources with SHA256 provenance.
+    
+    Copies three source GeoPackages to a timestamped snapshot directory under
+    handoff/local_sources/snapshots/<run_id>/ and returns metadata including SHAs.
+    
+    Returns:
+        Dict containing snapshot paths and SHA256 checksums for each source.
+    """
+    if repo_root_path is None:
+        repo_root_path = repo_root()
+    
+    # Resolve all source paths
+    cut_path = resolve_path(
+        cut_roads_gpkg, repo_root_path=repo_root_path, prefer_repo=False
+    ).resolve()
+    tracer4_path = resolve_path(
+        tracer4_gpkg, repo_root_path=repo_root_path, prefer_repo=False
+    ).resolve()
+    tracer5_path = resolve_path(
+        tracer5_gpkg, repo_root_path=repo_root_path, prefer_repo=False
+    ).resolve()
+    
+    # Validate all sources exist
+    for path, name in [
+        (cut_path, "cut_roads_gpkg"),
+        (tracer4_path, "tracer4_gpkg"),
+        (tracer5_path, "tracer5_gpkg"),
+    ]:
+        if not path.exists():
+            raise FileNotFoundError(f"{name} not found: {path}")
+    
+    # Create snapshot directory with run_id based on timestamp
+    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    snapshot_base_dir = (
+        repo_root_path / "handoff" / "local_sources" / "snapshots" / run_id
+    ).resolve()
+    snapshot_base_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Copy each source to snapshot with atomic writes
+    snapshot_cut_path = snapshot_base_dir / cut_path.name
+    snapshot_tracer4_path = snapshot_base_dir / tracer4_path.name
+    snapshot_tracer5_path = snapshot_base_dir / tracer5_path.name
+    
+    copy_file_atomic(cut_path, snapshot_cut_path)
+    copy_file_atomic(tracer4_path, snapshot_tracer4_path)
+    copy_file_atomic(tracer5_path, snapshot_tracer5_path)
+    
+    # Compute SHAs for provenance
+    cut_sha = compute_file_sha256(snapshot_cut_path)
+    tracer4_sha = compute_file_sha256(snapshot_tracer4_path)
+    tracer5_sha = compute_file_sha256(snapshot_tracer5_path)
+    
+    return {
+        "run_id": str(run_id),
+        "snapshot_dir": str(snapshot_base_dir),
+        "snapshot_cut_roads_gpkg": str(snapshot_cut_path),
+        "snapshot_cut_roads_gpkg_sha256": cut_sha,
+        "snapshot_tracer4_gpkg": str(snapshot_tracer4_path),
+        "snapshot_tracer4_gpkg_sha256": tracer4_sha,
+        "snapshot_tracer5_gpkg": str(snapshot_tracer5_path),
+        "snapshot_tracer5_gpkg_sha256": tracer5_sha,
+    }
+
+
+def orchestrate_width_calibration(
+    *,
+    cut_roads_gpkg: str | Path,
+    tracer4_gpkg: str | Path,
+    tracer5_gpkg: str | Path,
+    handoff_dir: str | Path,
+    seed: int,
+    crop_size_px: int,
+    out_dir: str | Path,
+    skip_measure: bool = False,
+    resume: bool = False,
+    quota_mode: str = "fixed",
+    sampling_rate: float = 0.05,
+    min_per_class: int = 3,
+    max_per_class: int = 0,
+    repeat_sampling_rate: float = 0.2,
+    repeat_min_per_class: int = 1,
+    display_crop_factor: float | None = None,
+    display_scale: int | None = None,
+    repo_root_path: Path | None = None,
+) -> dict[str, Any]:
+    """Orchestrate complete width-calibration workflow: Snapshot -> Build -> Prepare -> optional Measure.
+    
+    This is the primary user-facing entry point that chains all stages of the width calibration
+    workflow with intelligent stale detection and optional interactive measurement.
+    
+    Args:
+        cut_roads_gpkg: Path to classified cut roads GeoPackage
+        tracer4_gpkg: Path to class-4 tracer GeoPackage
+        tracer5_gpkg: Path to class-5 tracer GeoPackage
+        handoff_dir: Path to Phase-5 handoff directory
+        seed: Random seed for deterministic task generation
+        crop_size_px: Crop size for interactive measurement
+        out_dir: Output directory for artifacts
+        skip_measure: If True, skip the interactive measurement stage
+        resume: If True, resume existing measurements instead of starting fresh
+        quota_mode: Prepare sampling mode: fixed (legacy) or proportional
+        sampling_rate: Class sampling rate used in proportional mode
+        min_per_class: Minimum primary tasks per class in proportional mode
+        max_per_class: Optional cap for primary tasks per class (0 disables)
+        repeat_sampling_rate: Repeat sampling rate used in proportional mode
+        repeat_min_per_class: Minimum repeat tasks per class in proportional mode
+        display_crop_factor: Fraction of prepared crop shown around anchor point
+        display_scale: Nearest-neighbor display scaling factor
+        repo_root_path: Override repo root for testing
+    
+    Returns:
+        Unified payload containing snapshot, build, prepare, and optional measure metadata.
+    """
+    if repo_root_path is None:
+        repo_root_path = repo_root()
+    out_dir_path = resolve_path(
+        out_dir,
+        repo_root_path=repo_root_path,
+        prefer_repo=True,
+    ).resolve()
+    
+    # Set display defaults if not provided
+    from .models import DEFAULT_DISPLAY_CROP_FACTOR, DEFAULT_DISPLAY_SCALE
+    if display_crop_factor is None:
+        display_crop_factor = DEFAULT_DISPLAY_CROP_FACTOR
+    if display_scale is None:
+        display_scale = DEFAULT_DISPLAY_SCALE
+    
+    # Early Qt-gating if measure is active
+    if not skip_measure:
+        try:
+            from .viewer_qt import select_interactive_matplotlib_backend
+            import matplotlib
+            select_interactive_matplotlib_backend(matplotlib)
+        except RuntimeError as e:
+            raise RuntimeError(
+                f"Cannot proceed with measurement: {e}. Use --skip-measure to skip interactive measurement."
+            ) from e
+    
+    # Stage 1: Create snapshot
+    snapshot_result = snapshot_width_calibration_sources(
+        cut_roads_gpkg=cut_roads_gpkg,
+        tracer4_gpkg=tracer4_gpkg,
+        tracer5_gpkg=tracer5_gpkg,
+        repo_root_path=repo_root_path,
+    )
+    
+    # Stage 2: Build merged roads from snapshot
+    build_result = build_width_calibration_roads_source(
+        cut_roads_gpkg=snapshot_result["snapshot_cut_roads_gpkg"],
+        tracer4_gpkg=snapshot_result["snapshot_tracer4_gpkg"],
+        tracer5_gpkg=snapshot_result["snapshot_tracer5_gpkg"],
+        dest_gpkg=None,  # Use default path
+        cut_roads_layer="cut_fixed_geometry_roads",
+        tracer4_layer="4_roads_tracer_patches",
+        tracer5_layer="5_roads_tracer_patches",
+        dest_layer="phase5_roads_merged",
+    )
+    
+    # Stage 3: Prepare tasks
+    from .prepare import prepare_width_calibration as prepare_fn
+    prepare_result = prepare_fn(
+        handoff_dir=handoff_dir,
+        roads_gpkg=build_result["dest_gpkg"],
+        roads_layer=build_result["dest_layer"],
+        seed=seed,
+        crop_size_px=crop_size_px,
+        out_dir=out_dir_path,
+        prompt_for_sync=False,
+        quota_mode=str(quota_mode).strip().lower(),
+        sampling_rate=float(sampling_rate),
+        min_per_class=int(min_per_class),
+        max_per_class=int(max_per_class),
+        repeat_sampling_rate=float(repeat_sampling_rate),
+        repeat_min_per_class=int(repeat_min_per_class),
+    )
+    
+    # Stage 4: Optional measure
+    measure_result: dict[str, Any] | None = None
+    if not skip_measure:
+        from .measure_state import measure_width_calibration
+        measurements_csv_path = str(
+            prepare_result.get("measurements_csv")
+            or (out_dir_path / MEASUREMENTS_FILENAME)
+        )
+        measure_result = measure_width_calibration(
+            handoff_dir=handoff_dir,
+            tasks_csv=prepare_result["tasks_csv"],
+            out_csv=measurements_csv_path,
+            display_crop_factor=float(display_crop_factor),
+            display_scale=int(display_scale),
+            resume=bool(resume),
+            prompt_for_sync=False,
+        )
+    
+    # Unified payload
+    payload: dict[str, Any] = {
+        "snapshot": snapshot_result,
+        "build": build_result,
+        "prepare": prepare_result,
+    }
+    if measure_result is not None:
+        payload["measure"] = measure_result
+    
+    return payload
+
+
 __all__ = [
     "archive_run_dir_path",
     "default_roads_gpkg_path",
     "load_width_calibration_manifest",
     "maybe_archive_stale_prepare_run",
     "maybe_sync_local_copy_from_source",
+    "orchestrate_width_calibration",
     "prepare_sync_metadata_for_manifest",
     "preflight_measure_width_calibration",
     "resolve_manifest_path",
     "resolve_roads_layer_name",
+    "snapshot_width_calibration_sources",
     "sync_width_calibration_source",
     "sync_metadata_path",
     "validated_sync_metadata_for_local_copy",
