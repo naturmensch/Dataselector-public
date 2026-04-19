@@ -9,20 +9,20 @@ ROOT = Path(__file__).resolve().parents[2]
 AUTHORITATIVE_DOCS = [
     ROOT / "README.md",
     ROOT / "README_EN.md",
-    ROOT / "docs" / "ARCHITECTURE.md",
-    ROOT / "docs" / "EXPERIMENT_MANAGER_GUIDE.md",
+    ROOT / "docs" / "02_THEORY" / "architecture.md",
+    ROOT / "docs" / "04_DEVELOPER" / "EXPERIMENT_MANAGER_GUIDE.md",
     ROOT / "docs" / "03_USER_GUIDES" / "THESIS_PIPELINE_HOWTO.md",
-    ROOT / "docs" / "ENV_SETUP.md",
-    ROOT / "docs" / "DEVELOPER.md",
+    ROOT / "docs" / "04_DEVELOPER" / "ENV_SETUP.md",
+    ROOT / "docs" / "04_DEVELOPER" / "DEVELOPER.md",
 ]
 
 ACTIVE_COMMAND_STYLE_DOCS = [
     ROOT / "AGENTS.md",
     ROOT / "README.md",
     ROOT / "README_EN.md",
-    ROOT / "docs" / "DEVELOPER.md",
-    ROOT / "docs" / "INDEX.md",
-    ROOT / "docs" / "TEST_SUITE_CURATION.md",
+    ROOT / "docs" / "04_DEVELOPER" / "DEVELOPER.md",
+    ROOT / "docs" / "00_OVERVIEW" / "OVERVIEW.md",
+    ROOT / "docs" / "08_GOVERNANCE" / "TEST_SUITE_CURATION.md",
 ]
 
 

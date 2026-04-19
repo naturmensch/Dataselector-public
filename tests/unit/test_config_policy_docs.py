@@ -10,50 +10,50 @@ ROOT = Path(__file__).resolve().parents[2]
 AUTHORITATIVE_DOCS = [
     ROOT / "README.md",
     ROOT / "README_EN.md",
-    ROOT / "docs" / "ARCHITECTURE.md",
-    ROOT / "docs" / "EXPERIMENT_MANAGER_GUIDE.md",
+    ROOT / "docs" / "02_THEORY" / "architecture.md",
+    ROOT / "docs" / "04_DEVELOPER" / "EXPERIMENT_MANAGER_GUIDE.md",
     ROOT / "docs" / "03_USER_GUIDES" / "THESIS_PIPELINE_HOWTO.md",
-    ROOT / "docs" / "ENV_SETUP.md",
-    ROOT / "docs" / "DEVELOPER.md",
+    ROOT / "docs" / "04_DEVELOPER" / "ENV_SETUP.md",
+    ROOT / "docs" / "04_DEVELOPER" / "DEVELOPER.md",
 ]
 
 HISTORICAL_CONFIG = "config/pipeline_config.best_trial_70.yaml"
 ACTIVE_CONFIG = "config/pipeline_config.yaml"
 THESIS_FREEZE_DOCS = [
-    ROOT / "docs" / "METHODOLOGY.md",
-    ROOT / "docs" / "THESIS_METHOD_CONTRACT.md",
+    ROOT / "docs" / "08_GOVERNANCE" / "METHODOLOGY.md",
+    ROOT / "docs" / "08_GOVERNANCE" / "THESIS_METHOD_CONTRACT.md",
     ROOT / "docs" / "03_USER_GUIDES" / "THESIS_PIPELINE_HOWTO.md",
-    ROOT / "docs" / "CONFIG_POLICY.md",
-    ROOT / "docs" / "PARAMETER_POLICY_LEDGER.md",
-    ROOT / "docs" / "thesis_chapter_training_data_selection.tex",
+    ROOT / "docs" / "08_GOVERNANCE" / "CONFIG_POLICY.md",
+    ROOT / "docs" / "08_GOVERNANCE" / "PARAMETER_POLICY_LEDGER.md",
+    ROOT / "docs" / "06_REFERENCE" / "thesis_chapter_training_data_selection.tex",
 ]
 THESIS_POLICY_DOCS = [
-    ROOT / "docs" / "METHODOLOGY.md",
-    ROOT / "docs" / "THESIS_METHOD_CONTRACT.md",
+    ROOT / "docs" / "08_GOVERNANCE" / "METHODOLOGY.md",
+    ROOT / "docs" / "08_GOVERNANCE" / "THESIS_METHOD_CONTRACT.md",
     ROOT / "docs" / "03_USER_GUIDES" / "THESIS_PIPELINE_HOWTO.md",
-    ROOT / "docs" / "CONFIG_POLICY.md",
-    ROOT / "docs" / "PARAMETER_POLICY_LEDGER.md",
+    ROOT / "docs" / "08_GOVERNANCE" / "CONFIG_POLICY.md",
+    ROOT / "docs" / "08_GOVERNANCE" / "PARAMETER_POLICY_LEDGER.md",
 ]
 PHASE5_CONTRACT_DOCS = [
-    ROOT / "docs" / "METHODOLOGY.md",
-    ROOT / "docs" / "THESIS_METHOD_CONTRACT.md",
+    ROOT / "docs" / "08_GOVERNANCE" / "METHODOLOGY.md",
+    ROOT / "docs" / "08_GOVERNANCE" / "THESIS_METHOD_CONTRACT.md",
     ROOT / "docs" / "03_USER_GUIDES" / "THESIS_PIPELINE_HOWTO.md",
-    ROOT / "docs" / "CONFIG_POLICY.md",
-    ROOT / "docs" / "PARAMETER_POLICY_LEDGER.md",
+    ROOT / "docs" / "08_GOVERNANCE" / "CONFIG_POLICY.md",
+    ROOT / "docs" / "08_GOVERNANCE" / "PARAMETER_POLICY_LEDGER.md",
 ]
 PHASE5_PRIMARY_DOCS = [
-    ROOT / "docs" / "THESIS_METHOD_CONTRACT.md",
+    ROOT / "docs" / "08_GOVERNANCE" / "THESIS_METHOD_CONTRACT.md",
     ROOT / "docs" / "03_USER_GUIDES" / "THESIS_PIPELINE_HOWTO.md",
-    ROOT / "docs" / "CONFIG_POLICY.md",
+    ROOT / "docs" / "08_GOVERNANCE" / "CONFIG_POLICY.md",
 ]
-MIN_DISTANCE_EVIDENCE_DOC = ROOT / "docs" / "MIN_DISTANCE_EVIDENCE_ADDENDUM.md"
-N_SAMPLES_EVIDENCE_DOC = ROOT / "docs" / "N_SAMPLES_EVIDENCE_ADDENDUM.md"
-TEST_SUITE_CURATION_DOC = ROOT / "docs" / "TEST_SUITE_CURATION.md"
+MIN_DISTANCE_EVIDENCE_DOC = ROOT / "docs" / "06_REFERENCE" / "MIN_DISTANCE_EVIDENCE_ADDENDUM.md"
+N_SAMPLES_EVIDENCE_DOC = ROOT / "docs" / "06_REFERENCE" / "N_SAMPLES_EVIDENCE_ADDENDUM.md"
+TEST_SUITE_CURATION_DOC = ROOT / "docs" / "08_GOVERNANCE" / "TEST_SUITE_CURATION.md"
 THESIS_MODEL_BOUNDARY_DOCS = [
     ROOT / "README.md",
     ROOT / "README_EN.md",
-    ROOT / "docs" / "METHODOLOGY.md",
-    ROOT / "docs" / "THESIS_METHOD_CONTRACT.md",
+    ROOT / "docs" / "08_GOVERNANCE" / "METHODOLOGY.md",
+    ROOT / "docs" / "08_GOVERNANCE" / "THESIS_METHOD_CONTRACT.md",
     ROOT / "docs" / "03_USER_GUIDES" / "THESIS_PIPELINE_HOWTO.md",
 ]
 
@@ -85,15 +85,15 @@ def test_authoritative_docs_use_active_config_as_default():
 
 
 def test_config_policy_doc_declares_active_default():
-    policy_path = ROOT / "docs" / "CONFIG_POLICY.md"
-    assert policy_path.exists(), "Missing docs/CONFIG_POLICY.md"
+    policy_path = ROOT / "docs" / "08_GOVERNANCE" / "CONFIG_POLICY.md"
+    assert policy_path.exists(), "Missing docs/08_GOVERNANCE/CONFIG_POLICY.md"
     text = policy_path.read_text(encoding="utf-8", errors="ignore")
     assert ACTIVE_CONFIG in text, "Config policy must declare active default config"
 
 
 def test_config_policy_doc_declares_micromamba_canonical_runtime():
-    policy_path = ROOT / "docs" / "CONFIG_POLICY.md"
-    assert policy_path.exists(), "Missing docs/CONFIG_POLICY.md"
+    policy_path = ROOT / "docs" / "08_GOVERNANCE" / "CONFIG_POLICY.md"
+    assert policy_path.exists(), "Missing docs/08_GOVERNANCE/CONFIG_POLICY.md"
     text = policy_path.read_text(encoding="utf-8", errors="ignore")
     assert (
         "micromamba run -n dataselector <command>" in text
@@ -104,8 +104,8 @@ def test_config_policy_doc_declares_micromamba_canonical_runtime():
 
 
 def test_parameter_policy_ledger_exists_and_declares_active_config():
-    ledger_path = ROOT / "docs" / "PARAMETER_POLICY_LEDGER.md"
-    assert ledger_path.exists(), "Missing docs/PARAMETER_POLICY_LEDGER.md"
+    ledger_path = ROOT / "docs" / "08_GOVERNANCE" / "PARAMETER_POLICY_LEDGER.md"
+    assert ledger_path.exists(), "Missing docs/08_GOVERNANCE/PARAMETER_POLICY_LEDGER.md"
     text = ledger_path.read_text(encoding="utf-8", errors="ignore")
     assert (
         ACTIVE_CONFIG in text
@@ -113,8 +113,8 @@ def test_parameter_policy_ledger_exists_and_declares_active_config():
 
 
 def test_config_policy_doc_declares_warning_policy_contract():
-    policy_path = ROOT / "docs" / "CONFIG_POLICY.md"
-    assert policy_path.exists(), "Missing docs/CONFIG_POLICY.md"
+    policy_path = ROOT / "docs" / "08_GOVERNANCE" / "CONFIG_POLICY.md"
+    assert policy_path.exists(), "Missing docs/08_GOVERNANCE/CONFIG_POLICY.md"
     text = policy_path.read_text(encoding="utf-8", errors="ignore")
     assert (
         "Warning Policy (Thesis Gates)" in text
@@ -145,7 +145,7 @@ def test_thesis_freeze_docs_declare_dataset_vs_parameter_authority():
 
 
 def test_index_prioritizes_canonical_thesis_path():
-    index_path = ROOT / "docs" / "INDEX.md"
+    index_path = ROOT / "docs" / "00_OVERVIEW" / "OVERVIEW.md"
     text = index_path.read_text(encoding="utf-8", errors="ignore")
     assert (
         "thesis-orchestrate" in text
@@ -166,7 +166,7 @@ def test_active_thesis_docs_do_not_repeat_obsolete_selection_story():
         "alpha=0.40, beta=0.30, gamma=0.30",
         "scripts/run_full_experiment.sh",
     ]
-    for path in THESIS_FREEZE_DOCS + [ROOT / "docs" / "INDEX.md"]:
+    for path in THESIS_FREEZE_DOCS + [ROOT / "docs" / "00_OVERVIEW" / "OVERVIEW.md"]:
         text = path.read_text(encoding="utf-8", errors="ignore")
         for pattern in banned_patterns:
             if pattern in text:
@@ -277,7 +277,7 @@ def test_min_distance_docs_capture_primary_and_supplementary_evidence():
         "thesis_pipeline_double_run_analysis_2026-02-11.md" in addendum_text
     ), "Addendum must cite the supplementary historical analysis"
 
-    calc_text = (ROOT / "docs" / "MIN_DISTANCE_CALCULATION.md").read_text(
+    calc_text = (ROOT / "docs" / "06_REFERENCE" / "MIN_DISTANCE_CALCULATION.md").read_text(
         encoding="utf-8", errors="ignore"
     )
     assert (
@@ -300,7 +300,7 @@ def test_min_distance_docs_capture_primary_and_supplementary_evidence():
         "5 km" in howto_text and "8 km" in howto_text
     ), "Thesis HOWTO must mention the historical low-distance drift evidence"
 
-    ledger_text = (ROOT / "docs" / "PARAMETER_POLICY_LEDGER.md").read_text(
+    ledger_text = (ROOT / "docs" / "08_GOVERNANCE" / "PARAMETER_POLICY_LEDGER.md").read_text(
         encoding="utf-8", errors="ignore"
     )
     assert (
@@ -334,7 +334,7 @@ def test_n_samples_docs_capture_policy_and_supplementary_architecture_evidence()
         "external papers prove `4-8%` for KDR100" in addendum_text
     ), "Addendum must explicitly limit claim strength"
 
-    config_text = (ROOT / "docs" / "CONFIG_POLICY.md").read_text(
+    config_text = (ROOT / "docs" / "08_GOVERNANCE" / "CONFIG_POLICY.md").read_text(
         encoding="utf-8", errors="ignore"
     )
     assert (
@@ -357,7 +357,7 @@ def test_n_samples_docs_capture_policy_and_supplementary_architecture_evidence()
         "not directly derived from" in howto_text
     ), "Thesis HOWTO must preserve the model-agnostic selection boundary"
 
-    ledger_text = (ROOT / "docs" / "PARAMETER_POLICY_LEDGER.md").read_text(
+    ledger_text = (ROOT / "docs" / "08_GOVERNANCE" / "PARAMETER_POLICY_LEDGER.md").read_text(
         encoding="utf-8", errors="ignore"
     )
     assert (
@@ -369,7 +369,7 @@ def test_n_samples_docs_capture_policy_and_supplementary_architecture_evidence()
 
 
 def test_phase5_docs_capture_optional_post_freeze_boundary():
-    config_text = (ROOT / "docs" / "CONFIG_POLICY.md").read_text(
+    config_text = (ROOT / "docs" / "08_GOVERNANCE" / "CONFIG_POLICY.md").read_text(
         encoding="utf-8", errors="ignore"
     )
     assert (
