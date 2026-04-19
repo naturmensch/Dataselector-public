@@ -8,7 +8,10 @@ from .audit import audit_width_calibration_sensitivity
 from .measure_state import measure_width_calibration
 from .models import DEFAULT_DISPLAY_CROP_FACTOR, DEFAULT_DISPLAY_SCALE
 from .prepare import prepare_width_calibration
-from .render import render_width_calibration_debug_masks
+from .render import (
+    render_width_calibration_debug_masks,
+    render_width_calibration_final_masks,
+)
 from .runs import (
     build_width_calibration_roads_source,
     orchestrate_width_calibration,
@@ -606,6 +609,77 @@ def render_width_calibration_debug_masks_cmd(
                 out_dir=out_dir,
                 fixed_width_px=fixed_width_px,
                 roads_layer=roads_layer,
+            ),
+            indent=2,
+            ensure_ascii=True,
+        )
+    )
+    return 0
+
+
+@cli_command(
+    "render-width-calibration-final-masks",
+    help="Render final Phase-5 patch masks from classwise width-calibration final_width_px values",
+    args={
+        "handoff_dir": {
+            "type": str,
+            "required": True,
+            "help": "Path to the Phase-5 handoff directory",
+        },
+        "roads_gpkg": {
+            "type": str,
+            "required": True,
+            "help": "Path to the roads GeoPackage used for final mask rendering",
+        },
+        "summary_csv": {
+            "type": str,
+            "required": True,
+            "help": "Width-calibration summary CSV containing final_width_px per class",
+        },
+        "out_dir": {
+            "type": str,
+            "required": True,
+            "help": "Output directory for final mask GeoTIFFs",
+        },
+        "roads_layer": {
+            "type": str,
+            "required": False,
+            "default": None,
+            "help": "Optional layer name inside the roads GeoPackage; defaults to automatic resolution",
+        },
+        "expected_roads_gpkg_sha256": {
+            "type": str,
+            "required": False,
+            "default": None,
+            "help": "Optional SHA256 guard for the roads GeoPackage",
+        },
+        "expected_summary_csv_sha256": {
+            "type": str,
+            "required": False,
+            "default": None,
+            "help": "Optional SHA256 guard for the width-calibration summary CSV",
+        },
+    },
+)
+def render_width_calibration_final_masks_cmd(
+    handoff_dir: str,
+    roads_gpkg: str,
+    summary_csv: str,
+    out_dir: str,
+    roads_layer: str | None = None,
+    expected_roads_gpkg_sha256: str | None = None,
+    expected_summary_csv_sha256: str | None = None,
+) -> int:
+    print(
+        json.dumps(
+            render_width_calibration_final_masks(
+                handoff_dir=handoff_dir,
+                roads_gpkg=roads_gpkg,
+                summary_csv=summary_csv,
+                out_dir=out_dir,
+                roads_layer=roads_layer,
+                expected_roads_gpkg_sha256=expected_roads_gpkg_sha256,
+                expected_summary_csv_sha256=expected_summary_csv_sha256,
             ),
             indent=2,
             ensure_ascii=True,

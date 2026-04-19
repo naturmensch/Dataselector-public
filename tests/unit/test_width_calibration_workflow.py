@@ -12,6 +12,7 @@ from rasterio.transform import from_origin
 from shapely.geometry import MultiLineString
 
 from dataselector.cli_decorators import get_registered_commands
+from dataselector.runtime.parameter_snapshot import compute_file_sha256
 from dataselector.workflows.width_calibration import (
     audit_width_calibration_sensitivity,
     build_width_calibration_roads_source,
@@ -19,6 +20,7 @@ from dataselector.workflows.width_calibration import (
     orchestrate_width_calibration,
     prepare_width_calibration,
     render_width_calibration_debug_masks,
+    render_width_calibration_final_masks,
     summarize_width_calibration,
     sync_width_calibration_source,
 )
@@ -29,9 +31,12 @@ from dataselector.workflows.width_calibration.measure_state import (
 )
 from dataselector.workflows.width_calibration.prepare import compute_class_targets
 from dataselector.workflows.width_calibration.models import (
+    FINAL_MASK_MANIFEST_FILENAME,
     MANIFEST_FILENAME,
     MEASUREMENTS_FILENAME,
     MEASUREMENT_COLUMNS,
+    SUMMARY_COLUMNS,
+    SUPPORTED_CLASSES,
     TASK_COLUMNS,
     TaskRecord,
 )
@@ -169,6 +174,32 @@ def _write_named_roads_layer(
         crs="EPSG:3857",
     )
     roads_gdf.to_file(path, layer=layer, driver="GPKG")
+
+
+def _write_summary_csv(path: Path, *, widths: dict[int, int]) -> None:
+    rows: list[dict[str, object]] = []
+    for class_id in SUPPORTED_CLASSES:
+        width_px = widths.get(class_id, 4)
+        rows.append(
+            {
+                "class": class_id,
+                "n_valid_primary": 5,
+                "median_px": float(width_px),
+                "IQR_px": 1.0,
+                "MAD_px": 0.5,
+                "median_m": float(width_px),
+                "IQR_m": 1.0,
+                "MAD_m": 0.5,
+                "repeat_median_abs_diff_px": 0.25,
+                "repeat_median_abs_diff_m": 0.25,
+                "low_evidence_flag": False,
+                "high_variance_flag": False,
+                "low_reliability_flag": False,
+                "final_width_px": width_px,
+                "final_width_m": float(width_px),
+            }
+        )
+    pd.DataFrame(rows, columns=SUMMARY_COLUMNS).to_csv(path, index=False)
 
 
 @pytest.mark.fast
@@ -1723,6 +1754,78 @@ def test_render_width_calibration_debug_masks_writes_patch_masks_and_manifest(
 
 @pytest.mark.fast
 @pytest.mark.unit
+def test_render_width_calibration_final_masks_uses_summary_widths(tmp_path: Path):
+    env = _build_handoff(tmp_path)
+    out_dir = tmp_path / "final_masks"
+    summary_csv = tmp_path / "width_calibration_summary.csv"
+    _write_summary_csv(summary_csv, widths={0: 7, 3: 5, 8: 6})
+
+    result = render_width_calibration_final_masks(
+        handoff_dir=env["handoff_dir"],
+        roads_gpkg=env["roads_path"],
+        summary_csv=summary_csv,
+        out_dir=out_dir,
+        expected_roads_gpkg_sha256=compute_file_sha256(env["roads_path"]),
+        expected_summary_csv_sha256=compute_file_sha256(summary_csv),
+    )
+
+    requirements_df = pd.read_csv(env["handoff_dir"] / "patch_mask_requirements.csv")
+    expected_names = requirements_df["required_mask_filename"].astype(str).tolist()
+    assert result["mask_count"] == len(expected_names)
+    for mask_name in expected_names:
+        assert (out_dir / mask_name).exists()
+
+    manifest_path = out_dir / FINAL_MASK_MANIFEST_FILENAME
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["debug_only"] is False
+    assert manifest["test_only"] is False
+    assert manifest["rendering_mode"] == "final_width_px"
+    assert "fixed_width_px" not in manifest
+    assert manifest["class_widths_px"]["0"] == 7
+    assert manifest["class_widths_px"]["3"] == 5
+    assert manifest["class_widths_px"]["8"] == 6
+    assert manifest["summary_csv"] == str(summary_csv.resolve())
+    assert manifest["summary_csv_sha256"]
+    assert result["roads_gpkg_sha256"] == manifest["roads_gpkg_sha256"]
+    assert result["summary_csv_sha256"] == manifest["summary_csv_sha256"]
+
+    sample_mask_path = out_dir / "KDR_001_p1_mask.tif"
+    with (
+        rasterio.open(sample_mask_path) as mask_ds,
+        rasterio.open(
+            env["handoff_dir"] / "quicklooks" / "KDR_001_p1.tif"
+        ) as quicklook_ds,
+    ):
+        mask = mask_ds.read(1)
+        assert int(np.count_nonzero(mask)) > 0
+        assert mask_ds.width == quicklook_ds.width
+        assert mask_ds.height == quicklook_ds.height
+        assert mask_ds.transform == quicklook_ds.transform
+        assert str(mask_ds.crs) == str(quicklook_ds.crs)
+
+
+@pytest.mark.fast
+@pytest.mark.unit
+def test_render_width_calibration_final_masks_rejects_sha_mismatch(tmp_path: Path):
+    env = _build_handoff(tmp_path)
+    out_dir = tmp_path / "final_masks"
+    summary_csv = tmp_path / "width_calibration_summary.csv"
+    _write_summary_csv(summary_csv, widths={0: 7})
+
+    with pytest.raises(ValueError, match="roads_gpkg SHA256 mismatch"):
+        render_width_calibration_final_masks(
+            handoff_dir=env["handoff_dir"],
+            roads_gpkg=env["roads_path"],
+            summary_csv=summary_csv,
+            out_dir=out_dir,
+            expected_roads_gpkg_sha256="0" * 64,
+        )
+
+    assert not out_dir.exists()
+
+
+@pytest.mark.fast
+@pytest.mark.unit
 def test_width_calibration_commands_are_registered():
     import dataselector.cli  # noqa: F401
 
@@ -1734,6 +1837,7 @@ def test_width_calibration_commands_are_registered():
     assert "summarize-width-calibration" in commands
     assert "audit-width-calibration-sensitivity" in commands
     assert "render-width-calibration-debug-masks" in commands
+    assert "render-width-calibration-final-masks" in commands
 
 
 @pytest.mark.fast
@@ -1868,6 +1972,14 @@ def test_orchestrate_width_calibration_call_order(tmp_path: Path):
     assert "prepare" in result
     assert result["snapshot"]["run_id"]
     assert result["build"]["dest_gpkg"]
+    assert result["build"]["dest_gpkg"] == str(
+        (
+            tmp_path
+            / "handoff"
+            / "local_sources"
+            / "phase5_roads_merged.gpkg"
+        ).resolve()
+    )
     assert result["prepare"]["tasks_csv"]
     assert Path(result["prepare"]["tasks_csv"]).exists()
 

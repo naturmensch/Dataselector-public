@@ -9,9 +9,14 @@ import rasterio
 from rasterio.features import rasterize
 from shapely.geometry import box
 
+from dataselector.runtime.parameter_snapshot import compute_file_sha256
+
 from .models import (
     DEBUG_MASK_MANIFEST_FILENAME,
+    FINAL_MASK_MANIFEST_FILENAME,
+    SUMMARY_COLUMNS,
     SUPPORTED_CLASSES,
+    WORKFLOW_VERSION,
     normalize_class,
     repo_root,
     require_columns,
@@ -49,6 +54,72 @@ def load_patch_mask_requirements(handoff_dir: Path) -> dict[str, str]:
         if patch_id:
             requirements[patch_id] = filename
     return requirements
+
+
+def load_final_widths(summary_csv_path: Path) -> dict[int, int]:
+    if not summary_csv_path.exists():
+        raise FileNotFoundError(
+            f"Missing width calibration summary CSV: {summary_csv_path}"
+        )
+    summary_df = pd.read_csv(summary_csv_path)
+    require_columns(summary_df, SUMMARY_COLUMNS, "width_calibration_summary.csv")
+    widths: dict[int, int] = {}
+    unsupported_classes: list[int] = []
+    invalid_classes: list[str] = []
+    for row in summary_df.to_dict("records"):
+        class_id = normalize_class(row.get("class"))
+        if class_id is None:
+            invalid_classes.append(str(row.get("class", "")))
+            continue
+        if class_id not in SUPPORTED_CLASSES:
+            unsupported_classes.append(int(class_id))
+            continue
+        final_width_value = row.get("final_width_px")
+        if pd.isna(final_width_value):
+            raise ValueError(f"Missing final_width_px for class {class_id}.")
+        width_px = int(final_width_value)
+        if width_px <= 0:
+            raise ValueError(
+                f"final_width_px must be positive for class {class_id}: {width_px}"
+            )
+        widths[int(class_id)] = width_px
+    if invalid_classes:
+        raise ValueError(
+            "width_calibration_summary.csv contains invalid class values: "
+            f"{invalid_classes}"
+        )
+    if unsupported_classes:
+        raise ValueError(
+            "width_calibration_summary.csv contains unsupported class values: "
+            f"{sorted(set(unsupported_classes))}"
+        )
+    missing_classes = sorted(
+        class_id for class_id in SUPPORTED_CLASSES if class_id not in widths
+    )
+    if missing_classes:
+        raise ValueError(
+            "width_calibration_summary.csv is missing final_width_px for supported class(es): "
+            f"{missing_classes}"
+        )
+    return widths
+
+
+def validate_expected_sha256(
+    *,
+    path: Path,
+    label: str,
+    actual_sha256: str,
+    expected_sha256: str | None,
+) -> None:
+    if expected_sha256 is None or not str(expected_sha256).strip():
+        return
+    expected_value = str(expected_sha256).strip().lower()
+    actual_value = str(actual_sha256).strip().lower()
+    if actual_value != expected_value:
+        raise ValueError(
+            f"{label} SHA256 mismatch for {path}: "
+            f"expected {expected_value}, got {actual_value}"
+        )
 
 
 def render_mask_for_patch(
@@ -193,9 +264,125 @@ def render_width_calibration_debug_masks(
     }
 
 
+def render_width_calibration_final_masks(
+    *,
+    handoff_dir: str | Path,
+    roads_gpkg: str | Path,
+    summary_csv: str | Path,
+    out_dir: str | Path,
+    roads_layer: str | None = None,
+    expected_roads_gpkg_sha256: str | None = None,
+    expected_summary_csv_sha256: str | None = None,
+) -> dict[str, Any]:
+    repo_root_path = repo_root()
+    handoff_dir_path = resolve_path(
+        handoff_dir, repo_root_path=repo_root_path, prefer_repo=True
+    ).resolve()
+    roads_gpkg_path = resolve_path(
+        roads_gpkg, repo_root_path=repo_root_path, prefer_repo=True
+    ).resolve()
+    summary_csv_path = resolve_path(
+        summary_csv, repo_root_path=repo_root_path, prefer_repo=True
+    ).resolve()
+    out_dir_path = resolve_path(
+        out_dir, repo_root_path=repo_root_path, prefer_repo=True
+    ).resolve()
+    roads_gpkg_sha256 = compute_file_sha256(roads_gpkg_path)
+    summary_csv_sha256 = compute_file_sha256(summary_csv_path)
+    validate_expected_sha256(
+        path=roads_gpkg_path,
+        label="roads_gpkg",
+        actual_sha256=roads_gpkg_sha256,
+        expected_sha256=expected_roads_gpkg_sha256,
+    )
+    validate_expected_sha256(
+        path=summary_csv_path,
+        label="summary_csv",
+        actual_sha256=summary_csv_sha256,
+        expected_sha256=expected_summary_csv_sha256,
+    )
+    out_dir_path.mkdir(parents=True, exist_ok=True)
+    resolved_roads_layer = (
+        str(roads_layer).strip()
+        if roads_layer is not None and str(roads_layer).strip()
+        else resolve_roads_layer_name(roads_gpkg_path)
+    )
+    class_widths = load_final_widths(summary_csv_path)
+    selected_df = load_selected_patches(handoff_dir_path, exclude_hamburg=False)
+    patch_contexts = build_patch_contexts(handoff_dir_path, selected_df)
+    mask_requirements = load_patch_mask_requirements(handoff_dir_path)
+    missing_patch_ids = [
+        patch.patch_id
+        for patch in patch_contexts
+        if patch.patch_id not in mask_requirements
+    ]
+    if missing_patch_ids:
+        raise ValueError(
+            "patch_mask_requirements.csv is missing required_mask_filename entries for patch_id(s): "
+            f"{missing_patch_ids}"
+        )
+    empty_filename_patch_ids = [
+        patch.patch_id
+        for patch in patch_contexts
+        if not str(mask_requirements.get(patch.patch_id, "")).strip()
+    ]
+    if empty_filename_patch_ids:
+        raise ValueError(
+            "patch_mask_requirements.csv has empty required_mask_filename entries for patch_id(s): "
+            f"{empty_filename_patch_ids}"
+        )
+    roads_gdf = load_roads_layer(roads_gpkg_path, roads_layer=resolved_roads_layer)
+    cache: dict[str, Any] = {}
+    written_masks: list[str] = []
+    for patch in patch_contexts:
+        patch_roads = roads_for_crs(roads_gdf, patch.crs_wkt, cache)
+        mask = render_mask_for_patch(
+            patch,
+            patch_roads,
+            class_widths_px=class_widths,
+        )
+        out_path = out_dir_path / str(mask_requirements[patch.patch_id])
+        write_binary_mask_geotiff(mask, patch=patch, out_path=out_path)
+        written_masks.append(str(out_path))
+    manifest_path = out_dir_path / FINAL_MASK_MANIFEST_FILENAME
+    write_json(
+        manifest_path,
+        {
+            "workflow_version": WORKFLOW_VERSION,
+            "debug_only": False,
+            "test_only": False,
+            "rendering_mode": "final_width_px",
+            "summary_csv": str(summary_csv_path),
+            "summary_csv_sha256": summary_csv_sha256,
+            "handoff_dir": str(handoff_dir_path),
+            "roads_gpkg": str(roads_gpkg_path),
+            "roads_gpkg_sha256": roads_gpkg_sha256,
+            "roads_layer": resolved_roads_layer,
+            "generated_utc": utc_now(),
+            "mask_count": len(written_masks),
+            "class_widths_px": {
+                str(k): int(v) for k, v in sorted(class_widths.items())
+            },
+        },
+    )
+    return {
+        "out_dir": str(out_dir_path),
+        "manifest_json": str(manifest_path),
+        "mask_count": len(written_masks),
+        "class_widths_px": {
+            str(k): int(v) for k, v in sorted(class_widths.items())
+        },
+        "summary_csv_sha256": summary_csv_sha256,
+        "roads_gpkg_sha256": roads_gpkg_sha256,
+    }
+
+
 __all__ = [
+    "load_final_widths",
     "load_patch_mask_requirements",
     "render_mask_for_patch",
     "render_width_calibration_debug_masks",
+    "render_width_calibration_final_masks",
+    "validate_expected_sha256",
     "write_binary_mask_geotiff",
 ]

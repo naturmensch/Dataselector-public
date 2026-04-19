@@ -218,8 +218,10 @@ def build_width_calibration_roads_source(
     tracer4_layer: str = "4_roads_tracer_patches",
     tracer5_layer: str = "5_roads_tracer_patches",
     dest_layer: str = "phase5_roads_merged",
+    repo_root_path: Path | None = None,
 ) -> dict[str, Any]:
-    repo_root_path = repo_root()
+    if repo_root_path is None:
+        repo_root_path = repo_root()
     cut_path = resolve_path(
         cut_roads_gpkg, repo_root_path=repo_root_path, prefer_repo=False
     ).resolve()
@@ -898,6 +900,7 @@ def orchestrate_width_calibration(
         tracer4_layer=str(tracer4_layer),
         tracer5_layer=str(tracer5_layer),
         dest_layer="phase5_roads_merged",
+        repo_root_path=repo_root_path,
     )
     
     # Stage 3: Prepare tasks

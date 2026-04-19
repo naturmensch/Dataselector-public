@@ -28,6 +28,7 @@ SUMMARY_JSON_FILENAME = "width_calibration_summary.json"
 SENSITIVITY_FILENAME = "width_calibration_sensitivity.csv"
 SENSITIVITY_OVERLAY_DIRNAME = "width_calibration_sensitivity_overlays"
 DEBUG_MASK_MANIFEST_FILENAME = "width_calibration_debug_mask_manifest.json"
+FINAL_MASK_MANIFEST_FILENAME = "width_calibration_final_mask_manifest.json"
 MERGED_ROADS_MANIFEST_FILENAME = "phase5_roads_merged.sources.json"
 ARCHIVE_TIMESTAMP_FORMAT = "%Y%m%dT%H%M%SZ"
 TASK_COLUMNS = [
@@ -512,6 +513,7 @@ __all__ = [
     "DEFAULT_DISPLAY_CROP_FACTOR",
     "DEFAULT_DISPLAY_SCALE",
     "EligibilityParameters",
+    "FINAL_MASK_MANIFEST_FILENAME",
     "HAMBURG_TILE",
     "LEGACY_MEASUREMENT_REQUIRED_COLUMNS",
     "LEGACY_TASK_REQUIRED_COLUMNS",

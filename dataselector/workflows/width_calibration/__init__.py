@@ -10,7 +10,10 @@ from .measure_state import (
     measure_width_calibration,
 )
 from .prepare import prepare_width_calibration
-from .render import render_width_calibration_debug_masks
+from .render import (
+    render_width_calibration_debug_masks,
+    render_width_calibration_final_masks,
+)
 from .runs import (
     build_width_calibration_roads_source,
     orchestrate_width_calibration,
@@ -28,6 +31,7 @@ __all__ = [
     "orchestrate_width_calibration",
     "prepare_width_calibration",
     "render_width_calibration_debug_masks",
+    "render_width_calibration_final_masks",
     "summarize_width_calibration",
     "sync_width_calibration_source",
 ]

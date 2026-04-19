@@ -45,6 +45,10 @@ import pytest
             "dataselector.workflows.width_calibration",
             "render_width_calibration_debug_masks",
         ),
+        (
+            "dataselector.workflows.width_calibration",
+            "render_width_calibration_final_masks",
+        ),
     ],
 )
 def test_workflow_module_import_sanity(module_name: str, symbol: str):
