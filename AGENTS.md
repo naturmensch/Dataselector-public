@@ -104,6 +104,26 @@ env XDG_CACHE_HOME=/tmp/mamba-cache \
 - `docs/` authoritative docs and archive docs
 - `docs/07_ARCHIVE/` archived legacy documentation
 
+## Governance Backup Policy
+1. Before archival or relocation of governance-relevant docs/results, create a
+  reproducible snapshot with SHA256 checksums.
+2. Each archive wave must include a `MANIFEST.md` with:
+  - scope and date
+  - archive location
+  - checksum list
+  - restore procedure
+3. No deletion of governance-relevant documentation without committed
+  manifested snapshot evidence.
+4. Quarterly integrity audit is mandatory:
+  - list all `docs/07_ARCHIVE/**/MANIFEST.md`
+  - verify presence and commit history
+  - spot-check file checksums against manifest entries
+5. Evidence zones:
+  - active decision evidence: `docs/06_REFERENCE/thesis_decision_evidence/`
+  - historical archive evidence: `docs/07_ARCHIVE/`
+6. `outputs/` remains non-committed runtime space; long-term thesis evidence
+  must be curated into tracked docs evidence zones.
+
 ## Footguns
 1. Do not re-enable GitHub Actions until billing is restored (`.github/workflows-disabled/`)
 2. Do not commit generated run artifacts from `outputs/`
