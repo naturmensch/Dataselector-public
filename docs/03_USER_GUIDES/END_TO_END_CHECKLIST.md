@@ -119,8 +119,8 @@ Operativer Serverstandard:
    und `phase5_final_width_contract.json` verfuegbar sind.
 2. Git LFS initialisieren/ziehen (`git lfs install`, `git lfs pull`), damit
    getrackte Handoff-Quicklooks vorhanden sind.
-3. Finalen Maskenordner als externes Datenartefakt am erwarteten Serverpfad
-   bereitstellen (`data/patch_masks_final_width_calibration_20260418T195314Z/`).
+3. Pruefen, dass der finale Maskenordner im Git-LFS-Checkout unter
+   `data/patch_masks_final_width_calibration_20260418T195314Z/` vorhanden ist.
 
 In `masterarbeit-strassenerkennung` ausfuehren:
 

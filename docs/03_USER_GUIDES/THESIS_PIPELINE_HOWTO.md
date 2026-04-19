@@ -832,9 +832,9 @@ Operativer Standard:
 1. Git-Checkout auf dem Zielsystem aktualisieren, damit Code, getrackter
    Handoff und `phase5_final_width_contract.json` verfuegbar sind.
 2. Git LFS initialisieren und pull ausfuehren, damit getrackte
-   Handoff-Quicklooks vorliegen.
-3. Finalen Maskenordner als externes Datenartefakt am erwarteten Serverpfad
-   bereitstellen (`data/patch_masks_final_width_calibration_20260418T195314Z/`).
+   Handoff-Quicklooks und der finale Maskenordner vorliegen.
+3. Pruefen, dass der finale Maskenordner im Git-LFS-Checkout unter
+   `data/patch_masks_final_width_calibration_20260418T195314Z/` vorhanden ist.
 
 Wichtig:
 
