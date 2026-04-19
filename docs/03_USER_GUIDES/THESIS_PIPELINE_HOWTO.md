@@ -825,31 +825,48 @@ Exit-Codes:
 3. `3`: Bilddaten unvollständig
 4. `4`: Policy-Verstoß
 
-### 9.2 Transfer lokal -> Server
+### 9.2 Server-/UniCloud-Bereitstellung (transportneutral)
 
-```bash
-# Handoff-Ordner übertragen
-rsync -avh handoff/<selection_id>/ <server>:/path/to/handoff/<selection_id>/
+Operativer Standard:
 
-# Nur geforderte Masken übertragen (patch-basiert)
-cut -d, -f2 handoff/<selection_id>/patch_mask_requirements.csv | tail -n +2 > /tmp/mask_files.txt
-rsync -avh --files-from=/tmp/mask_files.txt annotations/masks/ <server>:/path/to/masks/
-```
+1. Git-Checkout auf dem Zielsystem aktualisieren, damit Code, getrackter
+   Handoff und `phase5_final_width_contract.json` verfuegbar sind.
+2. Git LFS initialisieren und pull ausfuehren, damit getrackte
+   Handoff-Quicklooks vorliegen.
+3. Finalen Maskenordner als externes Datenartefakt am erwarteten Serverpfad
+   bereitstellen (`data/patch_masks_final_width_calibration_20260418T195314Z/`).
 
-Für den tile-basierten Legacy-Flow stattdessen:
+Wichtig:
 
-```bash
-cut -d, -f2 handoff/<selection_id>/mask_requirements.csv | tail -n +2 > /tmp/mask_files.txt
-```
-
-Falls Rohkarten auf dem Server fehlen: zusätzlich selektierte Bilder inklusive
-Sidecars übertragen.
+1. Es wird kein konkretes Kopierwerkzeug vorgeschrieben.
+2. Der akzeptierte Zustand wird ueber Validator/Manifest/Verify belegt,
+   nicht ueber ein bestimmtes Transfertool.
+3. Falls Rohkarten im Legacy-Tile-Pfad fehlen, muessen die benoetigten
+   Rohdaten inklusive Sidecars ebenfalls am erwarteten Pfad bereitgestellt
+   werden.
 
 ### 9.3 Server-Check im Trainings-Repo
 
 Im Repo `masterarbeit-strassenerkennung`:
 
 ```bash
+python scripts/setup/validate_phase5_final_width_handoff.py \
+  --contract /path/to/handoff/<selection_id>/phase5_final_width_contract.json \
+  --masks-dir /path/to/final_width_masks \
+  --integration-dir data/integration/<integration_id> \
+  --require-local-artifacts
+
+bash scripts/setup/handoff_check.sh verify-server-patches \
+  --handoff-dir /path/to/handoff/<selection_id> \
+  --masks-dir /path/to/final_width_masks
+
+bash scripts/setup/handoff_check.sh materialize-patches \
+  --handoff-dir /path/to/handoff/<selection_id> \
+  --masks-dir /path/to/final_width_masks \
+  --out-root data/integration \
+  --split-policy use_handoff \
+  --selection-id <integration_id>
+
 bash scripts/setup/handoff_check.sh verify-server \
   --handoff-dir /path/to/handoff/<selection_id> \
   --raw-tiles-dir /path/to/raw/Tiles \
@@ -860,7 +877,8 @@ bash scripts/setup/handoff_check.sh materialize \
   --out-root data/integration
 ```
 
-Erst nach grünem `verify-local` + `verify-server` Training/Splits starten.
+Erst nach gruenem Validator + `verify-server-patches` + erfolgreichem
+`materialize-patches --split-policy use_handoff` Training starten.
 
 Technische Debug-/Smoke-Option:
 

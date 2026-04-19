@@ -111,24 +111,44 @@ git push origin main
 
 Do not commit generated run artifacts from `outputs/`.
 
-## 6) Transfer to Server and Verify in Training Repo
+## 6) Server-/UniCloud-Bereitstellung und Verify im Trainings-Repo
 
-Transfer handoff:
+Operativer Serverstandard:
+
+1. Server-Checkout aktualisieren (`git pull`), damit Code, getrackter Handoff
+   und `phase5_final_width_contract.json` verfuegbar sind.
+2. Git LFS initialisieren/ziehen (`git lfs install`, `git lfs pull`), damit
+   getrackte Handoff-Quicklooks vorhanden sind.
+3. Finalen Maskenordner als externes Datenartefakt am erwarteten Serverpfad
+   bereitstellen (`data/patch_masks_final_width_calibration_20260418T195314Z/`).
+
+In `masterarbeit-strassenerkennung` ausfuehren:
 
 ```bash
-rsync -avh handoff/<selection_id>/ <server>:/path/to/handoff/<selection_id>/
-```
+python scripts/setup/validate_phase5_final_width_handoff.py \
+  --contract /path/to/handoff/<selection_id>/phase5_final_width_contract.json \
+  --masks-dir /path/to/final_width_masks \
+  --integration-dir data/integration/<integration_id> \
+  --require-local-artifacts
 
-In `masterarbeit-strassenerkennung` run:
+bash scripts/setup/handoff_check.sh verify-server-patches \
+  --handoff-dir /path/to/handoff/<selection_id> \
+  --masks-dir /path/to/final_width_masks
 
-```bash
+bash scripts/setup/handoff_check.sh materialize-patches \
+  --handoff-dir /path/to/handoff/<selection_id> \
+  --masks-dir /path/to/final_width_masks \
+  --out-root data/integration \
+  --split-policy use_handoff \
+  --selection-id <integration_id>
+
 bash scripts/setup/handoff_check.sh verify-server \
   --handoff-dir /path/to/handoff/<selection_id> \
   --raw-tiles-dir /path/to/raw/Tiles \
   --masks-dir /path/to/masks
 ```
 
-Start training/splits only after server verification is green.
+Start training/splits only after validator + verify + materialize are green.
 
 ## 7) Minimal Governance Gates
 

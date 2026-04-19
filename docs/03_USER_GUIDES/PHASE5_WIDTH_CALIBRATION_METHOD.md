@@ -137,6 +137,22 @@ This path is explicitly `debug_only` / `test_only`.
 It does not replace width calibration, does not change any scientific artifact,
 and must not be used for final thesis masks.
 
+Render final patch masks from the classwise calibrated widths:
+
+```bash
+micromamba run -n dataselector python -m dataselector render-width-calibration-final-masks \
+  --handoff-dir handoff/thesis_orchestrate_20260313T200624Z_patches_core \
+  --roads-gpkg handoff/local_sources/phase5_roads_merged.gpkg \
+  --summary-csv outputs/runs/width_calibration_20260418T195314Z/summary/width_calibration_summary.csv \
+  --out-dir outputs/runs/width_calibration_20260418T195314Z/final_masks \
+  --expected-roads-gpkg-sha256 "$EXPECTED_ROADS_GPKG_SHA256" \
+  --expected-summary-csv-sha256 "$EXPECTED_SUMMARY_CSV_SHA256"
+```
+
+This path writes `width_calibration_final_mask_manifest.json` with
+`debug_only=false`, `test_only=false`, `rendering_mode=final_width_px`,
+the Summary/roads SHA values, and the `class_widths_px` contract.
+
 ## Measurement Definition
 
 - Single-line classes use the full visible stroke width.
@@ -237,6 +253,7 @@ Run artifacts:
 - `handoff/local_sources/phase5_roads_merged.sources.json`
 - optional auxiliary/manual-copy provenance: `handoff/local_sources/cut_fixed_geometry_roads.sync.json`
 - `width_calibration_debug_mask_manifest.json` (`debug_only` / `test_only`)
+- `width_calibration_final_mask_manifest.json` (`final_width_px` contract)
 
 ## Recommended Order
 
@@ -245,6 +262,7 @@ Run artifacts:
 3. `measure-width-calibration`
 4. `summarize-width-calibration`
 5. `audit-width-calibration-sensitivity`
+6. `render-width-calibration-final-masks`
 
 ## Debug/Test-Only Smoke Path
 

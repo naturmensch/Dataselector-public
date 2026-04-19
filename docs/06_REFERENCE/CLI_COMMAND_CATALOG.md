@@ -29,6 +29,7 @@ micromamba run -n dataselector python -m dataselector <command> --help
 | `audit-width-calibration-sensitivity` | Run mask-level sensitivity audit |
 | `sync-width-calibration-source` | Sync editable roads source into repo-local path |
 | `render-width-calibration-debug-masks` | Render debug/test-only fixed-width masks |
+| `render-width-calibration-final-masks` | Render final patch masks from classwise `final_width_px` values |
 
 ## Selection and Optimization Commands
 
