@@ -34,6 +34,7 @@ micromamba run -n dataselector python -m dataselector thesis-pipeline \
 
 ### Thesis / release users
 
+- [03_USER_GUIDES/END_TO_END_CHECKLIST.md](../03_USER_GUIDES/END_TO_END_CHECKLIST.md)
 - [03_USER_GUIDES/PIPELINES.md](../03_USER_GUIDES/PIPELINES.md)
 - [03_USER_GUIDES/THESIS_PIPELINE_HOWTO.md](../03_USER_GUIDES/THESIS_PIPELINE_HOWTO.md)
 - [THESIS_METHOD_CONTRACT.md](../08_GOVERNANCE/THESIS_METHOD_CONTRACT.md)
@@ -51,6 +52,7 @@ micromamba run -n dataselector python -m dataselector thesis-pipeline \
 Useful, but not the default thesis entry story:
 
 - [06_REFERENCE/api_reference.md](../06_REFERENCE/api_reference.md)
+- [06_REFERENCE/CLI_COMMAND_CATALOG.md](../06_REFERENCE/CLI_COMMAND_CATALOG.md)
 - [06_REFERENCE/TOOLS_REFERENCE.md](../06_REFERENCE/TOOLS_REFERENCE.md)
 - [06_REFERENCE/thesis_decision_evidence/](../06_REFERENCE/thesis_decision_evidence/)
   for tracked parameter-decision evidence that remains referenced by active

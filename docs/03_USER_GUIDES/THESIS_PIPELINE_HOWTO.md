@@ -3,6 +3,9 @@
 This is the authoritative runbook for thesis-grade tile selection before
 annotation.
 
+For a compact linear execution path, see
+[END_TO_END_CHECKLIST.md](END_TO_END_CHECKLIST.md).
+
 ## 0) Official Pipeline Roles
 
 1. `thesis-pipeline` is the production path for thesis/annotation decisions.
@@ -680,6 +683,54 @@ micromamba run -n dataselector python -m dataselector thesis-pipeline \
   --output-dir "outputs/runs/thesis_run_A_${RUN_TAG}" \
   | tee "outputs/run_logs/thesis_run_A_${RUN_TAG}.log"
 ```
+
+## 8.1) Width Calibration (Two-Click Tool, Optional but Recommended)
+
+Use this flow when you need a reproducible width policy before final mask
+generation or handoff validation.
+
+```bash
+# 1) Prepare/editable roads source (repo-local)
+micromamba run -n dataselector python -m dataselector build-width-calibration-roads-source
+
+# 2) Optional sync after external edits (e.g., QGIS)
+micromamba run -n dataselector python -m dataselector sync-width-calibration-source
+
+# 3) Build deterministic task queue
+micromamba run -n dataselector python -m dataselector prepare-width-calibration
+
+# 4) Interactive two-click measurement UI
+micromamba run -n dataselector python -m dataselector measure-width-calibration
+
+# 5) Summarize accepted measurements
+micromamba run -n dataselector python -m dataselector summarize-width-calibration
+```
+
+Operational rules:
+
+1. Use only accepted measurements for policy decisions.
+2. Keep source synchronization explicit (`sync-width-calibration-source`) after
+    manual geometry edits.
+3. Record resulting width-policy artifacts in the run/report directory.
+
+## 8.2) Git and GitHub Sync Checkpoint (Before Server Transfer)
+
+Before sending handoff artifacts to the training repository, ensure Dataselector
+state is reproducible and synchronized.
+
+```bash
+# 1) Inspect state
+git status
+
+# 2) Commit only governance/docs/config/code changes (no generated outputs)
+git add docs/ config/ dataselector/ scripts/ tests/
+git commit -m "docs: update thesis runbook and reference surfaces"
+
+# 3) Push authoritative state
+git push origin main
+```
+
+Do not commit generated artifacts from `outputs/`.
 
 ## 9) Handoff to masterarbeit-strassenerkennung (Server Workflow)
 
