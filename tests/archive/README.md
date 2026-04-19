@@ -7,7 +7,7 @@ needs. They are **not** part of the active showcase-release confidence set.
 
 For the active test strategy, start with:
 
-- `docs/TEST_SUITE_CURATION.md`
+- `docs/08_GOVERNANCE/TEST_SUITE_CURATION.md`
 - `tests/test_thesis_pipeline.py`
 - `tests/unit/`
 

@@ -270,4 +270,4 @@ D_combined = alpha*normalize(D_visual) + beta*normalize(D_spatial) + gamma*norma
 **Related Documentation:**
 - [Architecture Overview](architecture.md) – System design
 - [Methodology](methodology.md) – Parameter optimization phases
-- [Scientific Background](../SCIENTIFIC_BACKGROUND.md) – Mathematical proofs & theory
+- [Scientific Background](../08_GOVERNANCE/SCIENTIFIC_BACKGROUND.md) – Mathematical proofs & theory

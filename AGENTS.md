@@ -92,8 +92,8 @@ env XDG_CACHE_HOME=/tmp/mamba-cache \
 2. Snapshot validation is mandatory unless `--force`
 3. If `--force` is used, metadata must record override flag and reason
 4. Scientific rationale and provenance must be reflected in:
-   - `docs/PARAMETER_POLICY_LEDGER.md`
-   - `docs/CONFIG_POLICY.md`
+   - `docs/08_GOVERNANCE/PARAMETER_POLICY_LEDGER.md`
+   - `docs/08_GOVERNANCE/CONFIG_POLICY.md`
    - `docs/03_USER_GUIDES/THESIS_PIPELINE_HOWTO.md`
 
 ## Repository Map (active)

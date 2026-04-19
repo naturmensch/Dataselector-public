@@ -3,9 +3,9 @@
 > Historical Note (2026-02-23): Diese Seite dokumentiert primär theoretischen
 > Hintergrund und ältere methodische Formulierungen. Für den aktiven
 > Thesis-Methodikvertrag gelten stattdessen:
-> - `../../08_GOVERNANCE/THESIS_METHOD_CONTRACT.md`
-> - `../../08_GOVERNANCE/METHODOLOGY.md`
-> - `docs/CONFIG_POLICY.md`
+> - `THESIS_METHOD_CONTRACT.md`
+> - `METHODOLOGY.md`
+> - `CONFIG_POLICY.md`
 
 **Version:** 1.0  
 **Date:** 2. Februar 2026  

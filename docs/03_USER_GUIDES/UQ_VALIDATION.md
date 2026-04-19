@@ -230,10 +230,10 @@ A: Normal! TPE ist stochastisch. Nutze `--sampler qmc` für reproduzierbare Thes
 
 ## 🔗 Weiterführende Ressourcen
 
-- **Quick Start:** [QUICK_START.md](QUICK_START.md)
+- **Quick Start:** [PIPELINES.md](PIPELINES.md)
 - **Pipelines:** [PIPELINES.md](PIPELINES.md)
 - **Bootstrap Mathematik:** [../02_THEORY/methodology.md](../02_THEORY/methodology.md)
-- **Statistik Hintergrund:** [../SCIENTIFIC_BACKGROUND.md](../SCIENTIFIC_BACKGROUND.md)
+- **Statistik Hintergrund:** [../SCIENTIFIC_BACKGROUND.md](../08_GOVERNANCE/SCIENTIFIC_BACKGROUND.md)
 
 ---
 

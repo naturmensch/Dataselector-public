@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SURFACE_DOC = ROOT / "docs" / "REPO_SURFACE_CURATION.md"
-INDEX_DOC = ROOT / "docs" / "INDEX.md"
+SURFACE_DOC = ROOT / "docs" / "08_GOVERNANCE" / "REPO_SURFACE_CURATION.md"
+INDEX_DOC = ROOT / "docs" / "00_OVERVIEW" / "OVERVIEW.md"
 SCRIPTS_REF_DOC = ROOT / "docs" / "06_REFERENCE" / "scripts_reference.md"
 ARCHIVE_DOC = ROOT / "docs" / "07_ARCHIVE" / "README.md"
 TEST_ARCHIVE_DOC = ROOT / "tests" / "archive" / "README.md"
@@ -53,11 +53,11 @@ def test_archive_readmes_explain_non_authoritative_role():
     assert "historical documentation" in archive_text
     assert "not authoritative" in archive_text
     assert "README.md" in archive_text
-    assert "docs/INDEX.md" in archive_text
+    assert "docs/00_OVERVIEW/OVERVIEW.md" in archive_text
 
     assert "historical or archived tests" in tests_archive_text
     assert "not" in tests_archive_text.lower()
-    assert "docs/TEST_SUITE_CURATION.md" in tests_archive_text
+    assert "docs/08_GOVERNANCE/TEST_SUITE_CURATION.md" in tests_archive_text
 
     assert "Historical closeout automation" in phase4h_text
     assert "not" in phase4h_text.lower()

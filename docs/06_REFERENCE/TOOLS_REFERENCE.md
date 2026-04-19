@@ -218,7 +218,7 @@ micromamba run -n dataselector -- \
 ✓ No broken links found
 
 ✗ Found 2 broken links:
-  - docs/INDEX.md: Legacy note -> 07_ARCHIVE/missing_note.md
+  - docs/00_OVERVIEW/OVERVIEW.md: Legacy note -> 07_ARCHIVE/missing_note.md
   - docs/03_USER_GUIDES/THESIS_PIPELINE_HOWTO.md: Policy -> ../missing.md
 ```
 
@@ -254,7 +254,7 @@ micromamba run -n dataselector -- \
 
 **Output:**
 ```
-Would fix: docs/INDEX.md
+Would fix: docs/00_OVERVIEW/OVERVIEW.md
   ../old_reference.md -> ../06_REFERENCE/new_reference.md
 
 [DRY RUN] Would fix 1 links automatically

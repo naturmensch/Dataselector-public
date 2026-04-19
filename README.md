@@ -140,14 +140,14 @@ Dataselector/
 ## Wichtige Dokumente
 
 - [Thesis Pipeline How-To](docs/03_USER_GUIDES/THESIS_PIPELINE_HOWTO.md)
-- [Config Policy](docs/CONFIG_POLICY.md)
-- [Parameter Policy Ledger](docs/PARAMETER_POLICY_LEDGER.md)
-- [Methodology](docs/METHODOLOGY.md)
-- [Thesis Method Contract](docs/THESIS_METHOD_CONTRACT.md)
+- [Config Policy](docs/08_GOVERNANCE/CONFIG_POLICY.md)
+- [Parameter Policy Ledger](docs/08_GOVERNANCE/PARAMETER_POLICY_LEDGER.md)
+- [Methodology](docs/08_GOVERNANCE/METHODOLOGY.md)
+- [Thesis Method Contract](docs/08_GOVERNANCE/THESIS_METHOD_CONTRACT.md)
 - [Min-Distance Evidence Addendum](docs/MIN_DISTANCE_EVIDENCE_ADDENDUM.md)
 - [N-Samples Evidence Addendum](docs/N_SAMPLES_EVIDENCE_ADDENDUM.md)
-- [Test Suite Curation](docs/TEST_SUITE_CURATION.md)
-- [Repository Surface Curation](docs/REPO_SURFACE_CURATION.md)
+- [Test Suite Curation](docs/08_GOVERNANCE/TEST_SUITE_CURATION.md)
+- [Repository Surface Curation](docs/08_GOVERNANCE/REPO_SURFACE_CURATION.md)
 
 ## Advanced / historical workflows
 

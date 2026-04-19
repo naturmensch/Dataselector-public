@@ -820,6 +820,84 @@ def test_width_calibration_session_resume_and_undo(tmp_path: Path):
 
 @pytest.mark.fast
 @pytest.mark.unit
+def test_width_calibration_session_progress_snapshot(tmp_path: Path):
+    tasks_df = pd.DataFrame(
+        [
+            {
+                "task_id": "task_00001",
+                "candidate_id": "cand_1",
+                "class": 0,
+                "patch_id": "KDR_001_p1",
+                "tile_shortname": "KDR_001",
+                "source_feature_id": "row_000001",
+                "quicklook_path": "quicklooks/KDR_001_p1.tif",
+                "anchor_x_px": 32,
+                "anchor_y_px": 32,
+                "crop_size_px": 32,
+                "queue_position": 1,
+                "pass_type": "primary",
+                "repeat_of_task_id": "",
+            },
+            {
+                "task_id": "task_00002",
+                "candidate_id": "cand_2",
+                "class": 5,
+                "patch_id": "KDR_002_p1",
+                "tile_shortname": "KDR_002",
+                "source_feature_id": "row_000002",
+                "quicklook_path": "quicklooks/KDR_002_p1.tif",
+                "anchor_x_px": 32,
+                "anchor_y_px": 32,
+                "crop_size_px": 32,
+                "queue_position": 2,
+                "pass_type": "primary",
+                "repeat_of_task_id": "",
+            },
+            {
+                "task_id": "task_00003",
+                "candidate_id": "cand_1",
+                "class": 0,
+                "patch_id": "KDR_001_p1",
+                "tile_shortname": "KDR_001",
+                "source_feature_id": "row_000001",
+                "quicklook_path": "quicklooks/KDR_001_p1.tif",
+                "anchor_x_px": 32,
+                "anchor_y_px": 32,
+                "crop_size_px": 32,
+                "queue_position": 3,
+                "pass_type": "repeat",
+                "repeat_of_task_id": "task_00001",
+            },
+        ],
+        columns=TASK_COLUMNS,
+    )
+    measurements_path = tmp_path / "measurements.csv"
+    session = WidthCalibrationSession(
+        tasks_df=tasks_df,
+        measurements_path=measurements_path,
+        handoff_dir=tmp_path,
+    )
+
+    snap_before = session.progress_snapshot("task_00001")
+    assert snap_before["pending_total"] == 2
+    assert snap_before["eligible_total"] == 2
+    assert snap_before["current_round_index"] == 1
+    assert snap_before["current_round_total"] == 2
+    assert snap_before["pending_by_pass"]["primary"] == 2
+    assert snap_before["pending_by_pass"]["repeat"] == 0
+    assert snap_before["pending_by_class"][0] == 1
+    assert snap_before["pending_by_class"][5] == 1
+
+    session.record_accept("task_00001", click1=(30.0, 32.0), click2=(36.0, 32.0))
+    snap_after = session.progress_snapshot("task_00003")
+    assert snap_after["pending_total"] == 2
+    assert snap_after["eligible_total"] == 3
+    assert snap_after["pending_by_pass"]["repeat"] == 1
+    assert snap_after["current_round_index"] == 2
+
+
+@pytest.mark.fast
+@pytest.mark.unit
 def test_record_accept_populates_metric_columns_when_quicklook_is_metric(tmp_path: Path):
     env = _build_handoff(tmp_path)
     tasks_df = pd.DataFrame(
@@ -1112,6 +1190,65 @@ def test_reject_current_task_cancel_keeps_task(
 
     assert session.calls == []
     assert advanced == []
+
+
+@pytest.mark.fast
+@pytest.mark.unit
+def test_viewer_status_message_includes_progress(tmp_path: Path):
+    class DummySession:
+        def progress_snapshot(self, _task_id: str) -> dict[str, object]:
+            return {
+                "recorded_total": 1,
+                "pending_total": 5,
+                "eligible_total": 6,
+                "pending_by_pass": {"primary": 4, "repeat": 1},
+                "pending_by_class": {0: 2},
+                "current_position": 2,
+                "current_remaining_total": 5,
+                "current_remaining_in_pass": 4,
+                "current_remaining_in_class": 2,
+                "current_round": "primary",
+                "current_round_index": 1,
+                "current_round_total": 2,
+            }
+
+    class DummyStatusBar:
+        def __init__(self) -> None:
+            self.message = ""
+
+        def showMessage(self, text: str) -> None:
+            self.message = text
+
+    viewer = InteractiveMeasurementViewer(
+        handoff_dir=tmp_path,
+        session=DummySession(),
+    )
+    viewer.current_task = TaskRecord(
+        task_id="task_00001",
+        candidate_id="cand_001",
+        class_id=0,
+        patch_id="KDR_001_p1",
+        tile_shortname="KDR_001",
+        source_fid="65",
+        source_feature_id="row_000001",
+        quicklook_path="quicklooks/KDR_001_p1.tif",
+        anchor_x_px=32,
+        anchor_y_px=32,
+        crop_size_px=32,
+        queue_position=1,
+        pass_type="primary",
+        repeat_of_task_id="",
+    )
+    bar = DummyStatusBar()
+    viewer._qt_status_bar = bar
+
+    viewer._update_status_message()
+
+    assert "round=1/2" in bar.message
+    assert "pos=2/6" in bar.message
+    assert "remaining=5" in bar.message
+    assert "remaining_pass=4" in bar.message
+    assert "remaining_class=2" in bar.message
 
 
 @pytest.mark.fast

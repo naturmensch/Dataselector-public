@@ -1,7 +1,10 @@
 # Quick Start (index)
 
-This folder contains quick start instructions. See the detailed `first_run.md` for step-by-step guidance:
+The standalone quick-start file was consolidated into the active user guides.
 
-- `first_run.md` — First run: environment activation and a quick benchmark run
+Use:
 
-If you prefer a single-file entry point, follow `docs/01_QUICK_START/first_run.md`.
+- `docs/03_USER_GUIDES/PIPELINES.md` for minimal setup + first run
+- `docs/03_USER_GUIDES/THESIS_PIPELINE_HOWTO.md` for thesis-grade canonical flow
+
+Historical quick-start variants were moved to `docs/07_ARCHIVE/docs_consolidation_2026-04-19/`.

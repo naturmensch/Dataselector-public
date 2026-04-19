@@ -6,6 +6,32 @@ Primary runbook:
 
 - `docs/03_USER_GUIDES/THESIS_PIPELINE_HOWTO.md`
 
+## Minimal Setup and First Run
+
+Use this minimal path when you want to verify environment + CLI quickly before
+running a full thesis flow.
+
+```bash
+git clone <repository-url> Dataselector
+cd Dataselector
+micromamba create -f environment.yml -n dataselector
+micromamba run -n dataselector python -m pip install -e .
+micromamba run -n dataselector python -m dataselector --help
+```
+
+Small exploratory run:
+
+```bash
+micromamba run -n dataselector python -m dataselector adaptive-auto \
+   --output-dir outputs/runs/first_run \
+   --n-samples 20 \
+   --n-trials 20
+```
+
+Use this only as quick validation. For thesis-grade runs, continue with
+`thesis-orchestrate` and the full method contract in
+`docs/03_USER_GUIDES/THESIS_PIPELINE_HOWTO.md`.
+
 ## Pipeline Map
 
 1. `thesis-orchestrate`
@@ -26,6 +52,15 @@ micromamba run -n dataselector python -m dataselector thesis-orchestrate --help
 micromamba run -n dataselector python -m dataselector thesis-pipeline --help
 micromamba run -n dataselector python -m dataselector thesis-sampler-suite --help
 micromamba run -n dataselector python -m dataselector generate-monitor --help
+```
+
+Useful quick checks:
+
+```bash
+micromamba run -n dataselector python -m dataselector check-geo
+micromamba run -n dataselector python -m dataselector check-env
+micromamba run -n dataselector python -m dataselector align-audit --csv data/new_all_tiles.csv --base-dir data/images
+micromamba run -n dataselector python -m pytest -q tests/unit/test_no_legacy_script_references.py
 ```
 
 ## Typical Thesis Sequence

@@ -6,9 +6,9 @@ surface. It does **not** define the canonical thesis workflow.
 Authoritative runtime guidance lives in:
 
 - `README.md`
-- `docs/INDEX.md`
+- `docs/00_OVERVIEW/OVERVIEW.md`
 - `docs/03_USER_GUIDES/THESIS_PIPELINE_HOWTO.md`
-- `docs/REPO_SURFACE_CURATION.md`
+- `docs/08_GOVERNANCE/REPO_SURFACE_CURATION.md`
 
 ## 1. Canonical CLI-first paths
 

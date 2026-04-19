@@ -219,6 +219,75 @@ class WidthCalibrationSession:
             ]
         return ordered
 
+    def progress_snapshot(self, current_task_id: str | None = None) -> dict[str, Any]:
+        pending = self.pending_task_ids()
+        pending_total = int(len(pending))
+        recorded_total = int(len(self.measurements_df))
+        eligible_total = int(recorded_total + pending_total)
+
+        pending_by_pass: dict[str, int] = {"primary": 0, "repeat": 0}
+        pending_by_class: dict[int, int] = {}
+        for task_id in pending:
+            task = self._task_index[task_id]
+            pass_type = str(task.pass_type)
+            pending_by_pass[pass_type] = int(pending_by_pass.get(pass_type, 0) + 1)
+            class_id = int(task.class_id)
+            pending_by_class[class_id] = int(pending_by_class.get(class_id, 0) + 1)
+
+        current_position = 0
+        current_remaining_in_pass = 0
+        current_remaining_in_class = 0
+        current_round = ""
+        current_round_index = 0
+        current_round_total = 0
+
+        if current_task_id is not None and current_task_id in pending:
+            current_position = int(pending.index(current_task_id) + 1)
+            current_task = self._task_index[current_task_id]
+            current_pass = str(current_task.pass_type)
+            current_class = int(current_task.class_id)
+
+            current_remaining_in_pass = int(
+                sum(
+                    1
+                    for task_id in pending
+                    if self._task_index[task_id].pass_type == current_pass
+                )
+            )
+            current_remaining_in_class = int(
+                sum(
+                    1
+                    for task_id in pending
+                    if int(self._task_index[task_id].class_id) == current_class
+                )
+            )
+
+            if current_pass == "primary":
+                current_round = "primary"
+                current_round_index = 1
+                current_round_total = 2
+            elif current_pass == "repeat":
+                current_round = "repeat"
+                current_round_index = 2
+                current_round_total = 2
+            else:
+                current_round = current_pass
+
+        return {
+            "recorded_total": recorded_total,
+            "pending_total": pending_total,
+            "eligible_total": eligible_total,
+            "pending_by_pass": pending_by_pass,
+            "pending_by_class": pending_by_class,
+            "current_position": current_position,
+            "current_remaining_total": pending_total,
+            "current_remaining_in_pass": current_remaining_in_pass,
+            "current_remaining_in_class": current_remaining_in_class,
+            "current_round": current_round,
+            "current_round_index": current_round_index,
+            "current_round_total": current_round_total,
+        }
+
     def next_task(self) -> TaskRecord | None:
         pending = self.pending_task_ids()
         if not pending:

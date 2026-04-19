@@ -16,7 +16,7 @@
 | **QMC (Sobol)** | Moderat (750 trials) | Höher | Vollständig reproducible | Research / sensitivity |
 | **CMA-ES** | Langsam (890 trials) | Robust | Moderat | Constraints-heavy |
 
-Note: default trial budget for thesis/adaptive workflows is `n_trials = 370` (see `docs/PARAMETER_POLICY_LEDGER.md`).
+Note: default trial budget for thesis/adaptive workflows is `n_trials = 370` (see `docs/08_GOVERNANCE/PARAMETER_POLICY_LEDGER.md`).
 
 ### Sampler Selection (CLI)
 

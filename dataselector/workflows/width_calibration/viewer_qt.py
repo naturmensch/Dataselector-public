@@ -314,6 +314,15 @@ class InteractiveMeasurementViewer:
         if self._qt_status_bar is None or self.current_task is None:
             return
         reference = self._task_object_reference_text(self.current_task)
+        progress = self.session.progress_snapshot(self.current_task.task_id)
+        round_segment = (
+            f"round={progress['current_round_index']}/{progress['current_round_total']}"
+            if int(progress.get("current_round_total", 0)) > 0
+            else f"round={self.current_task.pass_type}"
+        )
+        class_pending = int(
+            progress.get("pending_by_class", {}).get(int(self.current_task.class_id), 0)
+        )
         prefix_parts = [
             part
             for part in (
@@ -321,6 +330,11 @@ class InteractiveMeasurementViewer:
                 f"class={self.current_task.class_id}",
                 f"patch={self.current_task.patch_id}",
                 f"pass={self.current_task.pass_type}",
+                round_segment,
+                f"pos={progress['current_position']}/{progress['eligible_total']}",
+                f"remaining={progress['current_remaining_total']}",
+                f"remaining_pass={progress['current_remaining_in_pass']}",
+                f"remaining_class={class_pending}",
             )
             if str(part).strip()
         ]
@@ -469,9 +483,22 @@ class InteractiveMeasurementViewer:
             )
         reference = self._task_object_reference_text(self.current_task)
         reference_segment = f" | {reference}" if reference else ""
+        progress = self.session.progress_snapshot(self.current_task.task_id)
+        round_segment = (
+            f"round={progress['current_round_index']}/{progress['current_round_total']}"
+            if int(progress.get("current_round_total", 0)) > 0
+            else f"round={self.current_task.pass_type}"
+        )
+        class_pending = int(
+            progress.get("pending_by_class", {}).get(int(self.current_task.class_id), 0)
+        )
         self.ax.set_title(
             f"{self.current_task.task_id} | class={self.current_task.class_id}"
-            f"{reference_segment} | patch={self.current_task.patch_id} | pass={self.current_task.pass_type}"
+            f"{reference_segment} | patch={self.current_task.patch_id}"
+            f" | pass={self.current_task.pass_type} | {round_segment}"
+            f" | pos={progress['current_position']}/{progress['eligible_total']}"
+            f" | remaining={progress['current_remaining_total']}"
+            f" (pass={progress['current_remaining_in_pass']}, class={class_pending})"
         )
         self.ax.axis("off")
         self.fig.canvas.draw_idle()

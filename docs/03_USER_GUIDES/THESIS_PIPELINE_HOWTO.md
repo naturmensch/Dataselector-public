@@ -121,7 +121,7 @@ Evidence:
 ### 4.0 Trigger-All Orchestration (Recommended)
 
 Use the canonical orchestrator to enforce scientific precompute -> snapshot ->
-validated run in one flow. Default production policy: `n_trials = 370`, `selection.optuna_sampler = tpe` (see `docs/PARAMETER_POLICY_LEDGER.md`).
+validated run in one flow. Default production policy: `n_trials = 370`, `selection.optuna_sampler = tpe` (see `docs/08_GOVERNANCE/PARAMETER_POLICY_LEDGER.md`).
 
 ```bash
 micromamba run -n dataselector python -m dataselector thesis-orchestrate \
@@ -166,8 +166,7 @@ Flag semantics:
 10. `--build-handoffs` runs the optional post-freeze packaging bundle (tile handoff, annotation plan, patch handoff). Default: `false`.
 11. `--patches-per-tile` controls integrated patch-plan density when `--build-handoffs` is enabled.
 12. `--patch-include-case true|false` controls whether patch packaging uses the final core+case set or only the core set. Default: `false` (`core-only`).
-13. `--patch-id-file` optionally limits the integrated Phase-5 patch handoff to an explicit plain-text `patch_id` subset while preserving filter provenance.
-14. `--handoff-root` changes the root output directory for integrated handoff bundles (default: `handoff`).
+13. `--handoff-root` changes the root output directory for integrated handoff bundles (default: `handoff`).
 
 ### 4.0.1.0 Optional Phase 5: Annotation Plan + Handoff Bundle
 
@@ -175,12 +174,11 @@ If you want one canonical run directory plus packaging artifacts in one flow, ad
 
 ```bash
 micromamba run -n dataselector python -m dataselector thesis-orchestrate \
-  --config config/pipeline_config.yaml \
-  --output-dir outputs/runs/thesis_orchestrated_$(date -u +%Y%m%dT%H%M%SZ) \
-  --build-handoffs \
-  --patches-per-tile 2 \
-  --patch-include-case false \
-  --patch-id-file config/patch_filters/<subset>.txt
+   --config config/pipeline_config.yaml \
+   --output-dir outputs/runs/thesis_orchestrated_$(date -u +%Y%m%dT%H%M%SZ) \
+   --build-handoffs \
+   --patches-per-tile 2 \
+   --patch-include-case false
 ```
 
 Scientific boundary:
@@ -192,7 +190,7 @@ Scientific boundary:
 
 The same integrated filter surface is available on
 `micromamba run -n dataselector python -m dataselector thesis-pipeline ... --build-handoffs --patch-id-file config/patch_filters/<subset>.txt`
-when you build the optional Phase-5 handoffs from the direct pipeline CLI.
+when you build the optional Phase-5 handoffs from the direct pipeline CLI. Use this path when the patch allowlist itself is part of the handoff contract.
 
 ### 4.0.1.2 Global n_samples Corridor Policy (Core)
 

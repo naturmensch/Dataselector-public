@@ -586,9 +586,9 @@ class CustomVisualizer(Visualizer):
 
 **Related Documentation:**
 - [Pipeline Guide](../03_USER_GUIDES/PIPELINES.md) – Canonical thesis workflows
-- [API Reference](../API_REFERENCE.md) – Complete API
-- [Scientific Background](../SCIENTIFIC_BACKGROUND.md) – Mathematical Foundations
-- [Developer Guide](../DEVELOPER.md) – Contribution Guidelines
+- [API Reference](../06_REFERENCE/api_reference.md) – Complete API
+- [Scientific Background](../08_GOVERNANCE/SCIENTIFIC_BACKGROUND.md) – Mathematical Foundations
+- [Developer Guide](../04_DEVELOPER/DEVELOPER.md) – Contribution Guidelines
 - [Historical XXL Details](../07_ARCHIVE/legacy_xxl_ops/XXL_PIPELINE_DETAILED.md) – Archived pre-thesis-orchestrate workflow
 
 ---

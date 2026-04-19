@@ -20,5 +20,5 @@ Do not confuse this area with:
 
 If you want to run the thesis workflow, start with:
 - `README.md`
-- `docs/INDEX.md`
+- `docs/00_OVERVIEW/OVERVIEW.md`
 - `docs/03_USER_GUIDES/THESIS_PIPELINE_HOWTO.md`

@@ -349,7 +349,7 @@ pytest -v --tb=short --timeout=30
 
 ## 📚 Weiterführende Ressourcen
 
-- **Testing Guide:** [../TEST_SUITE_CURATION.md](../TEST_SUITE_CURATION.md)
+- **Testing Guide:** [../TEST_SUITE_CURATION.md](../08_GOVERNANCE/TEST_SUITE_CURATION.md)
 - **CI/CD Setup:** [../.github/workflows/]
 - **Architecture Deep Dive:** [../02_THEORY/architecture.md](../02_THEORY/architecture.md)
 - **Module Reference:** [../06_REFERENCE/api_reference.md](../06_REFERENCE/api_reference.md)

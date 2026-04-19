@@ -1,0 +1,156 @@
+\chapter{Intelligente Trainingsdaten-Selektion fuer die Annotation historischer Karten}
+\label{ch:training_data_selection}
+
+\section{Motivation und Zielsetzung}
+\label{sec:motivation_training_data}
+
+Die Annotation historischer Karten ist teuer und zeitaufwaendig. Fuer die
+vorliegende Masterarbeit ist deshalb nicht die zufaellige Auswahl moeglichst
+vieler Kartenkacheln entscheidend, sondern die Konstruktion eines kleinen,
+wissenschaftlich vertretbaren und reproduzierbar eingefrorenen Datensatzes.
+
+Das Ziel des Dataselector-Workflows ist ein \emph{frozen dataset}, das
+
+\begin{itemize}
+    \item die primaere wissenschaftliche Stichprobe fuer die Arbeit definiert,
+    \item die Auswahlentscheidung transparent dokumentiert,
+    \item Fallbeispiele separat behandelt und
+    \item fuer nachgelagerte Annotation und Modellvergleiche stabil bleibt.
+\end{itemize}
+
+\section{Kandidatenpool und Selektionsprinzip}
+\label{sec:algorithmic_selection}
+
+Der zugrunde liegende Kandidatenpool umfasst 673 georeferenzierte Kacheln der
+\emph{Karte des Deutschen Reiches 1:100.000}. Die Selektion folgt einem
+mehrkriteriellen Diversitaetsansatz:
+
+\begin{equation}
+\text{Score} = \alpha \cdot D_{\text{visual}} + \beta \cdot D_{\text{spatial}} + \gamma \cdot D_{\text{temporal}}
+\end{equation}
+
+Dabei stehen
+
+\begin{itemize}
+    \item $D_{\text{visual}}$ fuer Diversitaet im Merkmalsraum der Bildfeatures,
+    \item $D_{\text{spatial}}$ fuer raeumliche Streuung und
+    \item $D_{\text{temporal}}$ fuer zeitliche Streuung.
+\end{itemize}
+
+Die Gewichte $\alpha, \beta, \gamma$ sowie die Zielgroesse $n_{\text{samples}}$
+werden im Parameter-Resolution-Schritt bestimmt und in einem validierten
+Snapshot festgehalten. Fuer den aktuellen Thesis-v2-Vertrag gilt:
+die Core-Auswahl wird aus genau diesen Snapshot-Parametern materialisiert
+(\texttt{selection.selection\_authority = snapshot\_primary}).
+Exploration und Autoscale verwenden dafuer dasselbe normalisierte Objective
+(\texttt{selection.objective\_authority = unified\_normalized}).
+
+\section{Aktueller Workflow des Thesis-Freezes}
+\label{sec:current_workflow}
+
+Der kanonische Workflow laeuft ueber
+\texttt{python -m dataselector thesis-orchestrate}. Er trennt vier Ebenen:
+
+\begin{enumerate}
+    \item \textbf{Parameter Resolution}: Autoscale/Optuna bestimmen den
+          Parameterkontext und schreiben einen validierten Snapshot.
+    \item \textbf{Snapshot-primary Auswahl}: der Core-Datensatz wird direkt
+          aus den Snapshot-Parametern neu materialisiert.
+    \item \textbf{Core+Case-Vertrag}: primaere Core-Stichprobe und zusaetzliche
+          Case-Tiles werden getrennt dokumentiert.
+    \item \textbf{Patch-Handoff}: fuer die Annotation wird aus dem gefrorenen
+          Tile-Satz ein Patch-Handoff erzeugt.
+\end{enumerate}
+
+Historische Runs koennen weiterhin einen Legacy-Modus verwenden
+(\texttt{materialized\_csv\_primary}), in dem \texttt{tuning\_weights}-CSV-Dateien
+als Auswahlquelle dienen. Dieser Modus ist fuer Rueckwaertskompatibilitaet
+gedacht und nicht der Thesis-v2-Default.
+
+\section{Eingefrorener Datensatz der Masterarbeit}
+\label{sec:frozen_dataset}
+
+Die Datensatzgroesse wird im Thesis-v2-Flow nicht als fixe Zahl im Text
+angenommen, sondern direkt aus den Run-Artefakten gelesen:
+
+\begin{itemize}
+    \item \textbf{Core-Selektion}: \verb|selection_contract.json -> core_count|
+    \item \textbf{Case-Tiles}: \verb|selection_contract.json -> case_count_attached|
+    \item \textbf{Operative Gesamtmenge}: \verb|selection_contract.json -> final_count|
+    \item \textbf{Patch-Handoff}: \verb|handoff_manifest.json -> selected_patch_count|
+\end{itemize}
+
+Die wissenschaftliche Interpretation ist dabei klar getrennt:
+
+\begin{itemize}
+    \item Primaere methodische Aussagen und Kernauswertungen beziehen sich auf
+          die \textbf{Core-Selektion}.
+    \item Hamburg wird als \textbf{Case-only}-Beispiel separat gefuehrt und
+          erst danach an die operative Gesamtmenge angehaengt.
+    \item Der Patch-Handoff ist ein abgeleitetes Annotation-Artefakt und aendert
+          die Definition der zugrunde liegenden Tile-Stichprobe nicht.
+\end{itemize}
+
+\section{Reproduzierbarkeit und Provenienz}
+\label{sec:reproducibility}
+
+\textbf{Dataset authority:} \verb|selection_core.csv|,
+\verb|selection_final_with_cases.csv| und
+\verb|selection_contract.json| definieren den eingefrorenen
+Thesis-Datensatz.
+
+\textbf{Parameter authority:} der validierte Snapshot und die
+Parameter-Resolution-Artefakte definieren den aufgeloesten Parameterkontext.
+
+Fuer die Arbeit ist diese Unterscheidung zentral. Im kanonischen Thesis-v2-Run
+wird erwartet, dass Snapshot-Parameter und materialisierte Auswahl konsistent
+sind (\texttt{Selection Reconciliation = aligned}). Fuer historische Legacy-Runs
+gelten folgende Regeln:
+
+\begin{itemize}
+    \item Datensatz-Claims binden an die materialisierten Auswahl-Artefakte.
+    \item Parameter-Claims binden an Snapshot-/Resolver-Artefakte.
+    \item Abweichungen muessen im Report explizit als
+          \texttt{documented\_difference} markiert werden.
+\end{itemize}
+
+Die Provenienz des aktuellen Freezes wird konkret ueber folgende Artefakte
+dokumentiert:
+
+\begin{itemize}
+    \item \verb|selection_core.csv|
+    \item \verb|selection_case.csv|
+    \item \verb|selection_final_with_cases.csv|
+    \item \verb|selection_contract.json|
+    \item \verb|final_config_<timestamp>.yaml|
+    \item \verb|parameter_resolution/optuna_autoscale_best_latest.json|
+\end{itemize}
+
+\section{Wissenschaftliche Vertretbarkeit}
+\label{sec:scientific_justification}
+
+Der aktuelle Freeze ist wissenschaftlich vertretbar, weil
+
+\begin{itemize}
+    \item die primaere Stichprobe explizit als Core-Datensatz definiert ist,
+    \item Fallbeispiele die Core-Auswertung nicht konfundieren,
+    \item Unsicherheitsquantifizierung ueber
+          \texttt{bootstrap\_candidates} erfolgt und
+    \item die finale Stichprobe als archiviertes Run-Artefakt reproduzierbar
+          vorliegt.
+\end{itemize}
+
+Die entscheidende methodische Aussage lautet daher nicht
+\glqq diese Gewichte erzeugten exakt diese Tiles\grqq, sondern
+\glqq diese Masterarbeit wertet einen konkret eingefrorenen, dokumentierten und
+reproduzierbaren Datensatz aus\grqq.
+
+\section{Zusammenfassung}
+\label{sec:summary_training_data}
+
+Die Masterarbeit verwendet einen methodisch klar definierten, aus Run-Artefakten
+abgeleiteten Frozen-Datensatz. Die wissenschaftliche Kerninterpretation basiert
+auf der Core-Selektion; optionale Case-Tiles werden transparent getrennt
+dokumentiert. Durch die explizite Trennung von Dataset authority und Parameter
+authority sowie den Snapshot-primary-v2-Vertrag bleibt die Auswahl kausal
+rueckfuehrbar und reproduzierbar.
