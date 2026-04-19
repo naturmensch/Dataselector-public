@@ -1788,6 +1788,13 @@ def test_render_width_calibration_final_masks_uses_summary_widths(tmp_path: Path
     assert manifest["summary_csv_sha256"]
     assert result["roads_gpkg_sha256"] == manifest["roads_gpkg_sha256"]
     assert result["summary_csv_sha256"] == manifest["summary_csv_sha256"]
+    contract_path = env["handoff_dir"] / "phase5_final_width_contract.json"
+    assert contract_path.exists()
+    contract = json.loads(contract_path.read_text(encoding="utf-8"))
+    assert contract["schema_version"] == "phase5_final_width_authority_v1"
+    assert contract["mask_manifest_sha256"] == compute_file_sha256(manifest_path)
+    assert contract["source_handoff_id"] == env["handoff_dir"].name
+    assert contract["patch_count"] == len(expected_names)
 
     sample_mask_path = out_dir / "KDR_001_p1_mask.tif"
     with (

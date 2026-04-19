@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -33,6 +34,39 @@ from .prepare import (
     subset_by_bounds,
 )
 from .runs import resolve_roads_layer_name
+
+UPSTREAM_FINAL_WIDTH_CONTRACT_FILENAME = "phase5_final_width_contract.json"
+UPSTREAM_FINAL_WIDTH_SCHEMA_VERSION = "phase5_final_width_authority_v1"
+
+
+def _infer_training_repo_root(handoff_dir: Path) -> Path | None:
+    # Expected layout: <train_repo>/data/handoff/<handoff_id>
+    if handoff_dir.parent.name != "handoff":
+        return None
+    data_dir = handoff_dir.parent.parent
+    if data_dir.name != "data":
+        return None
+    return data_dir.parent
+
+
+def _selection_id_from_handoff_manifest(handoff_dir: Path) -> str:
+    manifest_path = handoff_dir / "patch_handoff_manifest.json"
+    if not manifest_path.exists():
+        return ""
+    try:
+        payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception:
+        return ""
+    return str(payload.get("selection_id", "")).strip()
+
+
+def _prefer_relative(path_value: Path, *, anchor_root: Path | None) -> str:
+    if anchor_root is None:
+        return str(path_value)
+    try:
+        return str(path_value.relative_to(anchor_root))
+    except Exception:
+        return str(path_value)
 
 
 def load_patch_mask_requirements(handoff_dir: Path) -> dict[str, str]:
@@ -273,6 +307,7 @@ def render_width_calibration_final_masks(
     roads_layer: str | None = None,
     expected_roads_gpkg_sha256: str | None = None,
     expected_summary_csv_sha256: str | None = None,
+    width_tasks_csv: str | Path | None = None,
 ) -> dict[str, Any]:
     repo_root_path = repo_root()
     handoff_dir_path = resolve_path(
@@ -289,6 +324,15 @@ def render_width_calibration_final_masks(
     ).resolve()
     roads_gpkg_sha256 = compute_file_sha256(roads_gpkg_path)
     summary_csv_sha256 = compute_file_sha256(summary_csv_path)
+    width_tasks_csv_path: Path | None = None
+    width_tasks_sha256 = ""
+    if width_tasks_csv is not None and str(width_tasks_csv).strip():
+        width_tasks_csv_path = resolve_path(
+            width_tasks_csv,
+            repo_root_path=repo_root_path,
+            prefer_repo=True,
+        ).resolve()
+        width_tasks_sha256 = compute_file_sha256(width_tasks_csv_path)
     validate_expected_sha256(
         path=roads_gpkg_path,
         label="roads_gpkg",
@@ -365,15 +409,40 @@ def render_width_calibration_final_masks(
             },
         },
     )
+    training_repo_root = _infer_training_repo_root(handoff_dir_path)
+    masks_dir_value = _prefer_relative(out_dir_path, anchor_root=training_repo_root)
+    contract_path = handoff_dir_path / UPSTREAM_FINAL_WIDTH_CONTRACT_FILENAME
+    write_json(
+        contract_path,
+        {
+            "schema_version": UPSTREAM_FINAL_WIDTH_SCHEMA_VERSION,
+            "status": "ready_for_training",
+            "selection_id": _selection_id_from_handoff_manifest(handoff_dir_path),
+            "source_handoff_id": str(handoff_dir_path.name),
+            "mask_manifest": FINAL_MASK_MANIFEST_FILENAME,
+            "mask_manifest_sha256": compute_file_sha256(manifest_path),
+            "patch_count": len(written_masks),
+            "class_widths_px": {
+                str(k): int(v) for k, v in sorted(class_widths.items())
+            },
+            "width_summary_sha256": summary_csv_sha256,
+            "roads_gpkg_sha256": roads_gpkg_sha256,
+            "width_tasks_sha256": width_tasks_sha256,
+            "masks_dir": masks_dir_value,
+        },
+    )
     return {
         "out_dir": str(out_dir_path),
         "manifest_json": str(manifest_path),
+        "upstream_contract_json": str(contract_path),
         "mask_count": len(written_masks),
         "class_widths_px": {
             str(k): int(v) for k, v in sorted(class_widths.items())
         },
         "summary_csv_sha256": summary_csv_sha256,
         "roads_gpkg_sha256": roads_gpkg_sha256,
+        "width_tasks_sha256": width_tasks_sha256,
+        "width_tasks_csv": "" if width_tasks_csv_path is None else str(width_tasks_csv_path),
     }
 
 

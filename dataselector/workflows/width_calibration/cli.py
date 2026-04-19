@@ -659,6 +659,12 @@ def render_width_calibration_debug_masks_cmd(
             "default": None,
             "help": "Optional SHA256 guard for the width-calibration summary CSV",
         },
+        "width_tasks_csv": {
+            "type": str,
+            "required": False,
+            "default": None,
+            "help": "Optional width_calibration_tasks.csv path stored as provenance in the upstream final-width contract",
+        },
     },
 )
 def render_width_calibration_final_masks_cmd(
@@ -669,6 +675,7 @@ def render_width_calibration_final_masks_cmd(
     roads_layer: str | None = None,
     expected_roads_gpkg_sha256: str | None = None,
     expected_summary_csv_sha256: str | None = None,
+    width_tasks_csv: str | None = None,
 ) -> int:
     print(
         json.dumps(
@@ -680,6 +687,7 @@ def render_width_calibration_final_masks_cmd(
                 roads_layer=roads_layer,
                 expected_roads_gpkg_sha256=expected_roads_gpkg_sha256,
                 expected_summary_csv_sha256=expected_summary_csv_sha256,
+                width_tasks_csv=width_tasks_csv,
             ),
             indent=2,
             ensure_ascii=True,
