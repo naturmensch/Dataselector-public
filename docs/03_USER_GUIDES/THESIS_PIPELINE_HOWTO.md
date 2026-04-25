@@ -6,6 +6,9 @@ annotation.
 For a compact linear execution path, see
 [END_TO_END_CHECKLIST.md](END_TO_END_CHECKLIST.md).
 
+For the cross-repo chain from thesis freeze through downstream Phase-5 training and evaluation, see
+[../06_REFERENCE/THESIS_PHASE5_RUN_PROTOCOL.md](../06_REFERENCE/THESIS_PHASE5_RUN_PROTOCOL.md).
+
 ## 0) Official Pipeline Roles
 
 1. `thesis-pipeline` is the production path for thesis/annotation decisions.
