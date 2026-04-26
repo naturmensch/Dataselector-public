@@ -1,6 +1,6 @@
 # Thesis Phase-5 Run Protocol (Canonical)
 
-Last updated: 2026-04-25
+Last updated: 2026-04-26
 
 Former location: `docs/09_INTERNAL/status/width_calibration_run_chain_2026-04-19.md`.
 
@@ -24,7 +24,7 @@ Wichtig:
 2. Fehlgeschlagene Nebenlaeufe sind nicht Teil des Hauptprotokolls.
 3. QGIS/QField-Strassenannotation und Width-Messung sind getrennte Prozesse.
 
-## 1) Aktueller Stand (2026-04-25)
+## 1) Aktueller Stand (2026-04-26)
 
 1. Dataselector-Freeze ist abgeschlossen.
 2. Patch-Handoff-Vertrag ist abgeschlossen.
@@ -37,8 +37,8 @@ Wichtig:
 9. Fixe Hauptbudgets sind aus der Pilotphase abgeleitet: `unetpp=200`, `segformer=200`, `mapsam=150`.
 10. `results/pilot_budget_summary.csv` und `results/pilot_budget_decisions.md` liegen im Trainingsrepo vor.
 11. Bei knappem Serverplatz duerfen Pilot-Roots nach dem Budgetfreeze auf `checkpoint_best.pt` sowie `checkpoint_epoch_{050,100,150,200}.pt` ausgeduennt werden.
-12. Die 9-Run-Hauptkampagne auf Folds `1/2/4` ist angelaufen; vier valide Hauptlaeufe liegen bereits vor (`unetpp full_1024_no_aug`, `unetpp crop_512_no_aug`, `unetpp crop_512_aug`, `segformer full_1024_no_aug`).
-13. Fuer die restliche Hauptkampagne ist jetzt ein archivierungsgekoppelter Orchestrator im Trainingsrepo der operative Standard: validieren, nach OneDrive archivieren, per `rclone check` verifizieren, erst dann lokal loeschen.
+12. Die 9-Run-Hauptkampagne auf Folds `1/2/4` ist abgeschlossen; alle neun Hauptruns liegen mit validen `cv_summary_*`-/`cv_metrics_*`-Artefakten vor.
+13. Fuer produktive Folge- und Vergleichslaeufe ist jetzt ein archivierungsgekoppelter Runner im Trainingsrepo der operative Standard: validieren, nach OneDrive archivieren, per `rclone check` verifizieren, erst dann lokal loeschen.
 14. Restore archivierter Haupt-Roots ist Teil des methodischen Betriebsmodells, weil spaetere `final`-, `iou_best`- und `apls_best`-Re-Evaluationen echte Checkpoints benoetigen.
 15. Der zusaetzliche klassische Morphologie-Track wird getrennt als
     pilot-kalibrierte deterministische Bildverarbeitungs-Baseline gefuehrt:
@@ -58,7 +58,7 @@ Statusmatrix:
 | Readiness | bestanden | `phase5_samples.csv` + Split-/Dataset-Manifest | bei Trainingsstart kurz erneut pruefen |
 | Pilotkampagne | abgeschlossen | serverseitige `cv_summary_*` + `phase5_threshold_sweep_*` Artefakte | keine neue Pilotmatrix starten |
 | Budgetfreeze | abgeschlossen | `pilot_budget_summary.csv` + `pilot_budget_decisions.md` im Trainingsrepo | Budgets unveraendert in die Hauptkampagne uebernehmen |
-| Hauptkampagne | angelaufen / aktiv | Hauptlauf-Registry, neue `cv_summary_*`-Artefakte und archivierte Haupt-Roots | restliche Hauptruns unter Archiv-Orchestrierung abschliessen |
+| Hauptkampagne | abgeschlossen | Hauptlauf-Registry mit 9 `archived_remote`-Zeilen, `cv_summary_*`-/`cv_metrics_*`-Artefakte und archivierte Haupt-Roots | eingefrorene Referenz nicht stillschweigend umdefinieren; Folgeexperimente getrennt fuehren |
 | Klassischer Morphologie-Track | offen / separater Vergleichstrack | `classical_pipeline_selection_*`, `cv_metrics_morphology_*` im Trainingsrepo | Compact-Pilotkalibrierung auf `0/3`, danach frozen Main-Evaluation auf `1/2/4` |
 
 ## 2) Methodischer Vertrag (Warum die Kette so aufgebaut ist)
@@ -1166,7 +1166,7 @@ Bei jedem neuen Schritt verpflichtend eintragen:
 1. Die erfolgreiche Kette von Freeze ueber Annotation und Width bis zur final materialisierten Downstream-Integration ist abgeschlossen und belegt.
 2. Der finale Trainingsvertrag nutzt die width-basierten Masken aus `final_width_px`, nicht den frueheren Debug-/Smoke-Maskensatz.
 3. Die Pilotkampagne der neuen Phase-5-Hauptauswertung ist abgeschlossen; die Hauptbudgets sind eingefroren (`unetpp=200`, `segformer=200`, `mapsam=150`).
-4. Der aktuelle Gate-Zustand ist: Readiness bestanden, Pilotbudgetdiagnostik abgeschlossen, Hauptkampagne auf Folds `1/2/4` aktiv; vier valide Hauptlaeufe liegen vor, die restlichen Runs laufen unter archivierungsgekoppelter Orchestrierung weiter.
+4. Der aktuelle Gate-Zustand ist: Readiness bestanden, Pilotbudgetdiagnostik abgeschlossen, Hauptkampagne auf Folds `1/2/4` abgeschlossen und vollstaendig nach OneDrive archiviert; Folgeexperimente laufen nur noch als getrennte, archivierungsgekoppelte Zusatztracks.
 5. Die Haupttabelle ist methodisch auf finale Checkpoints, einen globalen Threshold und APLS-primaeres Ranking mit IoU-Tie-Break festgelegt.
 6. Der klassische Morphologie-Track ist als separater pilot-kalibrierter
    Baseline-Track festgelegt: Compact-Sweep auf `0/3`, frozen Evaluation auf
