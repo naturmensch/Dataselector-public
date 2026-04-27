@@ -1183,6 +1183,22 @@ Dokumentierte Pilot-Gewinnerauswahl:
 | `unetpp` | `unetpp_tu_resnest200e` | 0.8073 | 0.8274 | 0.9021 | Familiengewinner nach `rank_models.py`, APLS-primaer, IoU-Tie-Break bei `apls_tie_eps=0.01` |
 | `segformer` | `segformer_b5` | 0.7024 | 0.7627 | 0.8602 | Familiengewinner nach `rank_models.py`, APLS-primaer, IoU-Tie-Break bei `apls_tie_eps=0.01` |
 
+Einordnung der Pilotabstaende:
+
+1. In der `unetpp`-Familie lag `unetpp_tu_resnest200e` vor dem
+   Zweitplatzierten `unetpp_tu_resnext50_32x4d` um
+   `delta_apls=0.0675`, `delta_iou=0.0258`, `delta_dice=0.0166`.
+   Der Vorsprung war damit klar und nicht nur marginal.
+2. In der `segformer`-Familie lag `segformer_b5` vor `segformer_b3` um
+   `delta_apls=0.0157`, `delta_iou=0.0022`, `delta_dice=0.0018`.
+   Der Vorsprung war kleiner, lag beim primaeren Kriterium APLS aber
+   dennoch oberhalb des Tie-Bereichs `apls_tie_eps=0.01`.
+3. Ein spaeteres Scheitern eines Confirmatory-Runs aendert diese
+   Screening-Auswahl nicht rueckwirkend. Die Pilotentscheidung bleibt
+   kanonisch, auch wenn einzelne Confirmatory-Zellen unter der
+   unveraenderten Hauptkampagnenkonfiguration hardware- oder
+   implementationsbedingt nicht trainierbar sind.
+
 Confirmatory-Evaluation im Hauptkampagnenformat:
 
 1. Die eigentliche Confirmatory-Evaluation der beiden Literatur-Gewinner laeuft
