@@ -1119,6 +1119,112 @@ Hard stop:
 3. Alte Einzelparameter-Flags fuer Morphologie sind nicht Teil des
    autoritativen Thesis-Workflows.
 
+### 9.14.6 N9.6 Literatur-Backbone-Pilot und Confirmatory-Auswahl
+
+Ziel:
+
+1. Nach Abschluss der Hauptkampagne einen getrennten Literatur-Backbone-Pilot
+   fuer zusätzliche Encoder-/Backbone-Kandidaten durchfuehren.
+2. Aus diesem Zusatztrack genau je einen Kandidaten fuer die
+   Familien `unetpp` und `segformer` fuer eine nachgelagerte
+   Confirmatory-Evaluation ableiten.
+3. Der Zusatztrack ist methodisch vom Hauptergebnis getrennt und aendert weder
+   Haupttabelle noch Haupt-Ranking rueckwirkend.
+
+Pilotmatrix:
+
+1. Modus: `crop_512_aug`
+2. Folds: `1`
+3. Epochenbudget je Pilotlauf: `40`
+4. Trainingsdefaults:
+   - `dataset_mode=phase5_patches`
+   - `phase5_split_policy=use_handoff`
+   - `batch_size=2`
+   - `patience=0`
+   - `device=cuda`
+   - `--no-wandb`
+5. Kandidaten:
+   - `unetpp_tu_resnext50_32x4d`
+   - `unetpp_tu_seresnext50_32x4d`
+   - `unetpp_tu_resnest200e`
+   - `segformer_b3`
+   - `segformer_b5`
+
+Operative Regel:
+
+1. Die Zusatzmatrix wird archivierungsgekoppelt ausgefuehrt.
+2. Jeder erfolgreich abgeschlossene Lauf wird nach OneDrive archiviert,
+   per `rclone check` verifiziert und der grosse lokale Checkpoint-Root
+   anschliessend geloescht.
+3. Falls die Serverstabilitaet mit `num_workers=4` nicht gegeben ist, darf der
+   gesamte Zusatztrack konsistent mit `num_workers=0` wiederholt werden.
+4. Solche operativen Stabilitaetsanpassungen aendern nicht die methodische
+   Auswahlregel.
+
+Auswahlregel fuer Confirmatory-Kandidaten:
+
+1. Kanonische Quelle sind die re-evaluierten `cv_metrics_*.csv` der
+   abgeschlossenen Pilotlaeufe.
+2. Ranking erfolgt mit `scripts/evaluation/rank_models.py`.
+3. Regel:
+   - APLS primaer
+   - Tie innerhalb `apls_tie_eps=0.01` via IoU
+   - bei weiterem Gleichstand Dice
+4. Die Auswahl erfolgt familienweise:
+   - genau ein Gewinner aus der `unetpp`-Familie
+   - genau ein Gewinner aus der `segformer`-Familie
+5. Diese beiden Gewinner bilden die Kandidaten fuer eine getrennte
+   Confirmatory-Evaluation im Hauptkampagnenformat.
+
+Dokumentierte Pilot-Gewinnerauswahl:
+
+| Familie | Gewinner | APLS | IoU | Dice | methodische Einordnung |
+| --- | --- | ---: | ---: | ---: | --- |
+| `unetpp` | `unetpp_tu_resnest200e` | 0.8073 | 0.8274 | 0.9021 | Familiengewinner nach `rank_models.py`, APLS-primaer, IoU-Tie-Break bei `apls_tie_eps=0.01` |
+| `segformer` | `segformer_b5` | 0.7024 | 0.7627 | 0.8602 | Familiengewinner nach `rank_models.py`, APLS-primaer, IoU-Tie-Break bei `apls_tie_eps=0.01` |
+
+Confirmatory-Evaluation im Hauptkampagnenformat:
+
+1. Die eigentliche Confirmatory-Evaluation der beiden Literatur-Gewinner laeuft
+   nicht im Pilotformat `crop_512_aug`, `folds=1`, `epochs=40`, sondern im
+   Format der Hauptkampagne.
+2. Je Gewinner werden alle drei Modi gefahren:
+   - `full_1024_no_aug`
+   - `crop_512_no_aug`
+   - `crop_512_aug`
+3. Die Confirmatory-Evaluation verwendet die Hauptfolds `1/2/4`.
+4. Die Epochenbudgets folgen den Hauptkampagnenregeln:
+   - `unetpp`: `200`
+   - `segformer`: `200`
+5. Die Confirmatory-Runs werden als neue, getrennte Runs mit eigenen
+   `model_label`s ausgefuehrt, damit sie weder mit den Screening-Piloten noch
+   mit den bestehenden Hauptruns in Registry oder Archiv kollidieren.
+6. Operative Stabilitaetsanpassungen wie `num_workers=0` sind zulaessig, sofern
+   Modi, Folds, Budgets und die modellinterne Batch-Size-Regel der
+   Hauptkampagne nicht verletzt werden.
+
+Pflichtartefakte:
+
+1. die 5 Pilot-`cv_metrics_*.csv`
+2. die 5 Pilot-`cv_summary_*.json`
+3. die Matrix-Summary-JSON des Zusatztracks
+4. Run-Logs in `results/run_logs/`
+5. Registry-Nachweis mit Status `archived_remote`
+6. `results/phase5_literature_pilots_ranking_20260427T154228Z.csv`
+7. `results/phase5_literature_pilots_ranking_20260427T154228Z.json`
+8. die Confirmatory-`cv_summary_*.json` im Hauptkampagnenformat
+9. die Confirmatory-`cv_metrics_*.csv` im Hauptkampagnenformat
+
+Dokumentationsregel:
+
+1. Der Zusatztrack wird als separater Literatur-Backbone-Pilot beschrieben.
+2. Die daraus gewaehlten Kandidaten werden explizit mit Familie,
+   Modellkennung und Auswahlregel dokumentiert.
+3. Die eigentliche Confirmatory-Evaluation dieser Kandidaten wird als eigener
+   Zusatzblock im Hauptkampagnenformat beschrieben.
+4. Die bestehende Hauptkampagne auf Folds `1/2/4` bleibt davon methodisch
+   unberuehrt.
+
 ### 9.15 N10 Abschlusskriterien fuer thesis-ready Kampagnenergebnisse
 
 Ein Ergebnisblock ist thesis-ready, wenn alle Punkte erfuellt sind:
