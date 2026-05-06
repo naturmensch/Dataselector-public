@@ -1,6 +1,6 @@
 # Thesis Phase-5 Run Protocol (Canonical)
 
-Last updated: 2026-04-26
+Last updated: 2026-05-06
 
 Former location: `docs/09_INTERNAL/status/width_calibration_run_chain_2026-04-19.md`.
 
@@ -24,7 +24,7 @@ Wichtig:
 2. Fehlgeschlagene Nebenlaeufe sind nicht Teil des Hauptprotokolls.
 3. QGIS/QField-Strassenannotation und Width-Messung sind getrennte Prozesse.
 
-## 1) Aktueller Stand (2026-04-26)
+## 1) Aktueller Stand (2026-05-04)
 
 1. Dataselector-Freeze ist abgeschlossen.
 2. Patch-Handoff-Vertrag ist abgeschlossen.
@@ -34,16 +34,23 @@ Wichtig:
 6. Finale Downstream-Integration fuer 54 Patches ist materialisiert.
 7. Readiness-Gate ist bestanden.
 8. Die serverseitige Pilotphase der Phase-5-Kampagne ist abgeschlossen.
-9. Fixe Hauptbudgets sind aus der Pilotphase abgeleitet: `unetpp=200`, `segformer=200`, `mapsam=150`.
-10. `results/pilot_budget_summary.csv` und `results/pilot_budget_decisions.md` liegen im Trainingsrepo vor.
-11. Bei knappem Serverplatz duerfen Pilot-Roots nach dem Budgetfreeze auf `checkpoint_best.pt` sowie `checkpoint_epoch_{050,100,150,200}.pt` ausgeduennt werden.
-12. Die 9-Run-Hauptkampagne auf Folds `1/2/4` ist abgeschlossen; alle neun Hauptruns liegen mit validen `cv_summary_*`-/`cv_metrics_*`-Artefakten vor.
-13. Fuer produktive Folge- und Vergleichslaeufe ist jetzt ein archivierungsgekoppelter Runner im Trainingsrepo der operative Standard: validieren, nach OneDrive archivieren, per `rclone check` verifizieren, erst dann lokal loeschen.
-14. Restore archivierter Haupt-Roots ist Teil des methodischen Betriebsmodells, weil spaetere `final`-, `iou_best`- und `apls_best`-Re-Evaluationen echte Checkpoints benoetigen.
-15. Der zusaetzliche klassische Morphologie-Track wird getrennt als
+9. Die Pilotphase leitete zunaechst die Budgets `unetpp=200`, `segformer=200`, `mapsam=150` ab.
+10. Fuer den finalen fairen Deep-Learning-Hauptvergleich wurde MapSAM spaeter per Resume-/Audit-Workflow auf `200` Epochen fortgefuehrt; der finale budgetharmonisierte Vergleich ist damit `unetpp=200`, `segformer=200`, `mapsam_200epoch_audit=200`.
+11. `results/pilot_budget_summary.csv` und `results/pilot_budget_decisions.md` bleiben als Pilotdiagnostik im Trainingsrepo relevant, sind aber nicht mehr allein der finale Budgetvertrag.
+12. Bei knappem Serverplatz duerfen Pilot-Roots nach dem Budgetfreeze auf `checkpoint_best.pt` sowie `checkpoint_epoch_{050,100,150,200}.pt` ausgeduennt werden.
+13. Die urspruengliche 9-Run-Hauptkampagne auf Folds `1/2/4` ist abgeschlossen; die drei alten `mapsam`-Runs mit `150` Epochen sind als Zwischenstand/Vorkonsolidierung zu behandeln.
+14. Die drei `mapsam_200epoch_audit`-Runs sind als MapSAM-200-Audit-Ergaenzung abgeschlossen und gehoeren zum finalen budgetharmonisierten Hauptvergleich.
+15. Fuer produktive Folge- und Vergleichslaeufe ist jetzt ein archivierungsgekoppelter Runner im Trainingsrepo der operative Standard: validieren, nach OneDrive archivieren, per `rclone check` verifizieren, erst dann lokal loeschen.
+16. Restore bzw. gestreamte Nutzung archivierter Haupt-Roots ist Teil des methodischen Betriebsmodells, weil spaetere Re-Evaluationen echte Checkpoints benoetigen.
+17. Der zusaetzliche klassische Morphologie-Track wird getrennt als
     pilot-kalibrierte deterministische Bildverarbeitungs-Baseline gefuehrt:
     Compact-Sweep nur auf Folds `0/3`, eingefrorene Main-Evaluation auf
     Folds `1/2/4`.
+18. Die APLS-best-Streaming-Auswertung wurde am 2026-05-04 zugunsten der methodisch dringenderen Threshold-Sensitivitaetsanalyse gestoppt. Sie bleibt resumierbar und ist nicht als gescheiterter Hauptlauf zu behandeln.
+19. Ein konservativer, linearer gestreamter Threshold-Sweep fuer `main_campaign` lief vom 2026-05-04 bis 2026-05-06 auf dem Uni-Server. Er nutzte `checkpoint_best.pt` sowie Epoch-Meilensteine `50/100/150/200`, Thresholds `0.30` bis `0.70` in `0.05`-Schritten, `batch_size=1`, `num_workers=0`, `--no-stream-prefetch` und `rclone-multi-thread-streams=1`.
+20. Der rohe Streaming-Sweep ist mit `144` Checkpoint-Evaluationen und `1296` Threshold-Zeilen vollstaendig abgeschlossen.
+21. Fuer die finale Interpretation wurde daraus eine faire `135`-Checkpoint-Konsolidierung erzeugt. Sie entfernt die rohe MapSAM-Best-Doppelung und waehlt den globalen Threshold `0.45` nach APLS-primaerer Regel mit IoU-Tie-Break.
+22. Die Fair-135-Analyse und die finale Thesis-Buendelung sind als reine Offline-Postprocessing-Skripte im Trainingsrepo angelegt. Diese Schritte lesen nur bestehende CSV/JSON-Artefakte und loesen keine Checkpoint-Downloads, keine GPU-Auswertung und kein Training aus.
 
 Statusmatrix:
 
@@ -57,9 +64,12 @@ Statusmatrix:
 | Downstream Materialize | final abgeschlossen | `phase5_dataset_manifest.json` | produktiven Vertrag verwenden |
 | Readiness | bestanden | `phase5_samples.csv` + Split-/Dataset-Manifest | bei Trainingsstart kurz erneut pruefen |
 | Pilotkampagne | abgeschlossen | serverseitige `cv_summary_*` + `phase5_threshold_sweep_*` Artefakte | keine neue Pilotmatrix starten |
-| Budgetfreeze | abgeschlossen | `pilot_budget_summary.csv` + `pilot_budget_decisions.md` im Trainingsrepo | Budgets unveraendert in die Hauptkampagne uebernehmen |
-| Hauptkampagne | abgeschlossen | Hauptlauf-Registry mit 9 `archived_remote`-Zeilen, `cv_summary_*`-/`cv_metrics_*`-Artefakte und archivierte Haupt-Roots | eingefrorene Referenz nicht stillschweigend umdefinieren; Folgeexperimente getrennt fuehren |
+| Budgetfreeze | abgeschlossen als Pilotdiagnostik | `pilot_budget_summary.csv` + `pilot_budget_decisions.md` im Trainingsrepo | im Manuskript als zweistufige Budgetlogik erklaeren |
+| Hauptkampagne | abgeschlossen, aber MapSAM-150 nur Zwischenstand | Hauptlauf-Registry mit urspruenglichen `archived_remote`-Zeilen, `cv_summary_*`-/`cv_metrics_*`-Artefakte und archivierte Haupt-Roots | finalen Hauptvergleich mit `mapsam_200epoch_audit` fuehren |
+| MapSAM-200-Audit | abgeschlossen | `main_campaign:mapsam_200epoch_audit:*` mit 200 Epochen auf Folds `1/2/4` | als finale MapSAM-Zellen fuer `200/200/200` verwenden |
 | Klassischer Morphologie-Track | offen / separater Vergleichstrack | `classical_pipeline_selection_*`, `cv_metrics_morphology_*` im Trainingsrepo | Compact-Pilotkalibrierung auf `0/3`, danach frozen Main-Evaluation auf `1/2/4` |
+| Threshold-Sensitivitaetsanalyse | abgeschlossen am 2026-05-06 | `phase5_threshold_sweep_streaming.csv`, `phase5_threshold_sweep_fair135.csv`, `phase5_threshold_calibration_fair135.*` | fairen Threshold `0.45` fuer finale Hauptinterpretation verwenden; rohe 144er-Auswertung nur als Audit-Artefakt fuehren |
+| Thesis-Analysebuendel | Skript angelegt / offline reproduzierbar | `build_phase5_thesis_result_bundle.py`, `test_phase5_thesis_result_bundle.py` | auf dem Server gegen finale Artefaktordner ausfuehren, sobald Morphologie-/Map-Analyseartefakte final vorliegen |
 
 ## 2) Methodischer Vertrag (Warum die Kette so aufgebaut ist)
 
@@ -967,6 +977,22 @@ Dokumentierte Pilotentscheidung:
 | `segformer` | 200 | innerhalb der APLS-Eligible-Menge; IoU-Tie-Break bevorzugt 200 |
 | `mapsam` | 150 | einziges eligible Budget; 200 faellt klar ab |
 
+Aktualisierte finale Budgetentscheidung (2026-05-04):
+
+1. Die obige Tabelle bleibt die dokumentierte Pilotdiagnostik.
+2. Fuer den finalen Hauptvergleich wurde der Pilotstand jedoch nicht als
+   endgueltige Vergleichsdefinition beibehalten, weil ein niedrigeres MapSAM-
+   Budget die Interpretation der Modellfamilien erschwert haette.
+3. MapSAM wurde deshalb mit einem Resume-/Audit-Workflow aus den archivierten
+   150-Epochen-Laeufen auf `200` Epochen fortgefuehrt.
+4. Diese 200-Epochen-Ergaenzung laeuft unter dem Label
+   `mapsam_200epoch_audit`.
+5. Der finale Deep-Learning-Hauptvergleich ist damit budgetharmonisiert:
+   `unetpp=200`, `segformer=200`, `mapsam_200epoch_audit=200`.
+6. Die alten `mapsam`-150-Hauptruns bleiben als Zwischenstand und
+   Budgetdiagnostik erhalten, duerfen aber nicht als finale MapSAM-Zellen im
+   Hauptvergleich interpretiert werden.
+
 Pflichtartefakte im Trainingsrepo:
 
 1. `results/pilot_budget_summary.csv`
@@ -974,9 +1000,13 @@ Pflichtartefakte im Trainingsrepo:
 
 Budgetfreeze-Regel:
 
-1. Diese drei Budgets werden unveraendert in die Hauptkampagne uebernommen.
-2. Keine nachtraegliche budgetweise Modellbevorzugung innerhalb der Hauptkampagne.
-3. Nach abgeschlossenem Budgetfreeze bleiben als kanonische Pilot-Belegartefakte mindestens erhalten:
+1. Die Pilotentscheidung darf nicht stillschweigend ueberschrieben werden.
+2. Die spaetere MapSAM-200-Fortfuehrung wird explizit als
+   Budgetharmonisierung/Audit-Schritt dokumentiert.
+3. Keine nachtraegliche budgetweise Modellbevorzugung innerhalb der finalen
+   Hauptvergleichstabelle: dort werden fuer alle drei Deep-Learning-
+   Referenzmodelle die 200-Epochen-Zellen verwendet.
+4. Nach abgeschlossenem Budgetfreeze bleiben als kanonische Pilot-Belegartefakte mindestens erhalten:
    - `results/pilot_budget_summary.csv`
    - `results/pilot_budget_decisions.md`
    - die 6 Pilot-`cv_summary_*.json`
@@ -995,7 +1025,18 @@ Hauptmatrix:
 3. Modellbudgets:
    - `unetpp`: `200` in allen drei Modi
    - `segformer`: `200` in allen drei Modi
-   - `mapsam`: `150` in allen drei Modi
+   - finaler Hauptvergleich: `mapsam_200epoch_audit`: `200` in allen drei Modi
+   - historischer Zwischenstand: `mapsam`: `150` in allen drei Modi
+
+Aktualisierte Einordnung:
+
+1. Die urspruenglichen `mapsam`-Runs mit `150` Epochen sind kein Fehler, aber
+   nicht mehr die finalen MapSAM-Zellen des Hauptvergleichs.
+2. Die finalen MapSAM-Zellen sind die separaten
+   `main_campaign:mapsam_200epoch_audit:*`-Runs mit `epochs=200`.
+3. Fuer Ergebnis-, Ranking- und Manuskriptinterpretation ist daher zwischen
+   `mapsam` als 150-Epochen-Zwischenstand und `mapsam_200epoch_audit` als
+   budgetharmonisierter finaler Vergleichszelle zu unterscheiden.
 
 Trainingsregel:
 
@@ -1022,7 +1063,19 @@ Operative Speicherregel bei begrenztem Serverplatz:
 
 ### 9.14 N9 Hauptkalibration, Haupttabelle und Zusatzanalysen
 
-Hauptkalibration:
+Statusaktualisierung 2026-05-04:
+
+1. Die unten beschriebene urspruengliche Final-Checkpoint-Kalibration ist als
+   historische Zielplanung zu verstehen.
+2. Fuer die finale Thesis-Auswertung wird derzeit eine konservativere,
+   gestreamte Threshold-Sensitivitaetsanalyse ausgefuehrt.
+3. Dieser Stream nutzt archivierte OneDrive-Checkpoints direkt, statt lokale
+   Haupt-Roots vollstaendig wiederherzustellen.
+4. Der Stream ersetzt kein Training. Er variiert nur den Postprocessing-
+   Threshold fuer vorhandene Modelloutputs.
+5. Die finale Interpretation darf erst nach Abschluss dieses Streams erfolgen.
+
+Historische Hauptkalibration (ersetzt durch aktuellen Streaming-Ansatz):
 
 1. Fuer jeden der 9 Hauptrun-Roots einen Sweep mit:
    - `--checkpoint-kind final`
@@ -1036,28 +1089,215 @@ Hauptkalibration:
    - Tie innerhalb `0.01` via `mean(IoU)`
    - dann Naehe zu `0.5`
 
-Haupttabelle:
+Historische Haupttabellenplanung (ersetzt durch aktuelle Streaming-Auswertung):
 
-1. Die einzige Quelle der Haupttabelle sind die 9 re-evaluated Final-CSV-Dateien.
+1. Die urspruenglich geplante Quelle der Haupttabelle waren die 9 re-evaluated Final-CSV-Dateien.
 2. Pro Hauptrun:
    - `reevaluate_phase5_checkpoints.py --checkpoint-kind final`
    - `--threshold-calibration-json results/phase5_threshold_calibration.json`
    - `--folds 1 2 4`
 3. Ranking pro Modus mit `rank_models.py`, Regel: APLS primaer, IoU Tie-Break, `apls_tie_eps=0.01`.
 
-Zusatzanalysen:
+Historische Zusatzanalyseplanung:
 
 1. Erst nach eingefrorener Haupttabelle dieselben 9 Hauptruns zusaetzlich mit `--checkpoint-kind iou_best` und `--checkpoint-kind apls_best` reevaluieren.
 2. Auch diese Zusatzanalysen verwenden denselben eingefrorenen globalen Threshold.
 3. Sie fliessen nicht in den Hauptvergleich ein.
 
-Empfohlene Reihenfolge pro Hauptrun auf platzbegrenzten Servern:
+Historische Reihenfolge pro Hauptrun auf platzbegrenzten Servern:
 
 1. Training fertig laufen lassen und den neuen `checkpoint_root` aus `cv_summary_*.json` notieren.
 2. Den zugehoerigen Final-Threshold-Sweep fuer genau diesen Root erzeugen und die Sweep-CSV lokal behalten.
 3. Nach Abschluss aller 9 Hauptruns den globalen Threshold bestimmen.
 4. Danach `final`, `iou_best` und `apls_best` mit dem eingefrorenen Threshold reevaluieren.
 5. Erst wenn diese Re-Evaluationspflicht fuer einen Hauptrun erfuellt oder der Root extern archiviert ist, darf der grosse Haupt-Root lokal entfernt werden.
+
+Aktuelle gestreamte Threshold-Sensitivitaetsanalyse:
+
+1. Operativer Anlass:
+   - Der vorherige APLS-best-Streaming-Run wurde am 2026-05-04 beendet, weil
+     er nicht die Threshold-Frage beantwortete und GPU-/OneDrive-Zeit blockierte.
+   - Der Run ist resumierbar; bereits erzeugte APLS-Zeilen bleiben erhalten.
+2. Aktiver Run:
+   - Output-Pattern:
+     `results/thesis_phase5_threshold_stream_milestones_<timestamp>/`
+   - Log-Pattern:
+     `$HOME/phase5_threshold_stream_milestones_<timestamp>.log`
+   - Current-env-Datei:
+     `$HOME/phase5_current_threshold_stream.env`
+3. Command-Charakter:
+   - `--run-threshold-sweep-streaming`
+   - `--stream-track main_campaign`
+   - `--stream-include-best`
+   - `--stream-checkpoint-epochs 50 100 150 200`
+   - `--thresholds 0.30 0.35 0.40 0.45 0.50 0.55 0.60 0.65 0.70`
+   - `--batch-size 1`
+   - `--num-workers 0`
+   - `--no-stream-prefetch`
+   - `--rclone-multi-thread-streams 1`
+4. Methodische Begruendung:
+   - Die lineare konservative Ausfuehrung minimiert operative
+     Nichtdeterminismusquellen.
+   - Das `0.05`-Raster ist enger an Literatur zu Probability-Map-Thresholding
+     und adaptiver Threshold-Auswahl angelehnt als das fruehere grobe Raster.
+   - `checkpoint_best.pt` plus Epoch-Meilensteine `50/100/150/200` prueft
+     Robustheit ueber plausible Checkpoint-Zeitpunkte, ohne einen Vollsweep
+     ueber alle Checkpoints zu erzwingen.
+5. Erwartete Ausgaben:
+   - `phase5_threshold_sweep_streaming.csv`
+   - `phase5_threshold_calibration_streaming.csv`
+   - `phase5_threshold_calibration_streaming.json`
+   - `run_index.csv`
+6. Interpretationsregel:
+   - Fuer den finalen `200/200/200`-Hauptvergleich sind `unetpp`, `segformer`
+     und `mapsam_200epoch_audit` massgeblich.
+   - Alte `mapsam`-150-Zeilen sind als Zwischenstand/Vorkonsolidierung zu
+     markieren oder aus der finalen Hauptvergleichsaggregation zu filtern.
+   - `literature_confirmatory`-Eintraege sind Zusatztrack und nicht Teil des
+     Kern-Hauptvergleichs, sofern sie nicht explizit als Confirmatory-Block
+     separat berichtet werden.
+
+Abschluss und Fair-135-Konsolidierung am 2026-05-06:
+
+1. Der gestreamte Sweep wurde vollstaendig beendet.
+2. Rohbestand:
+   - `phase5_threshold_sweep_streaming.csv`
+   - `raw_done_checkpoints=144`
+   - `raw_threshold_rows=1296`
+3. Die 144 rohen Checkpoint-Evaluationen bestehen aus:
+   - `mapsam` original: drei Modi mit je `12` Evaluationen
+   - `mapsam_200epoch_audit`: drei Modi mit je `6` Evaluationen
+   - `segformer`: drei Modi mit je `15` Evaluationen
+   - `unetpp`: drei Modi mit je `15` Evaluationen
+4. Die rohe 144er-Zahl ist ein vollstaendiger Stream-Auditstand, aber nicht
+   die finale faire Vergleichsbasis, weil MapSAM durch Original- und
+   200-Epoch-Audit-Laeufe doppelte `best`-Kandidaten enthaelt.
+5. Fuer die faire Hauptinterpretation wurde deshalb eine separate
+   `135`-Checkpoint-Konsolidierung erzeugt:
+   - `phase5_threshold_sweep_fair135.csv`
+   - `phase5_threshold_calibration_fair135.csv`
+   - `phase5_threshold_calibration_fair135.json`
+6. Konsolidierungsregel:
+   - `unetpp` und `segformer`: `best/50/100/150/200`
+   - `mapsam`: `50/100/150` aus den urspruenglichen `mapsam`-Runs
+   - `mapsam`: `best/200` aus den `mapsam_200epoch_audit`-Runs
+   - `MAPSAM_BEST_SOURCE=audit`
+7. Ergebnis der Konsolidierung:
+   - `fair_rows=1215`
+   - `fair_checkpoint_keys=135`
+   - pro Threshold genau `135` Zeilen
+8. Threshold-Entscheidung:
+   - Die rohe Streaming-Kalibrierung waehlte `0.55`, ist aber wegen der
+     MapSAM-Best-Doppelung nicht die finale faire Entscheidungsgrundlage.
+   - Die faire 135er-Kalibrierung waehlte `0.45`.
+   - Auswahlregel: maximales mittleres APLS; Thresholds innerhalb
+     `apls_tie_eps=0.01` werden per hoeherem mittlerem IoU entschieden; danach
+     entscheidet die Naehe zu `0.5`.
+   - `0.45` ist daher kein manuell gesetzter Wert, sondern das Ergebnis der
+     fairen APLS-primaeren Kalibrierung mit IoU-Tie-Break.
+9. Operative Einordnung:
+   - Fuer Manuskript- und Haupttabelleninterpretation ist `0.45` der
+     verwendete globale Threshold des fairen Deep-Learning-Hauptvergleichs.
+   - `phase5_threshold_calibration_streaming.json` bleibt als Audit der rohen
+     Streaming-Auswertung erhalten.
+   - `phase5_threshold_calibration_fair135.json` ist die kanonische
+     Threshold-Entscheidung fuer den budgetharmonisierten Hauptvergleich.
+
+Geplante Folgeanalysen auf Basis von `phase5_threshold_sweep_fair135.csv`:
+
+1. Threshold-Sensitivitaet:
+   - tabellarische Darstellung von `apls_mean` und `iou_mean` je Threshold
+   - Abstand des gewaehlten Thresholds `0.45` zu den naechsten Kandidaten
+   - Einordnung, ob die Entscheidung klar oder innerhalb des
+     `apls_tie_eps=0.01`-Bandes liegt
+2. Modell-/Modus-Ranking bei `threshold=0.45`:
+   - Aggregation ueber Folds und Checkpoint-Stufen
+   - getrennte Rankings je Modus `full_1024_no_aug`, `crop_512_no_aug`,
+     `crop_512_aug`
+   - primaere Sortierung nach APLS, IoU als Tie-Break
+3. Checkpoint-Sensitivitaet:
+   - Vergleich von `best`, `50`, `100`, `150`, `200`
+   - getrennt nach finalem Modell und Modus
+   - Pruefung, ob `checkpoint_best.pt` konsistent besser ist als feste
+     Epoch-Meilensteine
+4. Fold-Stabilitaet:
+   - Mittelwert und Spannweite ueber Folds `1/2/4`
+   - Identifikation instabiler Modell-/Modus-Kombinationen
+5. Manuskriptentscheidung:
+   - `0.45` bleibt globaler Threshold, wenn keine Folgeanalyse eine
+     methodische Inkonsistenz zeigt
+   - Zusatzmetriken und Sensitivitaetsbefunde werden als Robustheitsanalyse
+     berichtet, nicht als neue Optimierungsschleife
+
+Reproduzierbares Fair-135-Analyse-Skript:
+
+1. Die Fair-135-Konsolidierung und alle Folgeanalysen werden ab 2026-05-06
+   nicht mehr als Shell-Heredoc dokumentiert, sondern als eigenes Offline-
+   Skript im Trainingsrepo:
+   `scripts/analysis/build_phase5_threshold_fair_literature_analysis.py`.
+2. Das Skript ist bewusst reines Postprocessing:
+   - keine Checkpoint-Downloads
+   - keine GPU-Auswertung
+   - kein Training
+   - keine neue Modellinferenz
+3. Kanonischer Server-Aufruf:
+   - `python scripts/analysis/build_phase5_threshold_fair_literature_analysis.py --input "$OUT_THRESHOLD/phase5_threshold_sweep_streaming.csv" --out-dir "$OUT_THRESHOLD" --mapsam-best-source audit --apls-tie-eps 0.01`
+4. Erwartete Kernoutputs:
+   - `phase5_threshold_sweep_fair135.csv`
+   - `phase5_threshold_calibration_fair135.csv`
+   - `phase5_threshold_calibration_fair135.json`
+   - `phase5_threshold_fair135_threshold_group_sensitivity.csv`
+   - `phase5_threshold_fair135_rankings_threshold_045.csv`
+   - `phase5_threshold_fair135_checkpoint_sensitivity_threshold_045.csv`
+   - `phase5_threshold_fair135_fold_stability_threshold_045.csv`
+   - `phase5_threshold_fair135_literature_report.json`
+5. Validierung:
+   - Unit-Test im Trainingsrepo:
+     `tests/unit/test_phase5_threshold_fair_literature_analysis.py`
+   - getestete Eigenschaften: MapSAM-Best-Deduplizierung,
+     Fair-Checkpoint-Counts, Threshold-Auswahl und Output-Erzeugung
+
+Finales Thesis-Buendel-Skript:
+
+1. Die uebergreifende Abschlussaggregation wird als separates Offline-Skript
+   gefuehrt:
+   `scripts/analysis/build_phase5_thesis_result_bundle.py`.
+2. Zweck:
+   - Fair-135-Deep-Learning-Analyse in die finale Ergebnisstruktur uebernehmen
+   - optionale Morphologie-Main-Metriken in denselben Referenzblick einhaengen
+   - optionale Map-Performance-Artefakte fuer Confirmatory-Rankings und
+     qualitative Patch-Kandidaten aufnehmen
+   - ein Manifest und einen Markdown-Report fuer die Manuskriptarbeit erzeugen
+3. Der Schritt ist rein lesend gegen bestehende Analyseartefakte:
+   - keine grossen Checkpoint-Downloads
+   - keine OneDrive-Streaming-Evaluation
+   - keine GPU-Auswertung
+   - keine neue Inferenz
+4. Kanonisches Muster fuer den Server-Aufruf:
+   - `python scripts/analysis/build_phase5_thesis_result_bundle.py --threshold-analysis-dir "$OUT_THRESHOLD" --map-analysis-dir "<map_analysis_out_dir>" --morphology-dir "<morphology_results_dir>" --out-dir "$OUT_THRESHOLD/thesis_result_bundle"`
+5. Erwartete Kernoutputs:
+   - `phase5_thesis_morphology_summary.csv`
+   - `phase5_thesis_core_reference_epoch200.csv`
+   - `phase5_thesis_core_reference_best_checkpoint.csv`
+   - `phase5_thesis_confirmatory_summary.csv`
+   - `phase5_thesis_qualitative_patch_candidates.csv`
+   - `phase5_thesis_artifact_inventory.csv`
+   - `phase5_thesis_bundle_manifest.json`
+   - `phase5_thesis_bundle_report.md`
+6. Methodische Einordnung:
+   - `phase5_thesis_core_reference_epoch200.csv` ist der kontrollierte
+     Hauptblick fuer den budgetharmonisierten Deep-Learning-Vergleich bei
+     globalem Threshold `0.45`, erweitert um die Morphologie-Baseline, falls
+     deren finale Main-Metriken uebergeben werden.
+   - `phase5_thesis_core_reference_best_checkpoint.csv` ist eine
+     Sensitivitaetsansicht und ersetzt nicht den kontrollierten Hauptblick.
+   - Confirmatory- und qualitative Tabellen bleiben getrennte Zusatzebenen.
+7. Validierung:
+   - Unit-Test im Trainingsrepo:
+     `tests/unit/test_phase5_thesis_result_bundle.py`
+   - getestete Eigenschaften: rein offline erzeugte Bundle-Outputs,
+     Manifest-Counts, Morphologie-Integration, Confirmatory-Extraktion und
+     qualitative Patch-Kandidaten.
 
 ### 9.14.5 N9.5 Klassischer Morphologie-Track
 
@@ -1219,6 +1459,39 @@ Confirmatory-Evaluation im Hauptkampagnenformat:
    Modi, Folds, Budgets und die modellinterne Batch-Size-Regel der
    Hauptkampagne nicht verletzt werden.
 
+Dokumentierter Abschlussstand der Confirmatory-Evaluation:
+
+1. Fuer `unetpp_tu_resnest200e_confirmatory` wurden die beiden 512er Modi
+   `crop_512_no_aug` und `crop_512_aug` erfolgreich auf den Hauptfolds `1/2/4`
+   mit `epochs=200`, `batch_size=2` und `num_workers=0` abgeschlossen und
+   archiviert.
+2. Fuer `segformer_b5_confirmatory` wurden ebenfalls die beiden 512er Modi
+   `crop_512_no_aug` und `crop_512_aug` erfolgreich auf den Hauptfolds `1/2/4`
+   mit `epochs=200`, `batch_size=2` und `num_workers=0` abgeschlossen und
+   archiviert.
+3. `unetpp_tu_resnest200e_confirmatory` im Modus `full_1024_no_aug` war unter
+   der unveraenderten Referenzkonfiguration auf der RTX 4090 nicht trainierbar:
+   der echte Trainingslauf scheiterte bei `batch_size=2` reproduzierbar an
+   CUDA-Out-of-Memory; ein technischer Fallback auf `batch_size=1` war nicht
+   mehr konfigurationsaequivalent und scheiterte zusaetzlich architekturseitig
+   an BatchNorm im ResNeSt-Encoder.
+4. `segformer_b5_confirmatory` im Modus `full_1024_no_aug` war unter derselben
+   unveraenderten Referenzkonfiguration ebenfalls nicht trainierbar: der echte
+   Trainingslauf scheiterte auf Fold `1` bei `batch_size=2` reproduzierbar an
+   CUDA-Out-of-Memory.
+5. Die Restmatrix der noch offenen Confirmatory-Runs endete damit in folgendem
+   Zustand:
+   - `completed`: `unetpp_tu_resnest200e_confirmatory` `crop_512_no_aug`
+   - `completed`: `unetpp_tu_resnest200e_confirmatory` `crop_512_aug`
+   - `run_failed`: `segformer_b5_confirmatory` `full_1024_no_aug`
+   - `completed`: `segformer_b5_confirmatory` `crop_512_no_aug`
+   - `completed`: `segformer_b5_confirmatory` `crop_512_aug`
+6. Die Confirmatory-Kampagne ist auf der verfuegbaren Referenzhardware damit
+   als abgeschlossen zu betrachten: alle 512er Vergleichszellen liegen
+   vollstaendig vor; beide `full_1024_no_aug`-Zellen sind als reproduzierbar
+   nicht trainierbar unter der festgelegten Originalkonfiguration zu
+   dokumentieren.
+
 Pflichtartefakte:
 
 1. die 5 Pilot-`cv_metrics_*.csv`
@@ -1230,6 +1503,14 @@ Pflichtartefakte:
 7. `results/phase5_literature_pilots_ranking_20260427T154228Z.json`
 8. die Confirmatory-`cv_summary_*.json` im Hauptkampagnenformat
 9. die Confirmatory-`cv_metrics_*.csv` im Hauptkampagnenformat
+10. `results/run_logs/20260428T093743Z_phase5_literature_confirmatory_remaining_phase5_cv_matrix_summary.json`
+11. Archivnachweise fuer die abgeschlossenen Confirmatory-512er Runs:
+   - `onedrive:Masterarbeit/phase5/literature_confirmatory/unetpp_tu_resnest200e_confirmatory/crop_512_no_aug/20260428_093826`
+   - `onedrive:Masterarbeit/phase5/literature_confirmatory/unetpp_tu_resnest200e_confirmatory/crop_512_aug/20260428_194105`
+   - `onedrive:Masterarbeit/phase5/literature_confirmatory/segformer_b5_confirmatory/crop_512_no_aug/20260429_054346`
+   - `onedrive:Masterarbeit/phase5/literature_confirmatory/segformer_b5_confirmatory/crop_512_aug/20260429_140801`
+12. Fehlernachweis fuer die beiden `full_1024_no_aug`-Confirmatory-Zellen in
+    `results/run_logs/`
 
 Dokumentationsregel:
 
@@ -1240,6 +1521,9 @@ Dokumentationsregel:
    Zusatzblock im Hauptkampagnenformat beschrieben.
 4. Die bestehende Hauptkampagne auf Folds `1/2/4` bleibt davon methodisch
    unberuehrt.
+5. Nicht trainierbare Confirmatory-Zellen unter unveraenderter
+   Referenzkonfiguration werden explizit als Ressourcen- bzw.
+   Trainierbarkeitsbefund dokumentiert, nicht als negative Modellleistung.
 
 ### 9.15 N10 Abschlusskriterien fuer thesis-ready Kampagnenergebnisse
 
@@ -1254,13 +1538,21 @@ Ein Ergebnisblock ist thesis-ready, wenn alle Punkte erfuellt sind:
    - `pilot_budget_summary.csv`
    - `pilot_budget_decisions.md`
 3. Hauptkampagne abgeschlossen:
-   - 9 neue `cv_summary_*.json`
-   - 9 timestamped checkpoint roots
-   - alle Hauptruns nur auf `1/2/4`
+   - `unetpp` und `segformer` mit je drei 200-Epochen-Hauptzellen
+   - `mapsam_200epoch_audit` mit drei 200-Epochen-Hauptzellen
+   - alte `mapsam`-150-Zellen nur als Zwischenstand/Vorkonsolidierung
+   - alle finalen Hauptzellen nur auf `1/2/4`
 4. Hauptauswertung abgeschlossen:
-   - 9 final-threshold sweep-CSVs
-   - `results/phase5_threshold_calibration.json`
-   - 9 reevaluated final-CSVs
+   - gestreamter Threshold-Sweep fuer `main_campaign` abgeschlossen
+   - `phase5_threshold_sweep_streaming.csv`
+   - `phase5_threshold_calibration_streaming.csv`
+   - `phase5_threshold_calibration_streaming.json`
+   - `phase5_threshold_sweep_fair135.csv`
+   - `phase5_threshold_calibration_fair135.csv`
+   - `phase5_threshold_calibration_fair135.json`
+   - finaler fairer globaler Threshold: `0.45`
+   - finale Hauptvergleichsaggregation filtert auf `unetpp`, `segformer` und
+     `mapsam_200epoch_audit`
    - 3 modusspezifische Ranking-Artefakte
 5. Klassischer Morphologie-Track abgeschlossen:
    - `cv_metrics_morphology_*classical_candidates*.csv`
@@ -1270,6 +1562,17 @@ Ein Ergebnisblock ist thesis-ready, wenn alle Punkte erfuellt sind:
    - Pilotfolds `0/3` tauchen nicht in Haupttabelle oder globaler Threshold-Kalibration auf
    - Morphologie-Pilotfolds `0/3` tauchen nicht in der eingefrorenen Morphologie-Main-Evaluation auf
    - `iou_best` und `apls_best` bleiben Zusatzanalyse
+7. Literatur-Backbone-Zusatztrack abgeschlossen:
+   - 5 Literatur-Pilot-Runs abgeschlossen und archiviert
+   - 4 Confirmatory-512er Runs abgeschlossen und archiviert
+   - beide Confirmatory-`full_1024_no_aug`-Zellen als unter der
+     Referenzhardware nicht trainierbar dokumentiert
+8. Threshold-Sensitivitaet abgeschlossen:
+   - Server-Stream von 2026-05-04 bis 2026-05-06 ist vollstaendig beendet
+   - keine `ERROR`-/`Traceback`-/`THRESHOLD_STREAM_TEMP_PRESERVED`-Endlage
+   - rohe 144er-Kalibrierung bleibt Audit-Artefakt
+   - faire 135er-Kalibrierung ist als finale Threshold-Entscheidung
+     dokumentiert
 
 ## 10) Vorlage fuer die weitere Protokollfortschreibung
 
@@ -1287,9 +1590,15 @@ Bei jedem neuen Schritt verpflichtend eintragen:
 
 1. Die erfolgreiche Kette von Freeze ueber Annotation und Width bis zur final materialisierten Downstream-Integration ist abgeschlossen und belegt.
 2. Der finale Trainingsvertrag nutzt die width-basierten Masken aus `final_width_px`, nicht den frueheren Debug-/Smoke-Maskensatz.
-3. Die Pilotkampagne der neuen Phase-5-Hauptauswertung ist abgeschlossen; die Hauptbudgets sind eingefroren (`unetpp=200`, `segformer=200`, `mapsam=150`).
-4. Der aktuelle Gate-Zustand ist: Readiness bestanden, Pilotbudgetdiagnostik abgeschlossen, Hauptkampagne auf Folds `1/2/4` abgeschlossen und vollstaendig nach OneDrive archiviert; Folgeexperimente laufen nur noch als getrennte, archivierungsgekoppelte Zusatztracks.
-5. Die Haupttabelle ist methodisch auf finale Checkpoints, einen globalen Threshold und APLS-primaeres Ranking mit IoU-Tie-Break festgelegt.
-6. Der klassische Morphologie-Track ist als separater pilot-kalibrierter
+3. Die Pilotkampagne der neuen Phase-5-Hauptauswertung ist abgeschlossen; sie leitete zunaechst `unetpp=200`, `segformer=200`, `mapsam=150` ab.
+4. Fuer den finalen Deep-Learning-Hauptvergleich wurde das Budget nachtraeglich harmonisiert: `unetpp=200`, `segformer=200`, `mapsam_200epoch_audit=200`.
+5. Der aktuelle Gate-Zustand ist: Readiness bestanden, Pilotbudgetdiagnostik abgeschlossen, Hauptkampagne auf Folds `1/2/4` abgeschlossen und vollstaendig nach OneDrive archiviert; MapSAM-200-Audit ist abgeschlossen; der konservative gestreamte Threshold-Sweep ist abgeschlossen und fair konsolidiert.
+6. Die finale Haupttabelle ist methodisch auf APLS-primaeres Ranking mit IoU-Tie-Break festgelegt; fuer den fairen Deep-Learning-Hauptvergleich ist der globale Threshold `0.45` massgeblich.
+7. Der klassische Morphologie-Track ist als separater pilot-kalibrierter
    Baseline-Track festgelegt: Compact-Sweep auf `0/3`, frozen Evaluation auf
    `1/2/4`.
+8. Der Literatur-Backbone-Zusatztrack ist abgeschlossen: die 512er
+   Confirmatory-Vergleiche sind vollstaendig archiviert, waehrend beide
+   `full_1024_no_aug`-Confirmatory-Zellen auf der verfuegbaren RTX-4090-
+   Referenzhardware unter unveraenderter Originalkonfiguration reproduzierbar
+   nicht trainierbar waren.
